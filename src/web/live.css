@@ -123,12 +123,6 @@ h1 {
   border-bottom: 2px dotted #777;
 }
 
-.pron-problems {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .pron-problem {
   font-weight: 700;
   text-decoration-line: underline;
