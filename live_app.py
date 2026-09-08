@@ -269,6 +269,9 @@ class Handler(BaseHTTPRequestHandler):
                 session_dir = get_session_dir(str(payload.get("session_id", "")))
                 if session_dir is None:
                     raise ValueError("unknown session_id")
+                frontend_state = payload.get("frontend_state")
+                if not isinstance(frontend_state, dict):
+                    frontend_state = {}
                 log_event(
                     session_dir,
                     "live_turn",
@@ -276,6 +279,12 @@ class Handler(BaseHTTPRequestHandler):
                     user_text=str(payload.get("user_text", "")),
                     ai_text=str(payload.get("ai_text", "")),
                     first_audio_ms=payload.get("first_audio_ms"),
+                    frontend_state={
+                        "recording": frontend_state.get("recording"),
+                        "activeTurn": frontend_state.get("activeTurn"),
+                        "buttonEnabled": frontend_state.get("buttonEnabled"),
+                        "setupReady": frontend_state.get("setupReady"),
+                    },
                 )
                 self.send_json(200, {"ok": True})
             except Exception as exc:
