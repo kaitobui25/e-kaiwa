@@ -14,7 +14,11 @@ src/                    ACTIVE — code that still runs and is maintained
   scripts/
     setup.bat             one-time/local setup
     run.bat               normal realtime runner
-  tests/                 regression tests for active production code
+  tests/
+    python/               fast offline regression tests
+    system/               runnable local system smoke test
+    run_python.bat
+    run_system.bat
   requirements.txt       runtime-only Python dependencies
 
 archive/precode/        FROZEN — experiments used before the production flow existed
@@ -110,21 +114,37 @@ live.css
 live.js
 ```
 
-## Regression checks
+## Tests you can run
 
-Only tests that protect the current maintained code stay with `src/`:
+### Python tests
 
-```text
-src/tests/test_live_core.py
+Fast and offline. They do not require `api.txt` and do not call Gemini.
+
+```bat
+src\tests\run_python.bat
 ```
 
-CI runs these checks without API keys:
+They cover core config/session/helper behavior and are also run by CI.
 
-```text
-Python regression tests
-Python syntax compilation
-browser JavaScript syntax check
+### System test
+
+Starts `src/app.py` as a real local process, checks the HTTP server and frontend assets, then requests a real Gemini ephemeral session token.
+
+```bat
+src\tests\run_system.bat
 ```
+
+This requires internet access and valid Gemini keys in repository-root `api.txt`.
+
+The system test does not fake a browser microphone. The final Gemini Live audio/WebSocket path is still checked manually by running:
+
+```bat
+src\scripts\run.bat
+```
+
+and speaking from the phone browser.
+
+CI deliberately runs only the offline Python suite plus Python/JavaScript syntax checks. It does not require secrets or external Gemini access.
 
 The older model benchmarks and prototype loops are deliberately not part of CI anymore. They are kept under `archive/precode/` only as historical engineering reference.
 
