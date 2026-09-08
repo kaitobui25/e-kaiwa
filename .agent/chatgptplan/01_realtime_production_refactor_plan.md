@@ -1,11 +1,22 @@
 # E-KAIWA – Realtime production refactor plan
 
 Date: 2026-09-08
-Branch: `refactor/realtime-modular-v1`
+Status: **COMPLETED**
+
+Implemented through:
+
+- PR #1 — modular realtime production refactor
+- PR #2 — active `src/` + frozen `archive/precode/` repository layout
+
+Current main commit after repository reorganization:
+
+```text
+494452c763e334f2c52ee5cfef8a7f13269a42e3
+```
 
 ## 1. Goal
 
-Hoàn thiện realtime E-KAIWA hiện tại thành codebase gọn, modular, dễ bảo trì và nâng cấp nhưng **không overengineer**.
+Hoàn thiện realtime E-KAIWA thành codebase gọn, modular, dễ bảo trì và nâng cấp nhưng **không overengineer**.
 
 Giữ nguyên product flow đã test thành công:
 
@@ -18,7 +29,7 @@ Tap Start một lần
 → mic tiếp tục nghe turn sau
 ```
 
-Không thay đổi kiến trúc chính đang đúng:
+Kiến trúc chính:
 
 ```text
 Browser mic
@@ -30,281 +41,451 @@ Browser
   → correction + pronunciation feedback
 ```
 
-## 2. Current problems
+Coach không được block spoken realtime path.
 
-Code hiện tại hoạt động nhưng còn coupling cao:
+---
 
-- `live_app.py` đang chứa config, API key loading, token creation, session/logging, PCM WAV, coach orchestration và HTTP routing.
-- `web/live.html` đang chứa HTML + CSS + toàn bộ realtime state machine + audio DSP + Gemini WebSocket + rendering + API calls.
-- `web_coach.py` nhận object `full` từ test module, làm production code phụ thuộc ngược vào `tests/test_full_loop.py`.
-- Root production path đang import code từ `tests/`, khó bảo trì về lâu dài.
-- Một số input chưa clamp/validate rõ ràng (`turn`, `sample_rate`, payload shape).
-- Static assets chưa có routing riêng vì mọi frontend logic nằm trong một HTML lớn.
-- Pure logic chưa có regression tests riêng cho session/config/validation.
+## 2. Problems that triggered the refactor
+
+Trước refactor:
+
+- `live_app.py` chứa quá nhiều trách nhiệm: config, API keys, token, session/logging, PCM WAV, coach orchestration và HTTP routes.
+- `web/live.html` chứa HTML + CSS + toàn bộ realtime state machine/audio/WebSocket/rendering/API calls.
+- Production path còn phụ thuộc code benchmark trong `tests/`.
+- Script production và script benchmark đều có tên `test`, rất dễ nhầm.
+- `e_kaiwa/`, `tests/`, `scripts/`, `web/`, `tools/` cùng nằm root nên khó nhìn đâu là code đang sống, đâu là code thử nghiệm cũ.
+- Benchmark STT/LLM/TTS/pronunciation/full-loop đã hoàn thành vai trò pre-code nhưng vẫn trông như test đang được duy trì.
+
+Hai refactor liên tiếp giải quyết cả **code coupling** lẫn **repository organization**.
+
+---
 
 ## 3. Refactor principles
 
-1. **Preserve behavior first.** Không rewrite product flow.
-2. **Thin entrypoint.** `live_app.py` chỉ parse args + start server.
-3. **Production must not import tests.** Shared Gemini REST helpers/coach config chuyển vào package production.
-4. **Few modules, clear ownership.** Không tạo layer/service/repository abstraction dư thừa.
-5. **Stdlib-first backend.** Giữ footprint thấp cho VPS 1 GB RAM.
-6. **No database yet.** Runtime logs vẫn filesystem JSONL + WAV.
-7. **Frontend state lifecycles stay separated:**
+1. **Preserve behavior first.** Không rewrite product flow đang hoạt động.
+2. **Active code has one home.** Code còn chạy/còn sửa phải nằm trong `src/`.
+3. **Historical experiments are frozen.** Benchmark/pre-code cũ nằm trong `archive/precode/`.
+4. **Production must not import archived experiments.** Không dependency ngược từ `src/` sang archive.
+5. **Few modules, clear ownership.** Không thêm layer/service abstraction dư thừa.
+6. **Stdlib-first backend.** Phù hợp VPS nhỏ khoảng 1 GB RAM.
+7. **No database yet.** Runtime logs vẫn JSONL + WAV filesystem.
+8. **Frontend lifecycles separated:**
    - Live session lifecycle
    - microphone lifecycle
    - per-turn lifecycle
-8. **Coach never blocks spoken reply.** Đây là invariant product quan trọng.
+9. **Coach never blocks spoken reply.** Đây là invariant quan trọng.
+10. **No frontend build system yet.** Không React/Vue/TypeScript/bundler khi chưa cần.
 
-## 4. Target structure
+---
+
+## 4. Final repository structure
 
 ```text
-e_kaiwa/
-  __init__.py
-  config.py          # paths, models, teacher modes, API key loading
-  gemini.py          # Gemini REST helper + ephemeral token
-  sessions.py        # session registry + JSONL logging + WAV save
-  coach.py           # correction/pronunciation sidecar
-  server.py          # HTTP handler + routes + app bootstrap
+src/                    ACTIVE — code đang chạy và còn bảo trì
+  app.py                 realtime server entrypoint
 
-live_app.py           # tiny backward-compatible entrypoint
+  e_kaiwa/
+    __init__.py
+    config.py             paths, models, teacher modes, API key loading
+    gemini.py             Gemini REST helpers + ephemeral token
+    sessions.py           session registry + JSONL + WAV persistence
+    coach.py              correction + pronunciation sidecar
+    server.py             HTTP routes + app bootstrap
 
-web/
-  live.html           # semantic markup only
-  live.css            # styles
-  live.js             # realtime app/state/audio/websocket logic
+  web/
+    live.html             semantic markup
+    live.css              styles
+    live.js               realtime state/audio/WebSocket/UI logic
 
-web_coach.py          # compatibility shim; delegates to e_kaiwa.coach
+  scripts/
+    setup.bat             setup môi trường local
+    run.bat               normal realtime runner
 
-tests/
-  test_live_core.py   # pure regression tests for config/session helpers
+  tests/
+    test_live_core.py     regression tests cho active production code
+
+  requirements.txt        runtime-only dependencies
+
+archive/precode/        FROZEN — code thử nghiệm trước production
+  tests/                 STT/LLM/TTS/pronunciation/full-loop/Live benchmarks
+  scripts/               benchmark runners cũ
+  tools/                 preflight/environment utilities cũ
+  legacy/                Gradio + compatibility code cũ
+  requirements.txt       dependencies của pre-code experiments
+  README.md              giải thích archive
+
+.agent/
+  chatgptlog/
+  chatgptplan/
+
+.github/
+  workflows/ci.yml
+
+api.txt                  local only, gitignored
+runtime_logs/            runtime output, gitignored
+.venv/                   local environment, gitignored
+README.md
 ```
 
-This deliberately stops at ~5 backend modules + 3 frontend files. No framework, DI container, database, bundler, TypeScript or build step.
+### Rule going forward
+
+```text
+Còn chạy / còn sửa / production-related → src/
+Không còn chạy, chỉ giữ để tham khảo   → archive/precode/
+```
+
+Không đưa code mới vào `archive/precode/` trừ khi chủ động archive một experiment đã kết thúc.
+
+---
 
 ## 5. Backend module responsibilities
 
-### `e_kaiwa/config.py`
+### `src/e_kaiwa/config.py`
 
 Own:
 
-- project paths
+- repository/runtime paths
 - Live/coach model names
-- skipped key slots (`#4`)
+- skipped API key slots (`#4`)
 - teacher mode mapping/rules
-- API key file parsing
+- API key parsing
 - host/port defaults
 
 Rules:
 
 - de-duplicate keys
-- ignore comments/blank lines
-- preserve original 1-based key slot numbers
+- ignore comment/blank lines
+- preserve 1-based key slot numbers
 - never log raw API keys
+- `api.txt` remains repository-root local config
+- `runtime_logs/` remains repository-root runtime output
 
-### `e_kaiwa/gemini.py`
+### `src/e_kaiwa/gemini.py`
 
 Own:
 
 - JSON POST helper
 - Gemini response text extraction
-- ephemeral token creation
+- JSON response parsing helper
+- ephemeral Live token creation
 
-No product/session knowledge.
+No session/UI/product state.
 
-### `e_kaiwa/sessions.py`
+### `src/e_kaiwa/sessions.py`
 
 Own:
 
 - unique session directory creation
-- in-memory session id → path registry
+- session id registry
 - session id validation
-- JSONL event append
+- JSONL append
 - PCM16 → WAV persistence
+- safe concurrent log writes
 
-Keep filesystem logging because it is simple, debuggable and sufficient for current scale.
+Filesystem logging remains intentional because it is simple and sufficient for the current MVP.
 
-### `e_kaiwa/coach.py`
+### `src/e_kaiwa/coach.py`
 
 Own:
 
 - correction prompt
 - pronunciation prompt
-- language selection (`vi` / `ja`)
-- strictness rules
-- parallel correction + pronunciation jobs
-- normalized response payload
+- feedback language (`vi` / `ja`)
+- teacher strictness
+- correction + pronunciation parallel execution
+- normalized coach response
 
-Coach receives a validated request object/data, not HTTP handler state.
-
-### `e_kaiwa/server.py`
+### `src/e_kaiwa/server.py`
 
 Own:
 
-- HTTP routes
-- JSON body size validation
-- static file serving
+- HTTP server lifecycle
+- static routes
 - `/health`
 - `/api/session`
 - `/api/coach`
 - `/api/metric`
-- startup/shutdown
+- request validation
 
-Routes should remain small and delegate actual work.
+Routes stay small and delegate work to the modules above.
 
-## 6. Frontend split
+### `src/app.py`
 
-### `web/live.html`
+Thin entrypoint only:
 
-Only markup and element ids.
+```text
+import main
+→ start server
+```
 
-### `web/live.css`
+No business logic belongs here.
 
-Only presentation.
+---
 
-### `web/live.js`
+## 6. Frontend structure
 
-Keep one JS file for now. Splitting further would add complexity before the codebase needs bundling/import maps.
+### `src/web/live.html`
 
-Internally organize functions by sections:
+Markup + element ids only.
+
+### `src/web/live.css`
+
+Presentation only.
+
+### `src/web/live.js`
+
+One plain JS file remains appropriate for now.
+
+Logical sections:
 
 1. DOM/config
 2. UI/rendering
-3. Live connection
-4. audio input/output
-5. turn lifecycle
-6. coach/metrics API
-7. event bindings/bootstrap
+3. Gemini Live connection
+4. microphone/audio conversion
+5. AI audio playback
+6. turn lifecycle
+7. coach + metric requests
+8. settings/event bindings
+9. bootstrap/reconnect
 
-Important regression rule:
+Important regression invariant:
 
 ```text
-mic streaming must depend on recording + WebSocket readiness,
-NOT on activeTurn existing.
+session/microphone lifecycle != turn lifecycle
 ```
 
-PCM can continue going to Gemini while the next turn object is armed around playback boundaries.
+The bug fixed earlier must not return:
 
-## 7. Validation / reliability improvements
+```text
+turnComplete
+→ activeTurn = null
+→ microphone stream accidentally stops forwarding audio
+```
 
-Backend:
+Mic/session are long-lived during conversation; turn objects are created/finalized repeatedly.
 
-- clamp `turn >= 1`
-- only accept supported feedback languages
-- only accept reasonable PCM sample rates
-- reject empty/invalid base64 PCM
-- enforce JSON request max size
-- prevent arbitrary filesystem paths via session id validation + registry lookup
-- static files served only from fixed allowlisted routes
+---
 
-Frontend:
+## 7. Realtime behavior to preserve
 
-- reconnect state remains explicit
-- no duplicate session connect while `connecting=true`
-- settings persisted only where useful (`silenceDurationMs`)
-- network errors render as coach errors without breaking conversation
-- stop conversation cleans microphone nodes/tracks
+```text
+Tap Start once
+→ get microphone permission
+→ continuous PCM stream to Gemini Live
+→ Automatic VAD detects silence / end of user turn
+→ Gemini replies with streaming audio
+→ user transcript + AI transcript update UI
+→ coach runs separately
+→ wait for AI playback boundary
+→ arm next turn
+→ continue listening
+```
 
-## 8. Compatibility
+Settings currently supported:
 
-Must keep these commands working:
+```text
+Teacher strictness     Easy / Normal / Strict
+Correction language   Tiếng Việt / 日本語
+Silence timeout       0.7 / 1.0 / 1.2 / 1.5 s
+Pronunciation coach   ON / OFF
+```
+
+`silenceDurationMs` applies on Live reconnect/session setup.
+
+---
+
+## 8. Validation / reliability completed
+
+Backend protections now include:
+
+- `turn >= 1`
+- normalized/allowlisted feedback language
+- supported PCM sample rate validation
+- invalid/empty base64 PCM rejection
+- even-byte PCM16 validation
+- request body max size
+- transcript length guard
+- session id validation
+- registered-session lookup instead of arbitrary filesystem paths
+- static file allowlist
+- thread-safe session/log registry operations
+
+Frontend reliability behavior includes:
+
+- explicit reconnect state
+- duplicate connection guard
+- microphone cleanup on stop/error
+- coach error does not kill realtime conversation
+- coach remains outside spoken latency path
+- silence timeout persistence in `localStorage`
+
+---
+
+## 9. Active tests and CI
+
+Historical benchmark tests are no longer part of normal CI.
+
+The maintained regression suite is:
+
+```text
+src/tests/test_live_core.py
+```
+
+It covers pure production behavior such as:
+
+- API key parsing / duplicate removal / dead slot #4 skip
+- teacher mode resolution
+- feedback language normalization
+- session id validation
+- session creation/logging
+- PCM16 WAV metadata
+- Gemini JSON helper parsing
+
+CI checks only maintained code:
+
+```text
+python -m unittest discover -s src/tests -p "test_*.py"
+python -m compileall -q src/e_kaiwa src/app.py
+node --check src/web/live.js
+```
+
+CI passed after the final repository move.
+
+---
+
+## 10. Normal commands going forward
+
+### Setup
+
+```bat
+src\scripts\setup.bat
+```
+
+### Run realtime app
+
+```bat
+src\scripts\run.bat
+```
+
+The old normal command:
 
 ```bat
 scripts\run_web_test.bat
 ```
 
-and internally:
+is intentionally retired because the word `test` made production usage ambiguous.
+
+The old benchmark runners still exist only under:
 
 ```text
-python live_app.py
+archive/precode/scripts/
 ```
 
-No new runtime dependency is required for the realtime server.
+They are historical reference, not normal app commands.
 
-Existing experimental/benchmark tests remain untouched unless a compatibility import needs adjustment.
+---
 
-## 9. Tests
+## 11. Implementation status
 
-Add lightweight stdlib `unittest` coverage for pure behavior:
+### Phase 1 — production modules
 
-- key parsing skips duplicate/comment/slot #4
-- teacher mapping resolves fallback safely
-- session id validation rejects path traversal / invalid characters
-- WAV writer creates valid mono PCM16 WAV metadata
-- language normalization only returns `vi` or `ja`
-
-Manual browser regression checklist:
-
-1. server starts with `scripts\run_web_test.bat`
-2. page loads CSS/JS
-3. setup indicator turns green
-4. tap Start once
-5. complete at least 3 conversation turns without another tap
-6. AI audio streams every turn
-7. coach appears after spoken reply path has already started/completed independently
-8. change Teacher / language / pronunciation
-9. change silence timeout, reconnect, verify setting applies
-10. Stop releases mic; Start can begin again
-11. Live expiry/error shows Reconnect
-12. runtime log contains `session_start`, `live_turn`, `coach`
-
-## 10. Implementation order
-
-### Phase 1 — foundation
-
-- add package `e_kaiwa/`
-- extract config, Gemini REST, sessions/logging
+- [x] extract runtime config
+- [x] extract Gemini REST/token helpers
+- [x] extract session/logging/WAV responsibilities
 
 ### Phase 2 — coach
 
-- move production correction/pronunciation logic out of `web_coach.py`
-- remove production dependency on `tests/`
-- keep compatibility shim if useful
+- [x] move production correction logic out of benchmark modules
+- [x] move production pronunciation logic out of benchmark modules
+- [x] correction + pronunciation run in parallel
+- [x] production no longer imports pre-code tests
 
 ### Phase 3 — HTTP server
 
-- move routes to `e_kaiwa/server.py`
-- reduce `live_app.py` to entrypoint
-- add static CSS/JS routes
+- [x] routes moved to `server.py`
+- [x] thin entrypoint
+- [x] static HTML/CSS/JS routes
+- [x] input validation
 
 ### Phase 4 — frontend
 
-- split `web/live.html` → HTML/CSS/JS
-- preserve continuous multi-turn fix exactly
-- preserve Automatic VAD settings and coach sidecar behavior
+- [x] HTML/CSS/JS separated
+- [x] hands-free multi-turn preserved
+- [x] Automatic VAD preserved
+- [x] coach sidecar preserved
 
 ### Phase 5 — tests/docs
 
-- add pure regression tests
-- update README current architecture/run command
-- syntax/test pass
+- [x] production regression tests
+- [x] lightweight CI
+- [x] README updated
+- [x] syntax/regression checks pass
 
-## 11. Definition of done
+### Phase 6 — repository cleanup
 
-Refactor is complete when:
+- [x] all maintained code moved into `src/`
+- [x] normal runner renamed to `src/scripts/run.bat`
+- [x] setup moved to `src/scripts/setup.bat`
+- [x] historical benchmarks moved to `archive/precode/`
+- [x] legacy Gradio/preflight moved to archive
+- [x] CI points only at active `src/` code
+- [x] root cleaned of ambiguous production/test files
 
-- realtime app no longer imports modules from `tests/`
-- `live_app.py` is a thin entrypoint
-- backend responsibilities are separated by module
-- frontend markup/style/logic are separated
-- current hands-free multi-turn behavior is preserved
-- coach remains non-blocking relative to Gemini Live audio path
-- no new heavyweight infrastructure/dependency is introduced
-- tests cover core pure logic
-- README describes the new structure and run flow
+---
 
-## 12. Out of scope for this refactor
+## 12. Definition of done — final result
 
-Do **not** add yet:
+Refactor is considered complete because:
 
-- database/user accounts
-- Docker/Kubernetes
-- Redis/task queue
-- React/Vue/Svelte
-- TypeScript/build pipeline
+- [x] maintained runtime source has one clear home: `src/`
+- [x] pre-code experiments have one clear home: `archive/precode/`
+- [x] realtime app does not import archived benchmark modules
+- [x] backend responsibilities are modular
+- [x] frontend markup/style/logic are separated
+- [x] hands-free multi-turn behavior is preserved
+- [x] coach is non-blocking relative to Gemini Live spoken reply
+- [x] no heavyweight framework/infrastructure was introduced
+- [x] regression tests protect core production helpers
+- [x] CI passes against active source only
+- [x] normal setup/run commands no longer contain `test`
+- [x] README documents ACTIVE vs FROZEN areas
+
+---
+
+## 13. Manual regression checklist after future realtime changes
+
+When changing `src/e_kaiwa/` or `src/web/`, verify:
+
+1. `src\scripts\run.bat` starts successfully.
+2. Phone page loads HTML/CSS/JS.
+3. `setupReady=true` appears after Gemini setup.
+4. Tap Start once.
+5. Complete at least 3 turns without another tap.
+6. AI audio streams every turn.
+7. Coach result arrives independently of AI playback.
+8. Teacher mode changes affect correction/pronunciation strictness.
+9. Feedback language switches between Vietnamese/Japanese.
+10. Pronunciation ON/OFF behaves correctly.
+11. Silence timeout persists and applies after reconnect.
+12. Stop releases microphone resources.
+13. Start works again after Stop.
+14. Live expiration/error exposes Reconnect.
+15. `runtime_logs/` contains `session_start`, `live_turn`, and `coach` events.
+
+---
+
+## 14. Out of scope
+
+Do **not** add until product requirements justify them:
+
+- database / user accounts
+- Docker / Kubernetes
+- Redis / task queue
+- React / Vue / Svelte
+- TypeScript / frontend build pipeline
 - WebRTC gateway
 - dedicated phoneme engine
 - analytics platform
-- auth/product billing
+- auth / billing
 
-Those should be added only when product requirements justify them.
+The project should continue favoring the smallest architecture that supports the real product requirement.
