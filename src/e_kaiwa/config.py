@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-WEB_DIR = PROJECT_ROOT / "web"
+SRC_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = SRC_ROOT.parent
+WEB_DIR = SRC_ROOT / "web"
 API_FILE = PROJECT_ROOT / "api.txt"
 LOG_ROOT = PROJECT_ROOT / "runtime_logs"
 

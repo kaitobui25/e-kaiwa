@@ -1,0 +1,2 @@
+# Realtime production currently uses only the Python standard library.
+# Add future runtime-only Python dependencies here.

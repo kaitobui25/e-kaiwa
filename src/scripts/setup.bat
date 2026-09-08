@@ -1,16 +1,16 @@
 @echo off
-setlocal
-set "ROOT=%~dp0.."
+setlocal EnableExtensions
+set "ROOT=%~dp0..\.."
 cd /d "%ROOT%"
 
 echo ========================================
-echo E-KAIWA PC PREFLIGHT
+echo E-KAIWA SETUP
 echo ========================================
 echo.
 
 where py >nul 2>nul
 if %ERRORLEVEL%==0 (
-  set "PY=py"
+  set "PY=py -3"
 ) else (
   where python >nul 2>nul
   if %ERRORLEVEL% neq 0 (
@@ -27,15 +27,27 @@ if not exist ".venv\Scripts\python.exe" (
   if %ERRORLEVEL% neq 0 goto :error
 )
 
-echo Installing/updating dependencies...
+echo Installing/updating runtime dependencies...
 ".venv\Scripts\python.exe" -m pip install -q --upgrade pip
-".venv\Scripts\python.exe" -m pip install -q -r requirements.txt
+".venv\Scripts\python.exe" -m pip install -q -r src\requirements.txt
 if %ERRORLEVEL% neq 0 goto :error
 
-echo.
-".venv\Scripts\python.exe" tools\preflight.py
+if not exist "api.txt" (
+  echo.
+  echo [WARN] api.txt not found in repository root.
+  echo Create it before running the app. Put one Gemini API key per non-empty line.
+)
+
+where cloudflared.exe >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+  echo.
+  echo [WARN] cloudflared.exe is not currently on PATH.
+  echo Install once with: winget install -e --id Cloudflare.cloudflared
+)
 
 echo.
+echo [OK] Setup complete.
+echo Run: src\scripts\run.bat
 pause
 exit /b 0
 
