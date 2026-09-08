@@ -1,4 +1,15 @@
 node_modules/
 .DS_Store
+.venv/
+__pycache__/
+*.pyc
 
+# Local secrets
 api.txt
+tests/api.txt
+
+# Generated audio / runtime artifacts
+tests/*.wav
+tests/stt_samples/*.wav
+tts_test_output.wav
+full_loop_reply.wav
