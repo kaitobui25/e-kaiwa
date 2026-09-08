@@ -33,12 +33,12 @@
 <body>
 <main>
   <h1>E-KAIWA Live</h1>
-  <div class="muted">Gemini Live audio → audio · coach runs separately</div>
+  <div class="muted">Gemini Live audio → audio · hands-free turns · coach runs separately</div>
 
   <div class="card">
     <button id="talk" class="ready" disabled>Connecting…</button>
     <div id="status" class="muted">Creating secure live session…</div>
-    <div id="setup-state" class="setup-state"><span id="setup-dot" class="setup-dot"></span><span id="setup-label">setupReady=false</span></div>
+    <div class="setup-state"><span id="setup-dot" class="setup-dot"></span><span id="setup-label">setupReady=false</span></div>
     <div id="metric"></div>
   </div>
 
@@ -101,6 +101,7 @@
   let processor = null;
   let playCtx = null;
   let playAt = 0;
+  let armTimer = null;
   let turnNo = 1;
   let activeTurn = null;
   const turns = [];
@@ -164,18 +165,49 @@
     }).join('');
   }
 
+  function createTurn() {
+    if (activeTurn || !recording) return;
+    activeTurn = {
+      no: turnNo,
+      pcmChunks: [],
+      userText: '',
+      aiText: '',
+      speechEndAt: null,
+      firstAudioMs: null,
+      coachSent: false,
+      coach: null
+    };
+    turns.push(activeTurn);
+    render();
+  }
+
   async function readJsonResponse(res) {
     const text = await res.text();
     try { return JSON.parse(text); }
     catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 160)}`); }
   }
 
+  function cleanupMic() {
+    clearTimeout(armTimer);
+    armTimer = null;
+    try { processor?.disconnect(); } catch {}
+    try { micSource?.disconnect(); } catch {}
+    micStream?.getTracks().forEach(t => t.stop());
+    try { inputCtx?.close(); } catch {}
+    processor = null;
+    micSource = null;
+    micStream = null;
+    inputCtx = null;
+  }
+
   function showReconnect(message) {
+    recording = false;
+    activeTurn = null;
+    cleanupMic();
     setupReady = false;
     updateSetupIndicator();
     reconnectNeeded = true;
     connecting = false;
-    recording = false;
     talk.disabled = false;
     talk.className = 'ready';
     talk.textContent = '↻ Reconnect';
@@ -224,13 +256,9 @@
     ws.onerror = () => setStatus('Gemini Live WebSocket error.', 'error');
     ws.onclose = ev => {
       const reason = ev.reason ? `: ${ev.reason}` : '';
-      if (!recording && !activeTurn) {
-        showReconnect(ev.code === 1008
-          ? 'Live session paused after being idle. Tap Reconnect.'
-          : `Live session closed (${ev.code})${reason}. Tap Reconnect.`);
-      } else {
-        showReconnect(`Live session closed (${ev.code})${reason}. Tap Reconnect.`);
-      }
+      showReconnect(ev.code === 1008
+        ? 'Live session paused after being idle. Tap Reconnect.'
+        : `Live session closed (${ev.code})${reason}. Tap Reconnect.`);
     };
   }
 
@@ -243,20 +271,16 @@
   }
 
   async function onLiveMessage(event) {
-    let text;
     let msg;
     try {
-      text = await webSocketDataToText(event.data);
-      msg = JSON.parse(text);
+      msg = JSON.parse(await webSocketDataToText(event.data));
     } catch (e) {
-      const type = event.data?.constructor?.name || typeof event.data;
-      setStatus(`Could not decode Gemini message (${type}): ${e.message}`, 'error');
+      setStatus(`Could not decode Gemini message: ${e.message}`, 'error');
       return;
     }
 
     if (msg.error) {
-      const detail = msg.error.message || JSON.stringify(msg.error);
-      setStatus(`Gemini error: ${detail}`, 'error');
+      setStatus(`Gemini error: ${msg.error.message || JSON.stringify(msg.error)}`, 'error');
       return;
     }
 
@@ -267,8 +291,8 @@
       updateSetupIndicator();
       talk.disabled = false;
       talk.className = 'ready';
-      talk.textContent = '🎙 Start talking';
-      setStatus('Ready. Tap, speak, then tap Stop.');
+      talk.textContent = '🎙 Start conversation';
+      setStatus('Ready. Tap once, then talk hands-free.');
       return;
     }
 
@@ -278,7 +302,6 @@
     if (content.inputTranscription?.text) {
       activeTurn.userText = concatTranscript(activeTurn.userText, content.inputTranscription.text);
       render();
-      scheduleCoach(activeTurn);
     }
     if (content.outputTranscription?.text) {
       activeTurn.aiText = concatTranscript(activeTurn.aiText, content.outputTranscription.text);
@@ -313,11 +336,6 @@
 
   function queueAiPcm(b64, turn) {
     if (!playCtx) return;
-    if (turn.firstAudioMs == null && turn.speechEndAt != null) {
-      turn.firstAudioMs = performance.now() - turn.speechEndAt;
-      metricEl.textContent = `⚡ First AI audio: ${Math.round(turn.firstAudioMs)} ms`;
-      render();
-    }
     const bytes = b64ToBytes(b64);
     const count = Math.floor(bytes.byteLength / 2);
     const floats = new Float32Array(count);
@@ -362,8 +380,8 @@
     return bytesToB64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
   }
 
-  async function startTalking() {
-    if (!setupReady || recording || activeTurn) return;
+  async function startConversation() {
+    if (!setupReady || recording) return;
     await ensurePlayContext();
     metricEl.textContent = '';
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -375,22 +393,11 @@
     micSource = inputCtx.createMediaStreamSource(micStream);
     processor = inputCtx.createScriptProcessor(4096, 1, 1);
 
-    activeTurn = {
-      no: turnNo,
-      pcmChunks: [],
-      userText: '',
-      aiText: '',
-      speechEndAt: null,
-      firstAudioMs: null,
-      coachSent: false,
-      coachTimer: null,
-      coach: null
-    };
-    turns.push(activeTurn);
-    render();
+    recording = true;
+    createTurn();
 
     processor.onaudioprocess = ev => {
-      if (!recording || ws.readyState !== WebSocket.OPEN || !activeTurn) return;
+      if (!recording || !activeTurn || ws?.readyState !== WebSocket.OPEN) return;
       const mono = ev.inputBuffer.getChannelData(0);
       const pcm = floatToPcm16(downsample(mono, inputCtx.sampleRate, 16000));
       activeTurn.pcmChunks.push(new Int16Array(pcm));
@@ -401,27 +408,23 @@
 
     micSource.connect(processor);
     processor.connect(inputCtx.destination);
-    recording = true;
     talk.className = 'recording';
-    talk.textContent = '■ Stop & send';
-    setStatus('Listening…');
+    talk.textContent = '■ Stop conversation';
+    setStatus('Listening… speak naturally.');
   }
 
-  async function stopTalking() {
-    if (!recording || !activeTurn) return;
+  function stopConversation() {
+    if (!recording) return;
     recording = false;
-    activeTurn.speechEndAt = performance.now();
-    try { processor?.disconnect(); } catch {}
-    try { micSource?.disconnect(); } catch {}
-    micStream?.getTracks().forEach(t => t.stop());
-    try { await inputCtx?.close(); } catch {}
-    processor = null; micSource = null; micStream = null; inputCtx = null;
-
-    ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
-    talk.disabled = true;
+    activeTurn = null;
+    cleanupMic();
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+    }
+    talk.disabled = false;
     talk.className = 'ready';
-    talk.textContent = 'AI is answering…';
-    setStatus('Gemini is responding…');
+    talk.textContent = '🎙 Start conversation';
+    setStatus('Conversation stopped.');
   }
 
   function joinPcm(chunks) {
@@ -432,14 +435,8 @@
     return all;
   }
 
-  function scheduleCoach(turn) {
-    if (turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
-    clearTimeout(turn.coachTimer);
-    turn.coachTimer = setTimeout(() => runCoach(turn), 120);
-  }
-
   async function runCoach(turn) {
-    if (turn.coachSent) return;
+    if (turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
     turn.coachSent = true;
     const pcm = joinPcm(turn.pcmChunks);
     try {
@@ -467,23 +464,26 @@
     }
   }
 
-  function finishTurn(turn) {
-    scheduleCoach(turn);
+  function armNextTurnAfterPlayback() {
+    clearTimeout(armTimer);
+    const remainingMs = playCtx ? Math.max(0, (playAt - playCtx.currentTime) * 1000 + 100) : 100;
+    setStatus(remainingMs > 150 ? 'AI speaking…' : 'Listening…');
+    armTimer = setTimeout(() => {
+      armTimer = null;
+      if (!recording || !setupReady || ws?.readyState !== WebSocket.OPEN) return;
+      createTurn();
+      setStatus('Listening… speak naturally.');
+    }, remainingMs);
+  }
 
+  function finishTurn(turn) {
+    runCoach(turn);
     turnNo++;
     activeTurn = null;
-    if (setupReady && ws?.readyState === WebSocket.OPEN) {
-      talk.disabled = false;
-      talk.className = 'ready';
-      talk.textContent = '🎙 Start next turn';
-      setStatus('Ready for the next turn.');
-    } else {
-      showReconnect('Live session ended. Tap Reconnect.');
-    }
 
     const frontendState = {
       recording,
-      activeTurn: activeTurn ? activeTurn.no : null,
+      activeTurn: null,
       buttonEnabled: !talk.disabled,
       setupReady
     };
@@ -497,12 +497,17 @@
         turn: turn.no,
         user_text: turn.userText,
         ai_text: turn.aiText,
-        first_audio_ms: turn.firstAudioMs == null ? null : Math.round(turn.firstAudioMs),
+        first_audio_ms: null,
         frontend_state: frontendState
       })
     }).catch(() => {});
 
     render();
+    if (recording && setupReady && ws?.readyState === WebSocket.OPEN) {
+      armNextTurnAfterPlayback();
+    } else if (!setupReady || ws?.readyState !== WebSocket.OPEN) {
+      showReconnect('Live session ended. Tap Reconnect.');
+    }
   }
 
   silenceDurationEl.addEventListener('change', () => {
@@ -516,7 +521,7 @@
         await newLiveSession();
         return;
       }
-      if (recording) await stopTalking(); else await startTalking();
+      if (recording) stopConversation(); else await startConversation();
     } catch (e) {
       showReconnect(`Connection error: ${e.message}. Tap Reconnect.`);
     }
