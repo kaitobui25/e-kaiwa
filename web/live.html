@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>E-KAIWA Live</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, sans-serif; color-scheme: light dark; }
+    body { margin: 0; background: #111; color: #f5f5f5; }
+    main { max-width: 720px; margin: 0 auto; padding: 18px 16px 60px; }
+    h1 { margin: 0 0 4px; font-size: 26px; }
+    .muted { color: #aaa; font-size: 14px; }
+    .card { background: #1c1c1c; border: 1px solid #333; border-radius: 16px; padding: 14px; margin-top: 14px; }
+    #talk { width: 100%; min-height: 88px; border: 0; border-radius: 18px; font-size: 22px; font-weight: 700; cursor: pointer; }
+    #talk.ready { background: #f2f2f2; color: #111; }
+    #talk.recording { background: #d93636; color: white; }
+    #talk:disabled { opacity: .45; cursor: default; }
+    #metric { font-size: 24px; font-weight: 800; margin-top: 10px; }
+    .turn { border-top: 1px solid #333; padding-top: 12px; margin-top: 12px; }
+    .turn:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+    .who { color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-top: 8px; }
+    .text { font-size: 18px; line-height: 1.45; white-space: pre-wrap; }
+    .coach { font-size: 15px; line-height: 1.5; }
+    .good { color: #7ddd9a; }
+    .warn { color: #ffd36a; }
+    .error { color: #ff7777; }
+    details { margin-top: 14px; }
+    select, input { font-size: 16px; padding: 6px; }
+    label { display: block; margin: 10px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>E-KAIWA Live</h1>
+  <div class="muted">Gemini Live audio → audio · coach runs separately</div>
+
+  <div class="card">
+    <button id="talk" class="ready" disabled>Connecting…</button>
+    <div id="status" class="muted">Creating secure live session…</div>
+    <div id="metric"></div>
+  </div>
+
+  <div class="card">
+    <div id="conversation"><span class="muted">No conversation yet.</span></div>
+  </div>
+
+  <details class="card">
+    <summary>Settings</summary>
+    <label>Teacher
+      <select id="teacher">
+        <option>Easy</option>
+        <option selected>Normal</option>
+        <option>Strict</option>
+      </select>
+    </label>
+    <label><input id="pron" type="checkbox" checked> Pronunciation coaching</label>
+  </details>
+</main>
+
+<script>
+(() => {
+  const MODEL = 'gemini-3.1-flash-live-preview';
+  const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
+  const SYSTEM = `You are a friendly English conversation partner for a Japanese learner.
+Speak only English in short, natural replies of about 5 to 15 words.
+Respond to meaning and keep the conversation going with a simple question when natural.
+Never mention grammar, corrections, pronunciation, scores, or teaching feedback in the spoken reply.
+Be warm and conversational. Do not give long explanations.`;
+
+  const talk = document.getElementById('talk');
+  const statusEl = document.getElementById('status');
+  const metricEl = document.getElementById('metric');
+  const conversationEl = document.getElementById('conversation');
+  const teacherEl = document.getElementById('teacher');
+  const pronEl = document.getElementById('pron');
+
+  let ws = null;
+  let sessionId = null;
+  let setupReady = false;
+  let recording = false;
+  let inputCtx = null;
+  let micStream = null;
+  let micSource = null;
+  let processor = null;
+  let playCtx = null;
+  let playAt = 0;
+  let turnNo = 1;
+  let activeTurn = null;
+  const turns = [];
+
+  const setStatus = (text, cls='') => {
+    statusEl.className = 'muted ' + cls;
+    statusEl.textContent = text;
+  };
+
+  const concatTranscript = (oldText, newText) => {
+    const a = (oldText || '').trim();
+    const b = (newText || '').trim();
+    if (!a) return b;
+    if (!b || a.endsWith(b)) return a;
+    return a + (/[\s,.!?]$/.test(a) ? '' : ' ') + b;
+  };
+
+  const escapeHtml = (s) => String(s || '')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+  function pronHtml(result) {
+    if (!result) return '<span class="muted">Pronunciation feedback pending/unavailable.</span>';
+    const score = v => Math.max(0, Math.min(100, Math.round(Number(v || 0))));
+    let html = `<b>Pronunciation ${score(result.pronunciation_score)}</b> · fluency ${score(result.fluency_score)} · intonation ${score(result.intonation_score)}`;
+    const problems = Array.isArray(result.problems) ? result.problems.slice(0, 3) : [];
+    for (const p of problems) {
+      html += `<br>• <b>${escapeHtml(p.word || '?')}</b> ${escapeHtml(p.sound || '')}`;
+      if (p.tip_ja) html += ` — ${escapeHtml(p.tip_ja)}`;
+    }
+    if (result.summary_ja) html += `<br>${escapeHtml(result.summary_ja)}`;
+    return html;
+  }
+
+  function render() {
+    if (!turns.length) {
+      conversationEl.innerHTML = '<span class="muted">No conversation yet.</span>';
+      return;
+    }
+    conversationEl.innerHTML = turns.slice().reverse().map(t => {
+      const latency = t.firstAudioMs == null ? '' : `<span class="good">first audio ${Math.round(t.firstAudioMs)} ms</span>`;
+      let coach = '<span class="muted">Coach running…</span>';
+      if (t.coach) {
+        coach = `<b>Correction:</b> ${escapeHtml(t.coach.correction || t.userText || '')}`;
+        if (t.coach.explanation_ja) coach += `<br>${escapeHtml(t.coach.explanation_ja)}`;
+        if (pronEl.checked) coach += `<br><br>${pronHtml(t.coach.pronunciation)}`;
+        coach += `<br><span class="muted">coach ${Number(t.coach.coach_wall_s || 0).toFixed(2)}s (does not block voice)</span>`;
+      }
+      return `<div class="turn">
+        <div class="who">You</div><div class="text">${escapeHtml(t.userText || '…')}</div>
+        <div class="who">AI ${latency}</div><div class="text">${escapeHtml(t.aiText || '…')}</div>
+        <div class="who">Coach</div><div class="coach">${coach}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function newLiveSession() {
+    talk.disabled = true;
+    setStatus('Creating ephemeral token…');
+    const res = await fetch('/api/session', {cache: 'no-store'});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not create live session');
+    sessionId = data.session_id;
+    const url = `${WS_BASE}?access_token=${encodeURIComponent(data.token)}`;
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setStatus('Configuring Gemini Live…');
+      ws.send(JSON.stringify({
+        setup: {
+          model: `models/${MODEL}`,
+          generationConfig: { responseModalities: ['AUDIO'] },
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          realtimeInputConfig: {
+            automaticActivityDetection: { disabled: true },
+            turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY'
+          },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {}
+        }
+      }));
+    };
+
+    ws.onmessage = onLiveMessage;
+    ws.onerror = () => setStatus('Gemini Live WebSocket error.', 'error');
+    ws.onclose = (ev) => {
+      setupReady = false;
+      talk.disabled = true;
+      setStatus(`Live session closed (${ev.code}). Refresh to reconnect.`, 'error');
+    };
+  }
+
+  function onLiveMessage(event) {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+    if (msg.setupComplete) {
+      setupReady = true;
+      talk.disabled = false;
+      talk.textContent = '🎙 Start talking';
+      setStatus('Ready. Tap, speak, then tap Stop.');
+      return;
+    }
+    const content = msg.serverContent;
+    if (!content || !activeTurn) return;
+
+    if (content.interimInputTranscription?.text) {
+      setStatus(`Heard: ${content.interimInputTranscription.text}`);
+    }
+    if (content.inputTranscription?.text) {
+      activeTurn.userText = concatTranscript(activeTurn.userText, content.inputTranscription.text);
+      render();
+      scheduleCoach(activeTurn);
+    }
+    if (content.outputTranscription?.text) {
+      activeTurn.aiText = concatTranscript(activeTurn.aiText, content.outputTranscription.text);
+      render();
+    }
+    const parts = content.modelTurn?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.data) queueAiPcm(part.inlineData.data, activeTurn);
+    }
+    if (content.interrupted) {
+      playAt = playCtx ? playCtx.currentTime : 0;
+    }
+    if (content.turnComplete) finishTurn(activeTurn);
+  }
+
+  async function ensurePlayContext() {
+    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (playCtx.state === 'suspended') await playCtx.resume();
+  }
+
+  function b64ToBytes(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function bytesToB64(bytes) {
+    let out = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+      out += String.fromCharCode(...bytes.subarray(i, i + step));
+    }
+    return btoa(out);
+  }
+
+  function queueAiPcm(b64, turn) {
+    if (!playCtx) return;
+    if (turn.firstAudioMs == null && turn.speechEndAt != null) {
+      turn.firstAudioMs = performance.now() - turn.speechEndAt;
+      metricEl.textContent = `⚡ First AI audio: ${Math.round(turn.firstAudioMs)} ms`;
+      render();
+    }
+    const bytes = b64ToBytes(b64);
+    const count = Math.floor(bytes.byteLength / 2);
+    const floats = new Float32Array(count);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let i = 0; i < count; i++) floats[i] = view.getInt16(i * 2, true) / 32768;
+    const buffer = playCtx.createBuffer(1, count, 24000);
+    buffer.copyToChannel(floats, 0);
+    const source = playCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playCtx.destination);
+    const now = playCtx.currentTime;
+    if (playAt < now + 0.025) playAt = now + 0.025;
+    source.start(playAt);
+    playAt += buffer.duration;
+  }
+
+  function downsample(input, inputRate, outputRate=16000) {
+    if (inputRate === outputRate) return new Float32Array(input);
+    const ratio = inputRate / outputRate;
+    const length = Math.max(1, Math.round(input.length / ratio));
+    const output = new Float32Array(length);
+    for (let i = 0; i < length; i++) {
+      const start = Math.floor(i * ratio);
+      const end = Math.min(input.length, Math.max(start + 1, Math.floor((i + 1) * ratio)));
+      let sum = 0;
+      for (let j = start; j < end; j++) sum += input[j];
+      output[i] = sum / (end - start);
+    }
+    return output;
+  }
+
+  function floatToPcm16(floatData) {
+    const pcm = new Int16Array(floatData.length);
+    for (let i = 0; i < floatData.length; i++) {
+      const s = Math.max(-1, Math.min(1, floatData[i]));
+      pcm[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+    }
+    return pcm;
+  }
+
+  function pcmToBase64(pcm) {
+    return bytesToB64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+  }
+
+  async function startTalking() {
+    if (!setupReady || recording || activeTurn) return;
+    await ensurePlayContext();
+    metricEl.textContent = '';
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+    inputCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (inputCtx.state === 'suspended') await inputCtx.resume();
+    micSource = inputCtx.createMediaStreamSource(micStream);
+    processor = inputCtx.createScriptProcessor(4096, 1, 1);
+
+    activeTurn = {
+      no: turnNo,
+      pcmChunks: [],
+      userText: '',
+      aiText: '',
+      speechEndAt: null,
+      firstAudioMs: null,
+      coachSent: false,
+      coachTimer: null,
+      coach: null
+    };
+    turns.push(activeTurn);
+    render();
+
+    ws.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+    processor.onaudioprocess = ev => {
+      if (!recording || ws.readyState !== WebSocket.OPEN) return;
+      const mono = ev.inputBuffer.getChannelData(0);
+      const pcm = floatToPcm16(downsample(mono, inputCtx.sampleRate, 16000));
+      activeTurn.pcmChunks.push(new Int16Array(pcm));
+      ws.send(JSON.stringify({
+        realtimeInput: {
+          audio: { data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000' }
+        }
+      }));
+    };
+    micSource.connect(processor);
+    processor.connect(inputCtx.destination);
+    recording = true;
+    talk.className = 'recording';
+    talk.textContent = '■ Stop & send';
+    setStatus('Listening…');
+  }
+
+  async function stopTalking() {
+    if (!recording || !activeTurn) return;
+    recording = false;
+    activeTurn.speechEndAt = performance.now();
+    try { processor?.disconnect(); } catch {}
+    try { micSource?.disconnect(); } catch {}
+    micStream?.getTracks().forEach(t => t.stop());
+    try { await inputCtx?.close(); } catch {}
+    processor = null; micSource = null; micStream = null; inputCtx = null;
+    ws.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+    talk.disabled = true;
+    talk.className = 'ready';
+    talk.textContent = 'AI is answering…';
+    setStatus('Gemini is responding…');
+  }
+
+  function joinPcm(chunks) {
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const all = new Int16Array(total);
+    let offset = 0;
+    for (const c of chunks) { all.set(c, offset); offset += c.length; }
+    return all;
+  }
+
+  function scheduleCoach(turn) {
+    if (turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
+    clearTimeout(turn.coachTimer);
+    turn.coachTimer = setTimeout(() => runCoach(turn), 120);
+  }
+
+  async function runCoach(turn) {
+    if (turn.coachSent) return;
+    turn.coachSent = true;
+    const pcm = joinPcm(turn.pcmChunks);
+    try {
+      const res = await fetch('/api/coach', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          session_id: sessionId,
+          turn: turn.no,
+          transcript: turn.userText,
+          teacher: teacherEl.value,
+          pronunciation_enabled: pronEl.checked,
+          sample_rate: 16000,
+          pcm_b64: pcmToBase64(pcm)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'coach failed');
+      turn.coach = data;
+      render();
+    } catch (e) {
+      turn.coach = { correction: turn.userText, explanation_ja: `Coach error: ${e.message}`, pronunciation: null, coach_wall_s: 0 };
+      render();
+    }
+  }
+
+  function finishTurn(turn) {
+    scheduleCoach(turn);
+    fetch('/api/metric', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId, turn: turn.no,
+        user_text: turn.userText, ai_text: turn.aiText,
+        first_audio_ms: turn.firstAudioMs == null ? null : Math.round(turn.firstAudioMs)
+      })
+    }).catch(() => {});
+    turnNo++;
+    activeTurn = null;
+    talk.disabled = false;
+    talk.className = 'ready';
+    talk.textContent = '🎙 Start next turn';
+    setStatus('Ready for the next turn.');
+    render();
+  }
+
+  talk.addEventListener('click', async () => {
+    try {
+      if (recording) await stopTalking(); else await startTalking();
+    } catch (e) {
+      recording = false;
+      talk.disabled = false;
+      talk.className = 'ready';
+      talk.textContent = '🎙 Try again';
+      setStatus(`Error: ${e.message}`, 'error');
+    }
+  });
+
+  newLiveSession().catch(e => {
+    talk.disabled = true;
+    setStatus(`Startup error: ${e.message}`, 'error');
+  });
+})();
+</script>
+</body>
+</html>
