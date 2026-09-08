@@ -42,16 +42,19 @@ class SessionStore:
         now = datetime.now().astimezone()
         day_dir = self.root / now.strftime("%Y-%m-%d")
         base = f"{now:%Y%m%d_%H%M%S}_{mode}"
-        session_dir = day_dir / base
-        suffix = 2
-        while session_dir.exists():
-            session_dir = day_dir / f"{base}_{suffix}"
-            suffix += 1
 
-        session_dir.mkdir(parents=True, exist_ok=False)
-        session_id = session_dir.name
+        # Allocation and registry update are one critical section so simultaneous
+        # /api/session requests cannot choose the same directory name.
         with self._registry_lock:
+            session_dir = day_dir / base
+            suffix = 2
+            while session_dir.exists():
+                session_dir = day_dir / f"{base}_{suffix}"
+                suffix += 1
+            session_dir.mkdir(parents=True, exist_ok=False)
+            session_id = session_dir.name
             self._sessions[session_id] = session_dir
+
         self.log(session_dir, "session_start", mode=mode, model=model)
         return session_id, session_dir
 
