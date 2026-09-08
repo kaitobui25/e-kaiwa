@@ -16,15 +16,31 @@ STT_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flas
 LLM_MODEL = "gemini-3.5-flash-lite"
 TTS_MODELS = test_tts.TTS_MODELS
 
+TEACHER_MODES = {
+    "1": ("Easy", "Correct only mistakes that clearly hurt grammar or understanding. Ignore small unnatural phrasing."),
+    "2": ("Normal", "Correct clear grammar mistakes and noticeably unnatural learner English."),
+    "3": ("Strict", "Be picky. Correct grammar, tense, articles, prepositions, word choice, and unnatural phrasing when a native speaker would normally say it differently."),
+}
+
+
+def choose_teacher_mode():
+    print("Teacher strictness:")
+    print("  1 = Easy   - only important mistakes")
+    print("  2 = Normal - clear grammar + naturalness issues")
+    print("  3 = Strict - picky grammar + natural phrasing")
+    raw = input("Choose [1/2/3, default=2]: ").strip() or "2"
+    if raw not in TEACHER_MODES:
+        raw = "2"
+    return TEACHER_MODES[raw]
+
 
 def choose_audio() -> Path:
-    # Prepare bundled samples first, then list every WAV in the folder.
     test_stt.ensure_samples(test_stt.load_manifest())
     files = sorted(SAMPLES_DIR.glob("*.wav"))
     if not files:
         raise SystemExit(f"No WAV files found in {SAMPLES_DIR}")
 
-    print("Available audio:")
+    print("\nAvailable audio:")
     for i, path in enumerate(files, 1):
         print(f"  {i}. {path.name}")
 
@@ -52,14 +68,18 @@ def run_stt(keys, audio_path):
     return None, total, None, None
 
 
-def make_turn(key, user_text):
+def make_turn(key, user_text, teacher_name, teacher_rule):
     prompt = f'''You are a friendly English conversation partner for a Japanese learner.
 The learner said: "{user_text}"
+Teacher strictness: {teacher_name}
+Correction rule: {teacher_rule}
+
 Return ONLY one JSON object with these string fields:
 - reply: one short natural spoken English reply, 5-15 words, that responds to the meaning and keeps the conversation going
-- correction: corrected natural English version of the learner sentence; if already natural, copy it unchanged
-- explanation_ja: one very short Japanese explanation of the main correction; use an empty string if no correction is needed
-Do not make the spoken reply sound like a teacher.''' 
+- correction: corrected natural English version of the learner sentence according to the correction rule; if no correction is needed, copy it unchanged
+- explanation_ja: one very short Japanese explanation of the most useful correction; use an empty string if correction is unchanged
+
+Important: the spoken reply must stay friendly and conversational. Never mention grammar mistakes in reply.''' 
 
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -121,6 +141,9 @@ def main():
     print("TTS  : " + " -> ".join(TTS_MODELS))
     print("Key #4 skipped.\n")
 
+    teacher_name, teacher_rule = choose_teacher_mode()
+    print(f"Teacher: {teacher_name}")
+
     audio_path = choose_audio()
     print(f"\nFILE : {audio_path.name}")
 
@@ -132,7 +155,7 @@ def main():
         return 1
     print(f"USER : {user_text}")
 
-    turn, llm_latency, error = make_turn(key, user_text)
+    turn, llm_latency, error = make_turn(key, user_text, teacher_name, teacher_rule)
     if not turn:
         print(f"[LLM FAIL] {error}")
         return 1
@@ -163,6 +186,7 @@ def main():
     api_total = stt_latency + llm_latency + tts_latency
     wall_total = time.perf_counter() - started
     print("-" * 82)
+    print(f"Teacher   : {teacher_name}")
     print(f"STT total : {stt_latency:.2f}s")
     print(f"LLM       : {llm_latency:.2f}s")
     print(f"TTS total : {tts_latency:.2f}s ({used_tts})")
