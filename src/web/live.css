@@ -82,10 +82,22 @@ h1 {
 
 .who {
   margin-top: 8px;
-  color: #aaa;
   font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.who-you {
+  color: #6cb6ff;
+}
+
+.who-ai {
+  color: #a78bfa;
+}
+
+.who-coach {
+  color: #f2cc60;
 }
 
 .text {
@@ -97,6 +109,89 @@ h1 {
 .coach {
   font-size: 15px;
   line-height: 1.5;
+}
+
+.pronunciation-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.pron-score {
+  font-weight: 800;
+  border-bottom: 2px dotted #777;
+}
+
+.pron-problems {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pron-problem {
+  font-weight: 700;
+  text-decoration-line: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+}
+
+.pron-problem.severity-yellow {
+  text-decoration-color: #f2cc60;
+}
+
+.pron-problem.severity-red {
+  text-decoration-color: #ff6b6b;
+}
+
+.has-tooltip {
+  position: relative;
+  cursor: help;
+  outline: none;
+}
+
+.has-tooltip:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(108, 182, 255, 0.45);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 48px));
+  padding: 9px 10px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #272727;
+  color: #f5f5f5;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.has-tooltip:hover > .tooltip,
+.has-tooltip:focus > .tooltip,
+.has-tooltip:focus-visible > .tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tooltip strong {
+  font-weight: 800;
 }
 
 .good {
