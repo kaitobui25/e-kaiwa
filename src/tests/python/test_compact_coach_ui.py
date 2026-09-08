@@ -16,10 +16,16 @@ class CompactCoachUiTests(unittest.TestCase):
         self.assertIn('class="pron-score has-tooltip"', js)
         self.assertIn("Pronunciation ${score(result.pronunciation_score)} · Fluency ${score(result.fluency_score)} · Intonation ${score(result.intonation_score)}", js)
 
-    def test_problem_words_use_severity_underlines_and_tooltips(self):
+    def test_problem_words_are_highlighted_inside_user_transcript(self):
         js = JS.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
-        self.assertIn("problem.severity === 'red' ? 'red' : 'yellow'", js)
+
+        self.assertIn("function highlightPronunciationProblems(text, result)", js)
+        self.assertIn("const userHtml = pronunciation", js)
+        self.assertIn('<div class="who who-you">You</div><div class="text">${userHtml}</div>', js)
+        self.assertNotIn('class="pron-problems"', js)
+
+        self.assertIn("problem?.severity === 'red' ? 'red' : 'yellow'", js)
         self.assertIn("pron-problem severity-${severity}", js)
         self.assertIn(".pron-problem.severity-yellow", css)
         self.assertIn(".pron-problem.severity-red", css)
