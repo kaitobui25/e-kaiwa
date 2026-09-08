@@ -1,0 +1,27 @@
+name: Core checks
+
+on:
+  push:
+    branches: [main, "refactor/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python core regression tests
+        run: python -m unittest tests.test_live_core
+
+      - name: Python syntax check
+        run: python -m compileall -q e_kaiwa live_app.py web_coach.py
+
+      - name: Browser JavaScript syntax check
+        run: node --check web/live.js
