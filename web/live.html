@@ -66,6 +66,8 @@
   let ws = null;
   let sessionId = null;
   let setupReady = false;
+  let reconnectNeeded = false;
+  let connecting = false;
   let recording = false;
   let inputCtx = null;
   let micStream = null;
@@ -132,9 +134,27 @@
     catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 160)}`); }
   }
 
+  function showReconnect(message) {
+    setupReady = false;
+    reconnectNeeded = true;
+    connecting = false;
+    recording = false;
+    talk.disabled = false;
+    talk.className = 'ready';
+    talk.textContent = '↻ Reconnect';
+    setStatus(message || 'Live session ended. Tap Reconnect.');
+  }
+
   async function newLiveSession() {
+    if (connecting) return;
+    connecting = true;
+    reconnectNeeded = false;
+    setupReady = false;
     talk.disabled = true;
-    setStatus('Creating ephemeral token…');
+    talk.className = 'ready';
+    talk.textContent = 'Connecting…';
+    setStatus('Creating secure live session…');
+
     const res = await fetch('/api/session', {cache: 'no-store'});
     const data = await readJsonResponse(res);
     if (!res.ok) throw new Error(data.error || 'Could not create live session');
@@ -159,10 +179,14 @@
     ws.onmessage = onLiveMessage;
     ws.onerror = () => setStatus('Gemini Live WebSocket error.', 'error');
     ws.onclose = ev => {
-      setupReady = false;
-      talk.disabled = true;
       const reason = ev.reason ? `: ${ev.reason}` : '';
-      setStatus(`Live session closed (${ev.code})${reason}`, 'error');
+      if (!recording && !activeTurn) {
+        showReconnect(ev.code === 1008
+          ? 'Live session paused after being idle. Tap Reconnect.'
+          : `Live session closed (${ev.code})${reason}. Tap Reconnect.`);
+      } else {
+        showReconnect(`Live session closed (${ev.code})${reason}. Tap Reconnect.`);
+      }
     };
   }
 
@@ -193,6 +217,8 @@
     }
 
     if (Object.prototype.hasOwnProperty.call(msg, 'setupComplete')) {
+      connecting = false;
+      reconnectNeeded = false;
       setupReady = true;
       talk.disabled = false;
       talk.className = 'ready';
@@ -411,28 +437,31 @@
 
     turnNo++;
     activeTurn = null;
-    talk.disabled = false;
-    talk.className = 'ready';
-    talk.textContent = '🎙 Start next turn';
-    setStatus('Ready for the next turn.');
+    if (setupReady && ws?.readyState === WebSocket.OPEN) {
+      talk.disabled = false;
+      talk.className = 'ready';
+      talk.textContent = '🎙 Start next turn';
+      setStatus('Ready for the next turn.');
+    } else {
+      showReconnect('Live session ended. Tap Reconnect.');
+    }
     render();
   }
 
   talk.addEventListener('click', async () => {
     try {
+      if (reconnectNeeded || !setupReady || !ws || ws.readyState !== WebSocket.OPEN) {
+        await newLiveSession();
+        return;
+      }
       if (recording) await stopTalking(); else await startTalking();
     } catch (e) {
-      recording = false;
-      talk.disabled = false;
-      talk.className = 'ready';
-      talk.textContent = '🎙 Try again';
-      setStatus(`Error: ${e.message}`, 'error');
+      showReconnect(`Connection error: ${e.message}. Tap Reconnect.`);
     }
   });
 
   newLiveSession().catch(e => {
-    talk.disabled = true;
-    setStatus(`Startup error: ${e.message}`, 'error');
+    showReconnect(`Startup error: ${e.message}. Tap Reconnect.`);
   });
 })();
 </script>
