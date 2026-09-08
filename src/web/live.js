@@ -78,6 +78,61 @@
     return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
   }
 
+  function pronunciationProblemSpan(word, problem) {
+    const severity = problem?.severity === 'red' ? 'red' : 'yellow';
+    const tip = problem?.tip || problem?.tip_ja || '';
+    const details = [];
+    if (problem?.sound) details.push(`<strong>${escapeHtml(problem.sound)}</strong>`);
+    if (problem?.heard_like) details.push(`heard ≈ ${escapeHtml(problem.heard_like)}`);
+    if (tip) details.push(escapeHtml(tip));
+
+    const tooltip = details.join('<br>');
+    const tooltipHtml = tooltip
+      ? `<span class="tooltip" role="tooltip">${tooltip}</span>`
+      : '';
+    const tooltipClass = tooltip ? ' has-tooltip' : '';
+    const tabIndex = tooltip ? ' tabindex="0"' : '';
+    return `<span class="pron-problem severity-${severity}${tooltipClass}"${tabIndex}>${escapeHtml(word)}${tooltipHtml}</span>`;
+  }
+
+  function highlightPronunciationProblems(text, result) {
+    const rawText = String(text || '…');
+    const problems = Array.isArray(result?.problems) ? result.problems.slice(0, 3) : [];
+    if (!problems.length) return escapeHtml(rawText);
+
+    const byWord = new Map();
+    for (const problem of problems) {
+      const word = String(problem?.word || '').trim();
+      if (!word) continue;
+      const key = word.toLocaleLowerCase('en-US');
+      const existing = byWord.get(key);
+      if (!existing || (existing.severity !== 'red' && problem.severity === 'red')) {
+        byWord.set(key, problem);
+      }
+    }
+
+    const words = [...byWord.keys()].sort((a, b) => b.length - a.length);
+    if (!words.length) return escapeHtml(rawText);
+
+    const pattern = words
+      .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
+    let html = '';
+    let lastIndex = 0;
+
+    rawText.replace(regex, (match, _captured, offset) => {
+      html += escapeHtml(rawText.slice(lastIndex, offset));
+      const problem = byWord.get(match.toLocaleLowerCase('en-US'));
+      html += pronunciationProblemSpan(match, problem);
+      lastIndex = offset + match.length;
+      return match;
+    });
+
+    html += escapeHtml(rawText.slice(lastIndex));
+    return html;
+  }
+
   function pronunciationHtml(result) {
     if (!result) return '<span class="muted">Pronunciation unavailable.</span>';
 
@@ -89,30 +144,9 @@
       summary
     ].filter(Boolean).map(escapeHtml).join('<br>');
 
-    let html = `<div class="pronunciation-compact">
-      <span>Pronunciation <span class="pron-score has-tooltip" tabindex="0">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span></span>`;
-
-    const problems = Array.isArray(result.problems) ? result.problems.slice(0, 3) : [];
-    if (problems.length) {
-      const problemHtml = problems.map(problem => {
-        const severity = problem.severity === 'red' ? 'red' : 'yellow';
-        const tip = problem.tip || problem.tip_ja || '';
-        const details = [];
-        if (problem.sound) details.push(`<strong>${escapeHtml(problem.sound)}</strong>`);
-        if (problem.heard_like) details.push(`heard ≈ ${escapeHtml(problem.heard_like)}`);
-        if (tip) details.push(escapeHtml(tip));
-        const tooltip = details.join('<br>');
-        const tooltipHtml = tooltip
-          ? `<span class="tooltip" role="tooltip">${tooltip}</span>`
-          : '';
-        const tooltipClass = tooltip ? ' has-tooltip' : '';
-        const tabIndex = tooltip ? ' tabindex="0"' : '';
-        return `<span class="pron-problem severity-${severity}${tooltipClass}"${tabIndex}>${escapeHtml(problem.word || '?')}${tooltipHtml}</span>`;
-      }).join('');
-      html += `<span class="pron-problems">${problemHtml}</span>`;
-    }
-
-    return html + '</div>';
+    return `<div class="pronunciation-compact">
+      <span>Pronunciation <span class="pron-score has-tooltip" tabindex="0">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span></span>
+    </div>`;
   }
 
   function render() {
@@ -126,6 +160,11 @@
         ? ''
         : `<span class="good">first audio ${Math.round(turn.firstAudioMs)} ms</span>`;
 
+      const pronunciation = pronEl.checked ? turn.coach?.pronunciation : null;
+      const userHtml = pronunciation
+        ? highlightPronunciationProblems(turn.userText || '…', pronunciation)
+        : escapeHtml(turn.userText || '…');
+
       let coach = '<span class="muted">Coach running…</span>';
       if (turn.coach) {
         coach = `<b>Correction:</b> ${escapeHtml(turn.coach.correction || turn.userText || '')}`;
@@ -136,7 +175,7 @@
       }
 
       return `<div class="turn">
-        <div class="who who-you">You</div><div class="text">${escapeHtml(turn.userText || '…')}</div>
+        <div class="who who-you">You</div><div class="text">${userHtml}</div>
         <div class="who who-ai">AI ${latency}</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
         <div class="who who-coach">Coach</div><div class="coach">${coach}</div>
       </div>`;
