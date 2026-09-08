@@ -1,0 +1,30 @@
+{
+  "source_repo": "Nexdata-AI/207-Hours-Japanese-Speaking-English-Speech-Data-by-Mobile-Phone",
+  "samples": [
+    {
+      "file": "01_blind_alley.wav",
+      "source_file": "G00002S1004.wav",
+      "expected": "The street was a blind alley."
+    },
+    {
+      "file": "02_music_life.wav",
+      "source_file": "G00016S1004.wav",
+      "expected": "Music can change your life more than almost anything."
+    },
+    {
+      "file": "03_wishing_on_a_star.wav",
+      "source_file": "G00053S2320.wav",
+      "expected": "I want to know the ray leaks to Wishing on A Star."
+    },
+    {
+      "file": "04_rice_cooker.wav",
+      "source_file": "G00110S3425.wav",
+      "expected": "On the rice cooker"
+    },
+    {
+      "file": "05_song_on_loop.wav",
+      "source_file": "G00110S4436.wav",
+      "expected": "Play this single song on loop"
+    }
+  ]
+}
