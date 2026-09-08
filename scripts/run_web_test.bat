@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 
@@ -11,15 +11,41 @@ if not exist "api.txt" (
   exit /b 2
 )
 
-where cloudflared >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] cloudflared is not installed or not in PATH.
-  echo Install it once with:
+rem Find cloudflared even when WinGet installed it but this CMD does not have the updated PATH.
+set "CLOUDFLARED="
+for /f "delims=" %%I in ('where cloudflared.exe 2^>nul') do if not defined CLOUDFLARED set "CLOUDFLARED=%%I"
+
+if not defined CLOUDFLARED if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe" (
+  set "CLOUDFLARED=%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"
+)
+
+if not defined CLOUDFLARED if exist "%ProgramFiles%\cloudflared\cloudflared.exe" (
+  set "CLOUDFLARED=%ProgramFiles%\cloudflared\cloudflared.exe"
+)
+
+if not defined CLOUDFLARED if defined ProgramFiles(x86) if exist "%ProgramFiles(x86)%\cloudflared\cloudflared.exe" (
+  set "CLOUDFLARED=%ProgramFiles(x86)%\cloudflared\cloudflared.exe"
+)
+
+if not defined CLOUDFLARED (
+  for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$root=Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'; if(Test-Path $root){$p=Get-ChildItem -Path $root -Filter cloudflared.exe -File -Recurse -ErrorAction SilentlyContinue ^| Select-Object -First 1; if($p){$p.FullName}}"`) do if not defined CLOUDFLARED set "CLOUDFLARED=%%I"
+)
+
+if not defined CLOUDFLARED (
+  echo [ERROR] cloudflared.exe was not found.
+  echo.
+  echo If you installed it before, check with:
+  echo   winget list --id Cloudflare.cloudflared
+  echo.
+  echo If it is not installed, install once with:
   echo   winget install -e --id Cloudflare.cloudflared
-  echo Then close and reopen this terminal and run this script again.
+  echo.
+  echo Then run this script again.
   pause
   exit /b 3
 )
+
+echo Cloudflare: %CLOUDFLARED%
 
 if exist ".venv\Scripts\python.exe" (
   set "PYTHON_CMD=.venv\Scripts\python.exe"
@@ -55,7 +81,7 @@ echo Open the https://...trycloudflare.com URL below on your phone.
 echo Press Ctrl+C here to stop the tunnel.
 echo Close the "E-KAIWA Gradio" window when you are done testing.
 echo.
-cloudflared tunnel --url http://127.0.0.1:7860
+"%CLOUDFLARED%" tunnel --url http://127.0.0.1:7860
 
 set "EXITCODE=%ERRORLEVEL%"
 echo.
