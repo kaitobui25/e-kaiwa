@@ -29,6 +29,7 @@ Current coverage includes:
 - session log creation
 - PCM16 WAV writing
 - Gemini JSON response parsing helper
+- frontend AI playback-speed options/default/persistence/queue timing
 
 CI runs this suite on every pull request.
 
