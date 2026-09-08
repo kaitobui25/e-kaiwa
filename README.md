@@ -1,30 +1,71 @@
 # e-kaiwa
 
-Minimal AI English conversation MVP for Japanese learners.
+Minimal realtime AI English conversation MVP for Japanese learners.
+
+The main product path is hands-free Gemini Live audio-to-audio. The browser streams audio directly to Gemini Live; the small Python server only serves the page, creates ephemeral tokens, runs coaching after each turn, and writes local debug logs.
+
+## Current architecture
+
+```text
+Phone browser
+  mic PCM 16 kHz
+      ↕ direct WebSocket
+Gemini Live
+  gemini-3.1-flash-live-preview
+      ↕ streaming audio reply
+Phone speaker
+
+After each completed user turn:
+Phone browser
+      → /api/coach
+Python sidecar
+      ├─ correction
+      └─ pronunciation feedback
+```
+
+The coach path does **not** block the spoken Gemini Live reply.
 
 ## Project layout
 
 ```text
-.agent/                 ChatGPT/dev logs
-scripts/                Windows runners
-  setup.bat
-  run_llm_test.bat
-  run_stt_test.bat
-  run_pronunciation_test.bat
-  run_tts_test.bat
-  run_full_loop_test.bat
-  run_web_test.bat       Default phone test: Gemini Live audio-to-audio
-  run_gradio_test.bat    Legacy Gradio fallback
-live_app.py              Tiny HTTP server: page + ephemeral token + coach sidecar
-web/live.html            Mic-only realtime mobile UI
-web_app.py               Legacy Gradio mobile UI
-tests/                   Experiment and MVP test code
-runtime_logs/            Local session logs + captured WAVs (gitignored)
-tools/                   Environment diagnostics
-requirements.txt
+.agent/
+  chatgptlog/                 Development conversation summaries
+  chatgptplan/                Implementation plans
+
+e_kaiwa/
+  config.py                   Runtime paths, models, teacher modes, API keys
+  gemini.py                   Gemini REST helpers + ephemeral token
+  sessions.py                 Session registry, JSONL logs, WAV persistence
+  coach.py                    Correction + pronunciation sidecar
+  server.py                   HTTP routes and server bootstrap
+
+live_app.py                   Thin realtime server entrypoint
+web/
+  live.html                   Realtime page markup
+  live.css                    Realtime page styles
+  live.js                     Live session, audio, turn state and coach UI
+
+web_app.py                    Legacy Gradio fallback
+web_coach.py                  Backward-compatible coach shim
+scripts/                      Windows runners
+tests/                        Component experiments + regression tests
+tools/                        Environment diagnostics
+runtime_logs/                 Local runtime logs/WAVs; gitignored
 ```
 
-`api.txt` stays local in the repository root and is ignored by Git. Put one Gemini API key per non-empty line. Key #4 is intentionally skipped.
+Production realtime code under `e_kaiwa/` does not import benchmark code from `tests/`.
+
+## API keys
+
+Create local `api.txt` in the repository root with one Gemini API key per non-empty line.
+
+`api.txt` is gitignored. Raw keys must never be committed or logged.
+
+Operational rule from the current test setup:
+
+```text
+API key slot #4 is skipped.
+```
 
 ## Setup
 
@@ -32,61 +73,88 @@ requirements.txt
 scripts\setup.bat
 ```
 
-## Phone test: realtime audio-to-audio
-
-Run:
+## Run the realtime phone test
 
 ```bat
 scripts\run_web_test.bat
 ```
 
-The runner starts `live_app.py` on `127.0.0.1:7860` and a Cloudflare Quick Tunnel. Open the printed `https://...trycloudflare.com` URL on the phone.
-
-The realtime path is intentionally different from the old Gradio batch path:
+The runner starts:
 
 ```text
-phone microphone
-   ↕ direct WebSocket, streaming PCM
-gemini-3.1-flash-live-preview
-   ↕ streaming PCM
-phone speaker
+python live_app.py
 ```
 
-The PC/VPS is not in the realtime audio path. It only:
+on `127.0.0.1:7860`, then starts a Cloudflare Quick Tunnel. Open the printed `https://...trycloudflare.com` URL on the phone.
+
+You can also run the server directly:
 
 ```text
-serves the small web page
-creates one-use ephemeral Gemini Live tokens
-runs correction + pronunciation after each user turn
-writes debug logs
+python live_app.py
+python live_app.py --host 127.0.0.1 --port 7860
 ```
 
-The UI uses push-to-talk manual turn boundaries:
+## Realtime UX
+
+The current flow uses Gemini Automatic VAD rather than manual push-to-talk for every turn:
 
 ```text
-Tap Start talking
-speak
-Tap Stop & send
-AI audio starts streaming as soon as Gemini returns the first chunk
+Tap Start conversation once
+→ microphone stays open
+→ speak naturally
+→ silence ends the user turn
+→ Gemini replies with streaming audio
+→ after playback the app listens again automatically
+→ continue turn 2, 3, 4... without tapping again
 ```
 
-The page shows `First AI audio: ... ms`. This is the main latency metric. Target for the MVP is under 3000 ms from Stop to the first received AI audio chunk.
+Settings:
+
+- Teacher: Easy / Normal / Strict
+- Correction language: Tiếng Việt / 日本語
+- Silence timeout: 0.7 / 1.0 / 1.2 / 1.5 seconds
+- Pronunciation coaching: ON / OFF
+
+The silence timeout is stored in browser `localStorage` and takes effect on the next Live reconnect.
+
+## Important lifecycle rule
+
+Microphone/session lifetime and turn-object lifetime are separate concerns.
+
+```text
+Live session + microphone = long-lived
+turn object                = create/finalize once per VAD turn
+```
+
+During AI playback, microphone input forwarding is gated to avoid sending speaker echo back to Gemini. After playback, the next turn is armed automatically without reopening the microphone device.
 
 ## Coach sidecar
 
-Correction and pronunciation do not block the spoken reply:
+After each turn, correction and pronunciation run in parallel:
 
 ```text
-                         ┌─> Gemini Live audio reply -> speaker
-user audio/transcript ───┤
-                         └─> correction + pronunciation -> UI later
+                         ┌─> correction LLM
+completed user turn ─────┤
+                         └─> pronunciation analysis
 ```
 
-The sidecar reuses the existing teacher modes and pronunciation prototype. User PCM is saved as WAV only for coaching/debugging after the realtime turn.
+Current coach models:
+
+```text
+Correction:
+  gemini-3.5-flash-lite
+
+Pronunciation fallback chain:
+  gemini-3.5-flash-lite
+  → gemini-3.1-flash-lite
+  → gemini-3.6-flash
+```
+
+Pronunciation scoring is an ELSA-like MVP prototype using a general multimodal model. It is not a dedicated phoneme-level scoring engine.
 
 ## Session logs
 
-Live sessions create:
+Each Live session creates a local directory:
 
 ```text
 runtime_logs/
@@ -98,17 +166,17 @@ runtime_logs/
       ...
 ```
 
-`conversation.jsonl` includes live turn text, `first_audio_ms`, correction, pronunciation result, model names, key slot, and coach latency. API key values are never logged.
+Logs include session/turn lifecycle, user/AI transcripts, frontend state diagnostics, correction, pronunciation output, model names, key slot numbers, and coach latency. API key values are never logged.
 
-## Legacy / component tests
+## Tests
 
-The previous Gradio UI remains available as a fallback:
+Core refactor regression tests:
 
-```bat
-scripts\run_gradio_test.bat
+```text
+python -m unittest tests.test_live_core
 ```
 
-Component/CLI tests remain:
+Existing component tests remain available:
 
 ```bat
 scripts\run_llm_test.bat
@@ -118,4 +186,10 @@ scripts\run_tts_test.bat
 scripts\run_full_loop_test.bat
 ```
 
-The old CLI/Gradio path is batch-oriented (`STT -> pronunciation -> LLM -> TTS`) and is useful for debugging individual components, not for latency benchmarking.
+Legacy Gradio UI:
+
+```bat
+scripts\run_gradio_test.bat
+```
+
+The legacy CLI/Gradio path is useful for component debugging. The realtime browser path is the main product direction.
