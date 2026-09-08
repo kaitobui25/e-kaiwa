@@ -7,11 +7,12 @@ Implemented through:
 
 - PR #1 — modular realtime production refactor
 - PR #2 — active `src/` + frozen `archive/precode/` repository layout
+- PR #3 — separate active Python regression tests and runnable system tests
 
-Current main commit after repository reorganization:
+Current main commit after the active-test split:
 
 ```text
-494452c763e334f2c52ee5cfef8a7f13269a42e3
+4a26f7fa4476c7fe4572bce1a3ebe0cece67d9ef
 ```
 
 ## 1. Goal
@@ -55,8 +56,9 @@ Trước refactor:
 - Script production và script benchmark đều có tên `test`, rất dễ nhầm.
 - `e_kaiwa/`, `tests/`, `scripts/`, `web/`, `tools/` cùng nằm root nên khó nhìn đâu là code đang sống, đâu là code thử nghiệm cũ.
 - Benchmark STT/LLM/TTS/pronunciation/full-loop đã hoàn thành vai trò pre-code nhưng vẫn trông như test đang được duy trì.
+- Active test cũng cần tách rõ **Python regression** và **system smoke test** để người maintain biết test nào offline/CI-safe, test nào gọi hệ thống thật.
 
-Hai refactor liên tiếp giải quyết cả **code coupling** lẫn **repository organization**.
+Các refactor liên tiếp giải quyết cả **code coupling**, **repository organization** và **test ownership**.
 
 ---
 
@@ -66,15 +68,16 @@ Hai refactor liên tiếp giải quyết cả **code coupling** lẫn **reposito
 2. **Active code has one home.** Code còn chạy/còn sửa phải nằm trong `src/`.
 3. **Historical experiments are frozen.** Benchmark/pre-code cũ nằm trong `archive/precode/`.
 4. **Production must not import archived experiments.** Không dependency ngược từ `src/` sang archive.
-5. **Few modules, clear ownership.** Không thêm layer/service abstraction dư thừa.
-6. **Stdlib-first backend.** Phù hợp VPS nhỏ khoảng 1 GB RAM.
-7. **No database yet.** Runtime logs vẫn JSONL + WAV filesystem.
-8. **Frontend lifecycles separated:**
+5. **Active tests must be explicit.** Offline Python regression và real-system smoke test phải tách riêng.
+6. **Few modules, clear ownership.** Không thêm layer/service abstraction dư thừa.
+7. **Stdlib-first backend.** Phù hợp VPS nhỏ khoảng 1 GB RAM.
+8. **No database yet.** Runtime logs vẫn JSONL + WAV filesystem.
+9. **Frontend lifecycles separated:**
    - Live session lifecycle
    - microphone lifecycle
    - per-turn lifecycle
-9. **Coach never blocks spoken reply.** Đây là invariant quan trọng.
-10. **No frontend build system yet.** Không React/Vue/TypeScript/bundler khi chưa cần.
+10. **Coach never blocks spoken reply.** Đây là invariant quan trọng.
+11. **No frontend build system yet.** Không React/Vue/TypeScript/bundler khi chưa cần.
 
 ---
 
@@ -102,7 +105,15 @@ src/                    ACTIVE — code đang chạy và còn bảo trì
     run.bat               normal realtime runner
 
   tests/
-    test_live_core.py     regression tests cho active production code
+    README.md
+    run_python.bat        run fast offline Python tests
+    run_system.bat        run real local system smoke test
+
+    python/
+      test_live_core.py   regression tests cho production helpers
+
+    system/
+      check_system.py     starts real app + HTTP/assets + Gemini token check
 
   requirements.txt        runtime-only dependencies
 
@@ -131,6 +142,7 @@ README.md
 
 ```text
 Còn chạy / còn sửa / production-related → src/
+Active automated test                   → src/tests/
 Không còn chạy, chỉ giữ để tham khảo   → archive/precode/
 ```
 
@@ -325,13 +337,31 @@ Frontend reliability behavior includes:
 
 Historical benchmark tests are no longer part of normal CI.
 
-The maintained regression suite is:
+Active tests now have two explicit levels.
+
+### 9.1 Python regression tests
+
+Location:
 
 ```text
-src/tests/test_live_core.py
+src/tests/python/test_live_core.py
 ```
 
-It covers pure production behavior such as:
+Run:
+
+```bat
+src\tests\run_python.bat
+```
+
+Properties:
+
+- fast
+- offline
+- no `api.txt` required
+- no Gemini network call
+- safe for CI
+
+Coverage includes:
 
 - API key parsing / duplicate removal / dead slot #4 skip
 - teacher mode resolution
@@ -341,15 +371,49 @@ It covers pure production behavior such as:
 - PCM16 WAV metadata
 - Gemini JSON helper parsing
 
-CI checks only maintained code:
+### 9.2 System smoke test
+
+Location:
 
 ```text
-python -m unittest discover -s src/tests -p "test_*.py"
-python -m compileall -q src/e_kaiwa src/app.py
+src/tests/system/check_system.py
+```
+
+Run:
+
+```bat
+src\tests\run_system.bat
+```
+
+It starts `src/app.py` as a real subprocess on a temporary free local port and verifies:
+
+1. app process starts;
+2. `/health` responds correctly;
+3. `/` serves the frontend HTML;
+4. `/live.css` is served;
+5. `/live.js` is served;
+6. `/api/session` creates a real Gemini ephemeral token.
+
+Requirements:
+
+- internet access
+- valid repository-root `api.txt`
+
+The system smoke test always terminates the child server and prints server output when a failure occurs.
+
+It intentionally does **not** automate browser microphone or the Gemini Live audio WebSocket. That remains the final manual phone/browser test.
+
+### 9.3 CI
+
+CI only runs tests that do not require secrets or external services:
+
+```text
+python -m unittest discover -s src/tests/python -p "test_*.py"
+python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py
 node --check src/web/live.js
 ```
 
-CI passed after the final repository move.
+The system script is syntax-checked in CI but not executed there.
 
 ---
 
@@ -361,7 +425,19 @@ CI passed after the final repository move.
 src\scripts\setup.bat
 ```
 
-### Run realtime app
+### Python regression test
+
+```bat
+src\tests\run_python.bat
+```
+
+### System smoke test
+
+```bat
+src\tests\run_system.bat
+```
+
+### Run realtime app / final phone test
 
 ```bat
 src\scripts\run.bat
@@ -431,6 +507,16 @@ They are historical reference, not normal app commands.
 - [x] CI points only at active `src/` code
 - [x] root cleaned of ambiguous production/test files
 
+### Phase 7 — active test separation
+
+- [x] offline Python tests moved to `src/tests/python/`
+- [x] Python runner added: `src/tests/run_python.bat`
+- [x] real-system smoke test added under `src/tests/system/`
+- [x] system runner added: `src/tests/run_system.bat`
+- [x] system test starts/stops the real app automatically
+- [x] system test verifies frontend assets + real Gemini ephemeral token creation
+- [x] CI remains secret-free and only runs offline checks
+
 ---
 
 ## 12. Definition of done — final result
@@ -446,31 +532,35 @@ Refactor is considered complete because:
 - [x] coach is non-blocking relative to Gemini Live spoken reply
 - [x] no heavyweight framework/infrastructure was introduced
 - [x] regression tests protect core production helpers
+- [x] Python regression and system smoke tests are clearly separated
+- [x] user-runnable `.bat` commands exist for both active test levels
 - [x] CI passes against active source only
 - [x] normal setup/run commands no longer contain `test`
 - [x] README documents ACTIVE vs FROZEN areas
 
 ---
 
-## 13. Manual regression checklist after future realtime changes
+## 13. Regression checklist after future realtime changes
 
-When changing `src/e_kaiwa/` or `src/web/`, verify:
+Recommended order:
 
-1. `src\scripts\run.bat` starts successfully.
-2. Phone page loads HTML/CSS/JS.
-3. `setupReady=true` appears after Gemini setup.
-4. Tap Start once.
-5. Complete at least 3 turns without another tap.
-6. AI audio streams every turn.
-7. Coach result arrives independently of AI playback.
-8. Teacher mode changes affect correction/pronunciation strictness.
-9. Feedback language switches between Vietnamese/Japanese.
-10. Pronunciation ON/OFF behaves correctly.
-11. Silence timeout persists and applies after reconnect.
-12. Stop releases microphone resources.
-13. Start works again after Stop.
-14. Live expiration/error exposes Reconnect.
-15. `runtime_logs/` contains `session_start`, `live_turn`, and `coach` events.
+1. Run `src\tests\run_python.bat`.
+2. Run `src\tests\run_system.bat`.
+3. Run `src\scripts\run.bat` for the phone/browser realtime check.
+4. Phone page loads HTML/CSS/JS.
+5. `setupReady=true` appears after Gemini setup.
+6. Tap Start once.
+7. Complete at least 3 turns without another tap.
+8. AI audio streams every turn.
+9. Coach result arrives independently of AI playback.
+10. Teacher mode changes affect correction/pronunciation strictness.
+11. Feedback language switches between Vietnamese/Japanese.
+12. Pronunciation ON/OFF behaves correctly.
+13. Silence timeout persists and applies after reconnect.
+14. Stop releases microphone resources.
+15. Start works again after Stop.
+16. Live expiration/error exposes Reconnect.
+17. `runtime_logs/` contains `session_start`, `live_turn`, and `coach` events.
 
 ---
 
