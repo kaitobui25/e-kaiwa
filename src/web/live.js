@@ -6,6 +6,8 @@
   // ---------------------------------------------------------------------------
   const MODEL = 'gemini-3.1-flash-live-preview';
   const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
+  const AI_SPEED_VALUES = ['0.5', '0.6', '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5'];
+  const DEFAULT_AI_SPEED = '0.8';
 
   const talk = document.getElementById('talk');
   const statusEl = document.getElementById('status');
@@ -15,6 +17,7 @@
   const conversationEl = document.getElementById('conversation');
   const teacherEl = document.getElementById('teacher');
   const feedbackLanguageEl = document.getElementById('feedback-language');
+  const aiSpeedEl = document.getElementById('ai-speed');
   const silenceDurationEl = document.getElementById('silence-duration');
   const pronEl = document.getElementById('pron');
 
@@ -22,6 +25,9 @@
   if (['700', '1000', '1200', '1500'].includes(savedSilence)) {
     silenceDurationEl.value = savedSilence;
   }
+
+  const savedAiSpeed = localStorage.getItem('aiPlaybackRate');
+  aiSpeedEl.value = AI_SPEED_VALUES.includes(savedAiSpeed) ? savedAiSpeed : DEFAULT_AI_SPEED;
 
   const state = {
     ws: null,
@@ -160,6 +166,11 @@
     return joined;
   }
 
+  function aiPlaybackRate() {
+    const value = aiSpeedEl.value;
+    return AI_SPEED_VALUES.includes(value) ? Number(value) : Number(DEFAULT_AI_SPEED);
+  }
+
   // ---------------------------------------------------------------------------
   // Audio input/output
   // ---------------------------------------------------------------------------
@@ -210,13 +221,15 @@
     const buffer = state.playCtx.createBuffer(1, sampleCount, 24000);
     buffer.copyToChannel(floats, 0);
     const source = state.playCtx.createBufferSource();
+    const rate = aiPlaybackRate();
     source.buffer = buffer;
+    source.playbackRate.value = rate;
     source.connect(state.playCtx.destination);
 
     const now = state.playCtx.currentTime;
     if (state.playAt < now + 0.025) state.playAt = now + 0.025;
     source.start(state.playAt);
-    state.playAt += buffer.duration;
+    state.playAt += buffer.duration / rate;
   }
 
   function cleanupMic() {
@@ -557,6 +570,13 @@
   // ---------------------------------------------------------------------------
   // Events + bootstrap
   // ---------------------------------------------------------------------------
+  aiSpeedEl.addEventListener('change', () => {
+    const value = AI_SPEED_VALUES.includes(aiSpeedEl.value) ? aiSpeedEl.value : DEFAULT_AI_SPEED;
+    aiSpeedEl.value = value;
+    localStorage.setItem('aiPlaybackRate', value);
+    setStatus(`AI response speed ${value}× saved.`);
+  });
+
   silenceDurationEl.addEventListener('change', () => {
     localStorage.setItem('silenceDurationMs', silenceDurationEl.value);
     setStatus(`Silence timeout ${silenceDurationEl.value} ms saved. Reconnect to apply.`);
