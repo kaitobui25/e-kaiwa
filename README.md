@@ -13,6 +13,8 @@ scripts/                Windows runners
   run_pronunciation_test.bat
   run_tts_test.bat
   run_full_loop_test.bat
+  run_web_test.bat       Mic-only Gradio phone test
+web_app.py               Minimal Gradio mobile web UI
 tests/                  Experiment and MVP test code
   test_llm.py
   test_stt.py
@@ -20,13 +22,13 @@ tests/                  Experiment and MVP test code
   test_tts.py
   test_full_loop.py
   stt_samples/          Downloaded/normalized test fixtures
-runtime_logs/           Local full-loop session logs + captured WAVs (gitignored)
+runtime_logs/           Local session logs + captured WAVs (gitignored)
 tools/                  Environment diagnostics
   preflight.py
 requirements.txt
 ```
 
-`api.txt` stays local in the repository root and is ignored by Git. Put one Gemini API key per non-empty line. Key #4 is intentionally skipped by the current STT/full-loop tests.
+`api.txt` stays local in the repository root and is ignored by Git. Put one Gemini API key per non-empty line. Key #4 is intentionally skipped by the current STT/full-loop/web flows.
 
 ## Setup / PC preflight
 
@@ -35,6 +37,40 @@ scripts\setup.bat
 ```
 
 This creates `.venv`, installs dependencies, and runs the PC/audio preflight.
+
+## Phone test: Gradio mic-only
+
+The phone UI intentionally has no WAV upload mode. It only exposes the browser microphone.
+
+On Windows, run:
+
+```bat
+scripts\run_web_test.bat
+```
+
+This starts `web_app.py --share`. Open the generated `https://...gradio.live` URL on the phone, grant microphone permission, tap the microphone, speak English, then stop recording. Stopping the recording automatically runs the full turn:
+
+```text
+phone mic
+→ STT
+→ pronunciation feedback (optional)
+→ LLM reply + correction
+→ TTS
+→ AI audio in the browser
+```
+
+The web UI keeps recent conversation turns in per-browser session state. Each session is also logged under `runtime_logs/YYYY-MM-DD/..._web/` with `conversation.jsonl`, user WAVs, and AI WAVs.
+
+For a VPS, install requirements and run without the temporary Gradio share link:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+python web_app.py --host 0.0.0.0 --port 7860
+```
+
+Put `api.txt` in the repository root on the VPS. Expose the app through HTTPS (for example a reverse proxy or tunnel) so mobile browsers can grant microphone access.
 
 ## Tests
 
@@ -46,7 +82,7 @@ scripts\run_tts_test.bat
 scripts\run_full_loop_test.bat
 ```
 
-The runners temporarily copy the local root `api.txt` into `tests/` because the existing test scripts resolve resources relative to their own folder. The temporary copy is deleted after each run and is also gitignored.
+The test runners temporarily copy the local root `api.txt` into `tests/` because the existing test scripts resolve resources relative to their own folder. The temporary copy is deleted after each run and is also gitignored. The Gradio web app reads root `api.txt` directly and does not need that copy.
 
 ## Full loop modes
 
@@ -56,7 +92,7 @@ Run:
 scripts\run_full_loop_test.bat
 ```
 
-The full loop now asks for an input mode:
+The CLI full loop asks for an input mode:
 
 ```text
 1 = Audio file - choose a WAV sample and run one turn
@@ -77,7 +113,7 @@ The LLM keeps a small in-memory window of recent user/AI turns so mic mode behav
 
 ## Session logs
 
-Every full-loop run creates one local session folder:
+Every full-loop/web run creates one local session folder:
 
 ```text
 runtime_logs/
@@ -90,14 +126,14 @@ runtime_logs/
       turn_002_ai.wav
 ```
 
-File mode uses the same session layout but references the selected test WAV instead of copying it.
+Web sessions use the `_web` suffix. File mode uses the same session idea but references the selected test WAV instead of copying it.
 
 `conversation.jsonl` records the conversation text, correction, pronunciation result, model names, timings, selected key slot, audio paths, errors, and session start/end events. It never writes the API key itself. The whole `runtime_logs/` directory is gitignored.
 
 ## Current MVP path
 
 ```text
-WAV / microphone
+browser mic / CLI WAV / CLI mic
 → STT: gemini-3.5-flash-lite
 → pronunciation feedback (optional, default ON)
 → LLM reply + correction
