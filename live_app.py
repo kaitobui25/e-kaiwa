@@ -81,15 +81,17 @@ def get_session_dir(session_id: str) -> Path | None:
 
 
 def create_ephemeral_token(api_key: str) -> str:
+    """Create a short-lived token; Live setup is supplied by the first WS message.
+
+    The current AuthToken REST schema accepts uses/expiry fields and optionally
+    bidiGenerateContentSetup. Leaving setup unconstrained here lets the browser
+    provide the model/config in its first BidiGenerateContentSetup message.
+    """
     now = datetime.now(timezone.utc)
     body = {
         "uses": 1,
         "expireTime": (now + timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
         "newSessionExpireTime": (now + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
-        "liveConnectConstraints": {
-            "model": f"models/{MODEL}",
-            "config": {"responseModalities": ["AUDIO"]},
-        },
     }
     req = urllib.request.Request(
         TOKEN_URL,
