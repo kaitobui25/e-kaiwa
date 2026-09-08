@@ -142,10 +142,10 @@
     sessionId = data.session_id;
     const url = `${WS_BASE}?access_token=${encodeURIComponent(data.token)}`;
     ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
       setStatus('WebSocket open. Configuring Gemini Live…');
-      // Keep this setup identical to tests/test_ephemeral_live.py, which is proven OK.
       ws.send(JSON.stringify({
         setup: {
           model: `models/${MODEL}`,
@@ -166,11 +166,23 @@
     };
   }
 
-  function onLiveMessage(event) {
+  async function webSocketDataToText(data) {
+    if (typeof data === 'string') return data;
+    if (data instanceof Blob) return await data.text();
+    if (data instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(data));
+    if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+    return String(data);
+  }
+
+  async function onLiveMessage(event) {
+    let text;
     let msg;
-    try { msg = JSON.parse(event.data); }
-    catch {
-      setStatus('Gemini returned a non-JSON message.', 'error');
+    try {
+      text = await webSocketDataToText(event.data);
+      msg = JSON.parse(text);
+    } catch (e) {
+      const type = event.data?.constructor?.name || typeof event.data;
+      setStatus(`Could not decode Gemini message (${type}): ${e.message}`, 'error');
       return;
     }
 
@@ -334,7 +346,6 @@
     try { await inputCtx?.close(); } catch {}
     processor = null; micSource = null; micStream = null; inputCtx = null;
 
-    // Auto VAD stays enabled. audioStreamEnd finalizes the turn immediately.
     ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
     talk.disabled = true;
     talk.className = 'ready';
