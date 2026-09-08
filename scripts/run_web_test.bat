@@ -6,8 +6,6 @@ cd /d "%ROOT%"
 if not exist "api.txt" (
   echo [ERROR] api.txt not found in repository root:
   echo %CD%
-  echo Put one Gemini API key per line in api.txt.
-  pause
   exit /b 2
 )
 
@@ -33,15 +31,9 @@ if not defined CLOUDFLARED (
 
 if not defined CLOUDFLARED (
   echo [ERROR] cloudflared.exe was not found.
-  echo.
-  echo If it is not installed, install once with:
-  echo   winget install -e --id Cloudflare.cloudflared
-  echo.
-  pause
+  echo Install once with: winget install -e --id Cloudflare.cloudflared
   exit /b 3
 )
-
-echo Cloudflare: %CLOUDFLARED%
 
 if exist ".venv\Scripts\python.exe" (
   set "PYTHON_CMD=.venv\Scripts\python.exe"
@@ -54,23 +46,10 @@ if exist ".venv\Scripts\python.exe" (
   )
 )
 
-echo Starting E-KAIWA LIVE on http://127.0.0.1:7860 ...
 start "E-KAIWA LIVE" cmd /k "%PYTHON_CMD% live_app.py"
-
 timeout /t 2 /nobreak >nul
 
-echo.
-echo Starting Cloudflare Quick Tunnel...
-echo Open the https://...trycloudflare.com URL below on your phone.
-echo Realtime audio goes directly between the phone and Gemini Live.
-echo This PC only serves the page, creates ephemeral tokens, and runs coach feedback.
-echo Press Ctrl+C here to stop the tunnel.
-echo Close the "E-KAIWA LIVE" window when you are done testing.
-echo.
-"%CLOUDFLARED%" tunnel --url http://127.0.0.1:7860
+rem Keep cloudflared running, but suppress its verbose logs and print only the public URL once.
+"%CLOUDFLARED%" tunnel --url http://127.0.0.1:7860 2>&1 | powershell -NoProfile -Command "$shown=$false; $input | ForEach-Object { if (-not $shown -and $_ -match 'https://[a-z0-9-]+\.trycloudflare\.com') { $matches[0]; $shown=$true } }"
 
-set "EXITCODE=%ERRORLEVEL%"
-echo.
-echo Cloudflare tunnel stopped.
-pause
-exit /b %EXITCODE%
+exit /b %ERRORLEVEL%
