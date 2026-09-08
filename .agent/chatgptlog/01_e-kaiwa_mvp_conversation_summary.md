@@ -526,7 +526,7 @@ Teacher strictness and pronunciation ON/OFF should be chosen once in settings/se
 Recommended defaults:
 
 ```text
-Teacher      = Normal
+Teacher       = Normal
 Pronunciation = ON
 ```
 
@@ -631,9 +631,9 @@ Always skip API key #4 because it is dead.
 - The highest-value next engineering step is parallelizing pronunciation analysis with the LLM/TTS reply path so pronunciation feedback does not delay conversation.
 - Product UX should remain conversation-first, with correction and pronunciation as lightweight secondary layers.
 
-## 14. Status at end of chat
+## 14. Status at end of core testing
 
-Working test coverage now includes:
+Working test coverage includes:
 
 ```text
 [OK] PC preflight
@@ -650,3 +650,70 @@ Working test coverage now includes:
 ```
 
 The prototype is ready to move from isolated tests toward a real app UI and latency optimization, while keeping the implementation minimal.
+
+## 15. Repository cleanup
+
+After the core tests were working, the repository root was cleaned up and files were grouped by purpose.
+
+Final root layout:
+
+```text
+/
+├─ .agent/
+├─ .gitignore
+├─ README.md
+├─ requirements.txt
+├─ scripts/
+├─ tests/
+└─ tools/
+```
+
+Files were reorganized as follows:
+
+```text
+scripts/
+  setup.bat
+  run_llm_test.bat
+  run_stt_test.bat
+  run_pronunciation_test.bat
+  run_tts_test.bat
+  run_full_loop_test.bat
+
+tests/
+  test_llm.py
+  test_stt.py
+  test_pronunciation.py
+  test_tts.py
+  test_full_loop.py
+  stt_samples/
+
+tools/
+  preflight.py
+```
+
+Root is now intentionally limited to project-level files and top-level folders.
+
+`api.txt` remains a local-only file at repository root and is still ignored by Git. Generated WAV output and other temporary test artifacts are also ignored so they do not dirty the repository.
+
+The cleanup commit was:
+
+```text
+dc97248db673438a1d8eb070bb1de5b989da0444
+```
+
+## 16. Current run command
+
+After the cleanup, the Windows command to run the full end-to-end loop from repository root is:
+
+```bat
+scripts\run_full_loop_test.bat
+```
+
+Typical update-and-run sequence:
+
+```bat
+git pull
+scripts\run_full_loop_test.bat
+```
+
+This is the current entry point for testing the complete WAV → STT → pronunciation → LLM correction/reply → TTS flow.
