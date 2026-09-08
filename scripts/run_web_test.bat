@@ -34,13 +34,9 @@ if not defined CLOUDFLARED (
 if not defined CLOUDFLARED (
   echo [ERROR] cloudflared.exe was not found.
   echo.
-  echo If you installed it before, check with:
-  echo   winget list --id Cloudflare.cloudflared
-  echo.
   echo If it is not installed, install once with:
   echo   winget install -e --id Cloudflare.cloudflared
   echo.
-  echo Then run this script again.
   pause
   exit /b 3
 )
@@ -58,19 +54,18 @@ if exist ".venv\Scripts\python.exe" (
   )
 )
 
-echo Starting E-KAIWA Gradio on http://127.0.0.1:7860 ...
-start "E-KAIWA Gradio" cmd /k "%PYTHON_CMD% web_app.py --host 127.0.0.1 --port 7860"
+echo Starting E-KAIWA LIVE on http://127.0.0.1:7860 ...
+start "E-KAIWA LIVE" cmd /k "%PYTHON_CMD% live_app.py"
 
-rem A fixed short delay is enough here. Cloudflared itself does not require
-rem the origin to be fully ready before the tunnel starts, and the previous
-rem Invoke-WebRequest loop produced false negatives on some Windows setups.
 timeout /t 2 /nobreak >nul
 
 echo.
 echo Starting Cloudflare Quick Tunnel...
 echo Open the https://...trycloudflare.com URL below on your phone.
+echo Realtime audio goes directly between the phone and Gemini Live.
+echo This PC only serves the page, creates ephemeral tokens, and runs coach feedback.
 echo Press Ctrl+C here to stop the tunnel.
-echo Close the "E-KAIWA Gradio" window when you are done testing.
+echo Close the "E-KAIWA LIVE" window when you are done testing.
 echo.
 "%CLOUDFLARED%" tunnel --url http://127.0.0.1:7860
 
