@@ -4,7 +4,8 @@
 - Downloads five Japanese-speaker English WAV samples on first run
 - Pads/trims each to 5 seconds
 - Uses the official Gemini Files API, then gemini-3.5-transcribe
-- Uses ONE key per sample (round-robin) so empty responses do not burn all keys
+- Uses ONE active key per sample (round-robin) so empty responses do not burn all keys
+- Skips known-dead API key positions listed in SKIP_KEY_NUMBERS
 - Prints transcript, latency, and WER
 - Optionally records 5 seconds from the local microphone
 
@@ -32,6 +33,9 @@ UPLOAD_BASE = "https://generativelanguage.googleapis.com/upload/v1beta/files"
 TIMEOUT = 45
 TARGET_SECONDS = 5
 
+# api.txt key positions to ignore. User confirmed key #4 is dead.
+SKIP_KEY_NUMBERS = {4}
+
 
 def read_keys() -> list[str]:
     if not API_FILE.exists():
@@ -44,6 +48,13 @@ def read_keys() -> list[str]:
     if not keys:
         raise SystemExit("[ERROR] api.txt has no API keys")
     return keys
+
+
+def active_keys(keys: list[str]) -> list[tuple[int, str]]:
+    active = [(index, key) for index, key in enumerate(keys, start=1) if index not in SKIP_KEY_NUMBERS]
+    if not active:
+        raise SystemExit("[ERROR] no active API keys left after SKIP_KEY_NUMBERS")
+    return active
 
 
 def mask_key(key: str) -> str:
@@ -266,12 +277,15 @@ def wer(expected: str, actual: str) -> float:
 
 
 def run_fixed_tests(keys: list[str], rows: list[dict]) -> None:
+    usable = active_keys(keys)
+
     print("=" * 76)
     print("E-KAIWA - GEMINI STT TEST v2")
     print("=" * 76)
     print(f"Model : {MODEL}")
-    print(f"Keys  : {len(keys)}")
-    print("Mode  : Files API; one key per audio (no retry storm)\n")
+    print(f"Keys  : {len(usable)} active / {len(keys)} total")
+    print(f"Skip  : {', '.join('#' + str(n) for n in sorted(SKIP_KEY_NUMBERS))}")
+    print("Mode  : Files API; one active key per audio (no retry storm)\n")
 
     successful = 0
     latencies: list[float] = []
@@ -280,10 +294,9 @@ def run_fixed_tests(keys: list[str], rows: list[dict]) -> None:
     for index, row in enumerate(rows, start=1):
         path = SAMPLES_DIR / row["file"]
         expected = row["expected"]
-        key_index = (index - 1) % len(keys)
-        key = keys[key_index]
+        original_key_number, key = usable[(index - 1) % len(usable)]
 
-        print(f"[{index}/{len(rows)}] {path.name}  key={key_index + 1} [{mask_key(key)}]")
+        print(f"[{index}/{len(rows)}] {path.name}  key={original_key_number} [{mask_key(key)}]")
         ok, text, latency, error = transcribe_one(key, path)
         if not ok:
             print(f"  [FAIL] {error}\n")
@@ -331,15 +344,16 @@ def optional_mic_test(keys: list[str]) -> None:
     if input("Test microphone too? (y/n): ").strip().lower() != "y":
         return
 
+    original_key_number, key = active_keys(keys)[0]
     temp = ROOT / "_mic_stt_test.wav"
     try:
         record_mic(temp)
         if not temp.exists():
             return
-        ok, text, latency, error = transcribe_one(keys[0], temp)
+        ok, text, latency, error = transcribe_one(key, temp)
         if ok:
             print(f"[OK] Transcript: {text}")
-            print(f"     Latency   : {latency:.2f}s")
+            print(f"     Latency   : {latency:.2f}s (key {original_key_number})")
         else:
             print(f"[FAIL] {error}")
     finally:
