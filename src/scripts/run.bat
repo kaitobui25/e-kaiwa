@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-set "ROOT=%~dp0.."
+set "ROOT=%~dp0..\.."
 cd /d "%ROOT%"
 
 if not exist "api.txt" (
@@ -9,7 +9,6 @@ if not exist "api.txt" (
   exit /b 2
 )
 
-rem Find cloudflared even when WinGet installed it but this CMD does not have the updated PATH.
 set "CLOUDFLARED="
 for /f "delims=" %%I in ('where cloudflared.exe 2^>nul') do if not defined CLOUDFLARED set "CLOUDFLARED=%%I"
 
@@ -36,20 +35,19 @@ if not defined CLOUDFLARED (
 )
 
 if exist ".venv\Scripts\python.exe" (
-  set "PYTHON_CMD=.venv\Scripts\python.exe"
+  start "E-KAIWA LIVE" cmd /k ".venv\Scripts\python.exe src\app.py"
 ) else (
   where py >nul 2>nul
   if not errorlevel 1 (
-    set "PYTHON_CMD=py -3"
+    start "E-KAIWA LIVE" cmd /k "py -3 src\app.py"
   ) else (
-    set "PYTHON_CMD=python"
+    start "E-KAIWA LIVE" cmd /k "python src\app.py"
   )
 )
 
-start "E-KAIWA LIVE" cmd /k "%PYTHON_CMD% live_app.py"
 timeout /t 2 /nobreak >nul
 
-rem Keep cloudflared running, but suppress its verbose logs and print only the public URL once.
+rem Keep cloudflared running, suppress verbose logs, and print the public URL once.
 "%CLOUDFLARED%" tunnel --url http://127.0.0.1:7860 2>&1 | powershell -NoProfile -Command "$shown=$false; $input | ForEach-Object { if (-not $shown -and $_ -match 'https://[a-z0-9-]+\.trycloudflare\.com') { $matches[0]; $shown=$true } }"
 
 exit /b %ERRORLEVEL%

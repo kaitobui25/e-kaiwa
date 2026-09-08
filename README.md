@@ -1,195 +1,135 @@
 # e-kaiwa
 
-Minimal realtime AI English conversation MVP for Japanese learners.
+Minimal realtime AI English conversation app for Japanese learners.
 
-The main product path is hands-free Gemini Live audio-to-audio. The browser streams audio directly to Gemini Live; the small Python server only serves the page, creates ephemeral tokens, runs coaching after each turn, and writes local debug logs.
+## Repository layout
 
-## Current architecture
+The repository is split into two clear zones:
 
 ```text
-Phone browser
-  mic PCM 16 kHz
-      ↕ direct WebSocket
-Gemini Live
-  gemini-3.1-flash-live-preview
-      ↕ streaming audio reply
-Phone speaker
+src/                    ACTIVE — code that still runs and is maintained
+  app.py                 realtime server entrypoint
+  e_kaiwa/               backend modules
+  web/                   browser UI
+  scripts/
+    setup.bat             one-time/local setup
+    run.bat               normal realtime runner
+  tests/                 regression tests for active production code
+  requirements.txt       runtime-only Python dependencies
 
-After each completed user turn:
-Phone browser
-      → /api/coach
-Python sidecar
-      ├─ correction
-      └─ pronunciation feedback
+archive/precode/        FROZEN — experiments used before the production flow existed
+  tests/                 STT/LLM/TTS/pronunciation/full-loop benchmarks
+  scripts/               old benchmark runners
+  tools/                 old environment/preflight utilities
+  legacy/                old Gradio/compatibility code
+
+.agent/                  development conversation logs and plans
+.github/                 CI configuration
 ```
 
-The coach path does **not** block the spoken Gemini Live reply.
+`archive/precode/` is historical reference only. Production code and CI must not import from it.
 
-## Project layout
-
-```text
-.agent/
-  chatgptlog/                 Development conversation summaries
-  chatgptplan/                Implementation plans
-
-e_kaiwa/
-  config.py                   Runtime paths, models, teacher modes, API keys
-  gemini.py                   Gemini REST helpers + ephemeral token
-  sessions.py                 Session registry, JSONL logs, WAV persistence
-  coach.py                    Correction + pronunciation sidecar
-  server.py                   HTTP routes and server bootstrap
-
-live_app.py                   Thin realtime server entrypoint
-web/
-  live.html                   Realtime page markup
-  live.css                    Realtime page styles
-  live.js                     Live session, audio, turn state and coach UI
-
-web_app.py                    Legacy Gradio fallback
-web_coach.py                  Backward-compatible coach shim
-scripts/                      Windows runners
-tests/                        Component experiments + regression tests
-tools/                        Environment diagnostics
-runtime_logs/                 Local runtime logs/WAVs; gitignored
-```
-
-Production realtime code under `e_kaiwa/` does not import benchmark code from `tests/`.
-
-## API keys
-
-Create local `api.txt` in the repository root with one Gemini API key per non-empty line.
-
-`api.txt` is gitignored. Raw keys must never be committed or logged.
-
-Operational rule from the current test setup:
+Local-only files remain at repository root:
 
 ```text
-API key slot #4 is skipped.
+api.txt                  Gemini API keys, gitignored
+runtime_logs/            generated session logs/WAVs, gitignored
+.venv/                   local Python environment, gitignored
 ```
 
 ## Setup
 
 ```bat
-scripts\setup.bat
+src\scripts\setup.bat
 ```
 
-## Run the realtime phone test
+The current realtime server itself uses only the Python standard library. `cloudflared` is used by the Windows runner to expose the local server to a phone through a temporary HTTPS tunnel.
+
+`api.txt` must exist in the repository root. Put one Gemini API key per non-empty line. Key slot #4 is intentionally skipped.
+
+## Run
 
 ```bat
-scripts\run_web_test.bat
+src\scripts\run.bat
 ```
 
-The runner starts:
+The runner starts the app on:
 
 ```text
-python live_app.py
+http://127.0.0.1:7860
 ```
 
-on `127.0.0.1:7860`, then starts a Cloudflare Quick Tunnel. Open the printed `https://...trycloudflare.com` URL on the phone.
+and prints one temporary Cloudflare URL for opening on the phone.
 
-You can also run the server directly:
-
-```text
-python live_app.py
-python live_app.py --host 127.0.0.1 --port 7860
-```
-
-## Realtime UX
-
-The current flow uses Gemini Automatic VAD rather than manual push-to-talk for every turn:
+## Current realtime flow
 
 ```text
-Tap Start conversation once
+Tap Start once
 → microphone stays open
-→ speak naturally
-→ silence ends the user turn
-→ Gemini replies with streaming audio
-→ after playback the app listens again automatically
-→ continue turn 2, 3, 4... without tapping again
+→ browser streams PCM directly to Gemini Live
+→ Gemini Automatic VAD detects turn boundaries
+→ streaming AI audio plays immediately
+→ correction + pronunciation coach runs separately
+→ after AI playback, the microphone continues with the next turn
 ```
 
-Settings:
-
-- Teacher: Easy / Normal / Strict
-- Correction language: Tiếng Việt / 日本語
-- Silence timeout: 0.7 / 1.0 / 1.2 / 1.5 seconds
-- Pronunciation coaching: ON / OFF
-
-The silence timeout is stored in browser `localStorage` and takes effect on the next Live reconnect.
-
-## Important lifecycle rule
-
-Microphone/session lifetime and turn-object lifetime are separate concerns.
+Architecture:
 
 ```text
-Live session + microphone = long-lived
-turn object                = create/finalize once per VAD turn
+Phone browser
+  ├─ direct WebSocket PCM ↔ Gemini Live
+  └─ HTTP → local E-KAIWA server → coach APIs/logging
 ```
 
-During AI playback, microphone input forwarding is gated to avoid sending speaker echo back to Gemini. After playback, the next turn is armed automatically without reopening the microphone device.
+The local server is intentionally small. It:
 
-## Coach sidecar
+- serves the frontend;
+- creates short-lived Gemini Live tokens;
+- runs correction/pronunciation coaching after each turn;
+- stores local session logs and captured user WAVs.
 
-After each turn, correction and pronunciation run in parallel:
+The realtime spoken reply does not wait for coach results.
+
+## Active source tree
+
+Backend responsibilities are separated under `src/e_kaiwa/`:
 
 ```text
-                         ┌─> correction LLM
-completed user turn ─────┤
-                         └─> pronunciation analysis
+config.py       paths, models, teacher modes, API-key policy
+gemini.py       Gemini HTTP helpers and ephemeral token creation
+sessions.py     session registry, JSONL logging, PCM WAV writing
+coach.py        correction + pronunciation sidecar
+server.py       HTTP routes and server lifecycle
 ```
 
-Current coach models:
+Frontend files are under `src/web/`:
 
 ```text
-Correction:
-  gemini-3.5-flash-lite
-
-Pronunciation fallback chain:
-  gemini-3.5-flash-lite
-  → gemini-3.1-flash-lite
-  → gemini-3.6-flash
+live.html
+live.css
+live.js
 ```
 
-Pronunciation scoring is an ELSA-like MVP prototype using a general multimodal model. It is not a dedicated phoneme-level scoring engine.
+## Regression checks
 
-## Session logs
-
-Each Live session creates a local directory:
+Only tests that protect the current maintained code stay with `src/`:
 
 ```text
-runtime_logs/
-  YYYY-MM-DD/
-    YYYYMMDD_HHMMSS_live/
-      conversation.jsonl
-      turn_001_user.wav
-      turn_002_user.wav
-      ...
+src/tests/test_live_core.py
 ```
 
-Logs include session/turn lifecycle, user/AI transcripts, frontend state diagnostics, correction, pronunciation output, model names, key slot numbers, and coach latency. API key values are never logged.
-
-## Tests
-
-Core refactor regression tests:
+CI runs these checks without API keys:
 
 ```text
-python -m unittest tests.test_live_core
+Python regression tests
+Python syntax compilation
+browser JavaScript syntax check
 ```
 
-Existing component tests remain available:
+The older model benchmarks and prototype loops are deliberately not part of CI anymore. They are kept under `archive/precode/` only as historical engineering reference.
 
-```bat
-scripts\run_llm_test.bat
-scripts\run_stt_test.bat
-scripts\run_pronunciation_test.bat
-scripts\run_tts_test.bat
-scripts\run_full_loop_test.bat
-```
+## Historical prototype material
 
-Legacy Gradio UI:
+Everything under `archive/precode/` predates the current realtime production architecture. It includes model selection experiments, STT/TTS/pronunciation measurements, full-loop prototypes, Live-access probes, Gradio UI code and the original preflight utility.
 
-```bat
-scripts\run_gradio_test.bat
-```
-
-The legacy CLI/Gradio path is useful for component debugging. The realtime browser path is the main product direction.
+Do not add new production work there. New code belongs under `src/`.
