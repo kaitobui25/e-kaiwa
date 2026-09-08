@@ -47,6 +47,12 @@
     <label>Teacher
       <select id="teacher"><option>Easy</option><option selected>Normal</option><option>Strict</option></select>
     </label>
+    <label>Correction language
+      <select id="feedback-language">
+        <option value="vi" selected>Tiếng Việt</option>
+        <option value="ja">日本語</option>
+      </select>
+    </label>
     <label><input id="pron" type="checkbox" checked> Pronunciation coaching</label>
   </details>
 </main>
@@ -61,6 +67,7 @@
   const metricEl = document.getElementById('metric');
   const conversationEl = document.getElementById('conversation');
   const teacherEl = document.getElementById('teacher');
+  const feedbackLanguageEl = document.getElementById('feedback-language');
   const pronEl = document.getElementById('pron');
 
   let ws = null;
@@ -91,6 +98,7 @@
     const b = (newText || '').trim();
     if (!a) return b;
     if (!b || a.endsWith(b)) return a;
+    if (b.startsWith(a)) return b;
     return a + (/[\s,.!?]$/.test(a) ? '' : ' ') + b;
   };
 
@@ -100,9 +108,11 @@
     let html = `<b>Pronunciation ${score(result.pronunciation_score)}</b> · fluency ${score(result.fluency_score)} · intonation ${score(result.intonation_score)}`;
     for (const p of (Array.isArray(result.problems) ? result.problems.slice(0, 3) : [])) {
       html += `<br>• <b>${escapeHtml(p.word || '?')}</b> ${escapeHtml(p.sound || '')}`;
-      if (p.tip_ja) html += ` — ${escapeHtml(p.tip_ja)}`;
+      const tip = p.tip || p.tip_ja || '';
+      if (tip) html += ` — ${escapeHtml(tip)}`;
     }
-    if (result.summary_ja) html += `<br>${escapeHtml(result.summary_ja)}`;
+    const summary = result.summary || result.summary_ja || '';
+    if (summary) html += `<br>${escapeHtml(summary)}`;
     return html;
   }
 
@@ -116,7 +126,8 @@
       let coach = '<span class="muted">Coach running…</span>';
       if (t.coach) {
         coach = `<b>Correction:</b> ${escapeHtml(t.coach.correction || t.userText || '')}`;
-        if (t.coach.explanation_ja) coach += `<br>${escapeHtml(t.coach.explanation_ja)}`;
+        const explanation = t.coach.explanation || t.coach.explanation_ja || '';
+        if (explanation) coach += `<br>${escapeHtml(explanation)}`;
         if (pronEl.checked) coach += `<br><br>${pronHtml(t.coach.pronunciation)}`;
         coach += `<br><span class="muted">coach ${Number(t.coach.coach_wall_s || 0).toFixed(2)}s</span>`;
       }
@@ -406,6 +417,7 @@
           turn: turn.no,
           transcript: turn.userText,
           teacher: teacherEl.value,
+          feedback_language: feedbackLanguageEl.value,
           pronunciation_enabled: pronEl.checked,
           sample_rate: 16000,
           pcm_b64: pcmToBase64(pcm)
@@ -416,7 +428,7 @@
       turn.coach = data;
       render();
     } catch (e) {
-      turn.coach = {correction: turn.userText, explanation_ja: `Coach error: ${e.message}`, pronunciation: null, coach_wall_s: 0};
+      turn.coach = {correction: turn.userText, explanation: `Coach error: ${e.message}`, pronunciation: null, coach_wall_s: 0};
       render();
     }
   }
