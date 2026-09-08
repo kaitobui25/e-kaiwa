@@ -23,6 +23,9 @@
     .coach { font-size: 15px; line-height: 1.5; }
     .good { color: #7ddd9a; }
     .error { color: #ff7777; }
+    .setup-state { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 13px; color: #aaa; }
+    .setup-dot { width: 10px; height: 10px; border-radius: 50%; background: #e55353; box-shadow: 0 0 0 2px rgba(229,83,83,.16); }
+    .setup-dot.on { background: #39d353; box-shadow: 0 0 0 2px rgba(57,211,83,.16); }
     select, input { font-size: 16px; padding: 6px; }
     label { display: block; margin: 10px 0; }
   </style>
@@ -35,6 +38,7 @@
   <div class="card">
     <button id="talk" class="ready" disabled>Connecting…</button>
     <div id="status" class="muted">Creating secure live session…</div>
+    <div id="setup-state" class="setup-state"><span id="setup-dot" class="setup-dot"></span><span id="setup-label">setupReady=false</span></div>
     <div id="metric"></div>
   </div>
 
@@ -64,6 +68,8 @@
 
   const talk = document.getElementById('talk');
   const statusEl = document.getElementById('status');
+  const setupDotEl = document.getElementById('setup-dot');
+  const setupLabelEl = document.getElementById('setup-label');
   const metricEl = document.getElementById('metric');
   const conversationEl = document.getElementById('conversation');
   const teacherEl = document.getElementById('teacher');
@@ -90,6 +96,12 @@
     statusEl.className = 'muted ' + cls;
     statusEl.textContent = text;
   };
+
+  function updateSetupIndicator() {
+    setupDotEl.className = setupReady ? 'setup-dot on' : 'setup-dot';
+    setupLabelEl.textContent = `setupReady=${setupReady}`;
+  }
+  updateSetupIndicator();
 
   const escapeHtml = s => String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
@@ -147,6 +159,7 @@
 
   function showReconnect(message) {
     setupReady = false;
+    updateSetupIndicator();
     reconnectNeeded = true;
     connecting = false;
     recording = false;
@@ -161,6 +174,7 @@
     connecting = true;
     reconnectNeeded = false;
     setupReady = false;
+    updateSetupIndicator();
     talk.disabled = true;
     talk.className = 'ready';
     talk.textContent = 'Connecting…';
@@ -231,6 +245,7 @@
       connecting = false;
       reconnectNeeded = false;
       setupReady = true;
+      updateSetupIndicator();
       talk.disabled = false;
       talk.className = 'ready';
       talk.textContent = '🎙 Start talking';
@@ -435,17 +450,6 @@
 
   function finishTurn(turn) {
     scheduleCoach(turn);
-    fetch('/api/metric', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        session_id: sessionId,
-        turn: turn.no,
-        user_text: turn.userText,
-        ai_text: turn.aiText,
-        first_audio_ms: turn.firstAudioMs == null ? null : Math.round(turn.firstAudioMs)
-      })
-    }).catch(() => {});
 
     turnNo++;
     activeTurn = null;
@@ -457,6 +461,28 @@
     } else {
       showReconnect('Live session ended. Tap Reconnect.');
     }
+
+    const frontendState = {
+      recording,
+      activeTurn: activeTurn ? activeTurn.no : null,
+      buttonEnabled: !talk.disabled,
+      setupReady
+    };
+    console.log('[TURN STATE]', turn.no, frontendState);
+
+    fetch('/api/metric', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        turn: turn.no,
+        user_text: turn.userText,
+        ai_text: turn.aiText,
+        first_audio_ms: turn.firstAudioMs == null ? null : Math.round(turn.firstAudioMs),
+        frontend_state: frontendState
+      })
+    }).catch(() => {});
+
     render();
   }
 
