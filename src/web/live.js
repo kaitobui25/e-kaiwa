@@ -80,19 +80,39 @@
 
   function pronunciationHtml(result) {
     if (!result) return '<span class="muted">Pronunciation unavailable.</span>';
+
     const score = value => Math.max(0, Math.min(100, Math.round(Number(value || 0))));
-    let html = `<b>Pronunciation ${score(result.pronunciation_score)}</b> · fluency ${score(result.fluency_score)} · intonation ${score(result.intonation_score)}`;
+    const overall = score(result.overall_score ?? result.pronunciation_score);
+    const summary = result.summary || result.summary_ja || '';
+    const scoreDetails = [
+      `Pronunciation ${score(result.pronunciation_score)} · Fluency ${score(result.fluency_score)} · Intonation ${score(result.intonation_score)}`,
+      summary
+    ].filter(Boolean).map(escapeHtml).join('<br>');
+
+    let html = `<div class="pronunciation-compact">
+      <span>Pronunciation <span class="pron-score has-tooltip" tabindex="0">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span></span>`;
 
     const problems = Array.isArray(result.problems) ? result.problems.slice(0, 3) : [];
-    for (const problem of problems) {
-      html += `<br>• <b>${escapeHtml(problem.word || '?')}</b> ${escapeHtml(problem.sound || '')}`;
-      const tip = problem.tip || problem.tip_ja || '';
-      if (tip) html += ` — ${escapeHtml(tip)}`;
+    if (problems.length) {
+      const problemHtml = problems.map(problem => {
+        const severity = problem.severity === 'red' ? 'red' : 'yellow';
+        const tip = problem.tip || problem.tip_ja || '';
+        const details = [];
+        if (problem.sound) details.push(`<strong>${escapeHtml(problem.sound)}</strong>`);
+        if (problem.heard_like) details.push(`heard ≈ ${escapeHtml(problem.heard_like)}`);
+        if (tip) details.push(escapeHtml(tip));
+        const tooltip = details.join('<br>');
+        const tooltipHtml = tooltip
+          ? `<span class="tooltip" role="tooltip">${tooltip}</span>`
+          : '';
+        const tooltipClass = tooltip ? ' has-tooltip' : '';
+        const tabIndex = tooltip ? ' tabindex="0"' : '';
+        return `<span class="pron-problem severity-${severity}${tooltipClass}"${tabIndex}>${escapeHtml(problem.word || '?')}${tooltipHtml}</span>`;
+      }).join('');
+      html += `<span class="pron-problems">${problemHtml}</span>`;
     }
 
-    const summary = result.summary || result.summary_ja || '';
-    if (summary) html += `<br>${escapeHtml(summary)}`;
-    return html;
+    return html + '</div>';
   }
 
   function render() {
@@ -116,9 +136,9 @@
       }
 
       return `<div class="turn">
-        <div class="who">You</div><div class="text">${escapeHtml(turn.userText || '…')}</div>
-        <div class="who">AI ${latency}</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
-        <div class="who">Coach</div><div class="coach">${coach}</div>
+        <div class="who who-you">You</div><div class="text">${escapeHtml(turn.userText || '…')}</div>
+        <div class="who who-ai">AI ${latency}</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
+        <div class="who who-coach">Coach</div><div class="coach">${coach}</div>
       </div>`;
     }).join('');
   }
