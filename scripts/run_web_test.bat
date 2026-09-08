@@ -12,15 +12,15 @@ if not exist "api.txt" (
 )
 
 if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" "web_app.py" --share
+  ".venv\Scripts\python.exe" "web_app.py"
   set "EXITCODE=%ERRORLEVEL%"
 ) else (
   where py >nul 2>nul
   if %ERRORLEVEL%==0 (
-    py -3 "web_app.py" --share
+    py -3 "web_app.py"
     set "EXITCODE=%ERRORLEVEL%"
   ) else (
-    python "web_app.py" --share
+    python "web_app.py"
     set "EXITCODE=%ERRORLEVEL%"
   )
 )
