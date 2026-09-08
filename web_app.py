@@ -172,7 +172,7 @@ def process_turn(audio, state, teacher_name: str, pronunciation_enabled: bool):
             return conversation_markdown(history), "", "", None, "STT failed. Try speaking again.", state, None
 
         teacher_choice = TEACHER_UI.get(teacher_name, "2")
-        _, resolved_teacher_name, teacher_rule = full.TEACHER_MODES[teacher_choice]
+        resolved_teacher_name, teacher_rule = full.TEACHER_MODES[teacher_choice]
 
         pron_result = None
         pron_latency = 0.0
