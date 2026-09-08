@@ -4,533 +4,58 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>E-KAIWA Live</title>
-  <style>
-    :root { font-family: system-ui, -apple-system, sans-serif; color-scheme: light dark; }
-    body { margin: 0; background: #111; color: #f5f5f5; }
-    main { max-width: 720px; margin: 0 auto; padding: 18px 16px 60px; }
-    h1 { margin: 0 0 4px; font-size: 26px; }
-    .muted { color: #aaa; font-size: 14px; }
-    .card { background: #1c1c1c; border: 1px solid #333; border-radius: 16px; padding: 14px; margin-top: 14px; }
-    #talk { width: 100%; min-height: 88px; border: 0; border-radius: 18px; font-size: 22px; font-weight: 700; cursor: pointer; }
-    #talk.ready { background: #f2f2f2; color: #111; }
-    #talk.recording { background: #d93636; color: white; }
-    #talk:disabled { opacity: .45; cursor: default; }
-    #metric { font-size: 24px; font-weight: 800; margin-top: 10px; }
-    .turn { border-top: 1px solid #333; padding-top: 12px; margin-top: 12px; }
-    .turn:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
-    .who { color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-top: 8px; }
-    .text { font-size: 18px; line-height: 1.45; white-space: pre-wrap; }
-    .coach { font-size: 15px; line-height: 1.5; }
-    .good { color: #7ddd9a; }
-    .error { color: #ff7777; }
-    .setup-state { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 13px; color: #aaa; }
-    .setup-dot { width: 10px; height: 10px; border-radius: 50%; background: #e55353; box-shadow: 0 0 0 2px rgba(229,83,83,.16); }
-    .setup-dot.on { background: #39d353; box-shadow: 0 0 0 2px rgba(57,211,83,.16); }
-    select, input { font-size: 16px; padding: 6px; }
-    label { display: block; margin: 10px 0; }
-  </style>
+  <link rel="stylesheet" href="/live.css">
+  <script src="/live.js" defer></script>
 </head>
 <body>
 <main>
   <h1>E-KAIWA Live</h1>
   <div class="muted">Gemini Live audio → audio · hands-free turns · coach runs separately</div>
 
-  <div class="card">
+  <section class="card" aria-label="Conversation controls">
     <button id="talk" class="ready" disabled>Connecting…</button>
     <div id="status" class="muted">Creating secure live session…</div>
-    <div class="setup-state"><span id="setup-dot" class="setup-dot"></span><span id="setup-label">setupReady=false</span></div>
+    <div class="setup-state">
+      <span id="setup-dot" class="setup-dot" aria-hidden="true"></span>
+      <span id="setup-label">setupReady=false</span>
+    </div>
     <div id="metric"></div>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="card" aria-label="Conversation history">
     <div id="conversation"><span class="muted">No conversation yet.</span></div>
-  </div>
+  </section>
 
   <details class="card">
     <summary>Settings</summary>
-    <label>Teacher
-      <select id="teacher"><option>Easy</option><option selected>Normal</option><option>Strict</option></select>
+
+    <label for="teacher">Teacher</label>
+    <select id="teacher">
+      <option>Easy</option>
+      <option selected>Normal</option>
+      <option>Strict</option>
+    </select>
+
+    <label for="feedback-language">Correction language</label>
+    <select id="feedback-language">
+      <option value="vi" selected>Tiếng Việt</option>
+      <option value="ja">日本語</option>
+    </select>
+
+    <label for="silence-duration">Silence timeout</label>
+    <select id="silence-duration">
+      <option value="700">0.7 s</option>
+      <option value="1000" selected>1.0 s</option>
+      <option value="1200">1.2 s</option>
+      <option value="1500">1.5 s</option>
+    </select>
+    <span class="muted setting-note">Ends your turn after this much silence. Applies on next reconnect.</span>
+
+    <label>
+      <input id="pron" type="checkbox" checked>
+      Pronunciation coaching
     </label>
-    <label>Correction language
-      <select id="feedback-language">
-        <option value="vi" selected>Tiếng Việt</option>
-        <option value="ja">日本語</option>
-      </select>
-    </label>
-    <label>Silence timeout
-      <select id="silence-duration">
-        <option value="700">0.7 s</option>
-        <option value="1000" selected>1.0 s</option>
-        <option value="1200">1.2 s</option>
-        <option value="1500">1.5 s</option>
-      </select>
-      <span class="muted">Ends your turn after this much silence. Applies on next reconnect.</span>
-    </label>
-    <label><input id="pron" type="checkbox" checked> Pronunciation coaching</label>
   </details>
 </main>
-
-<script>
-(() => {
-  const MODEL = 'gemini-3.1-flash-live-preview';
-  const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
-
-  const talk = document.getElementById('talk');
-  const statusEl = document.getElementById('status');
-  const setupDotEl = document.getElementById('setup-dot');
-  const setupLabelEl = document.getElementById('setup-label');
-  const metricEl = document.getElementById('metric');
-  const conversationEl = document.getElementById('conversation');
-  const teacherEl = document.getElementById('teacher');
-  const feedbackLanguageEl = document.getElementById('feedback-language');
-  const silenceDurationEl = document.getElementById('silence-duration');
-  const pronEl = document.getElementById('pron');
-
-  const savedSilence = localStorage.getItem('silenceDurationMs');
-  if (['700', '1000', '1200', '1500'].includes(savedSilence)) silenceDurationEl.value = savedSilence;
-
-  let ws = null;
-  let sessionId = null;
-  let setupReady = false;
-  let reconnectNeeded = false;
-  let connecting = false;
-  let recording = false;
-  let inputCtx = null;
-  let micStream = null;
-  let micSource = null;
-  let processor = null;
-  let playCtx = null;
-  let playAt = 0;
-  let armTimer = null;
-  let turnNo = 1;
-  let activeTurn = null;
-  const turns = [];
-
-  const setStatus = (text, cls='') => {
-    statusEl.className = 'muted ' + cls;
-    statusEl.textContent = text;
-  };
-
-  function updateSetupIndicator() {
-    setupDotEl.className = setupReady ? 'setup-dot on' : 'setup-dot';
-    setupLabelEl.textContent = `setupReady=${setupReady}`;
-  }
-  updateSetupIndicator();
-
-  const escapeHtml = s => String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-
-  const concatTranscript = (oldText, newText) => {
-    const a = (oldText || '').trim();
-    const b = (newText || '').trim();
-    if (!a) return b;
-    if (!b || a.endsWith(b)) return a;
-    if (b.startsWith(a)) return b;
-    return a + (/[\s,.!?]$/.test(a) ? '' : ' ') + b;
-  };
-
-  function pronHtml(result) {
-    if (!result) return '<span class="muted">Pronunciation unavailable.</span>';
-    const score = v => Math.max(0, Math.min(100, Math.round(Number(v || 0))));
-    let html = `<b>Pronunciation ${score(result.pronunciation_score)}</b> · fluency ${score(result.fluency_score)} · intonation ${score(result.intonation_score)}`;
-    for (const p of (Array.isArray(result.problems) ? result.problems.slice(0, 3) : [])) {
-      html += `<br>• <b>${escapeHtml(p.word || '?')}</b> ${escapeHtml(p.sound || '')}`;
-      const tip = p.tip || p.tip_ja || '';
-      if (tip) html += ` — ${escapeHtml(tip)}`;
-    }
-    const summary = result.summary || result.summary_ja || '';
-    if (summary) html += `<br>${escapeHtml(summary)}`;
-    return html;
-  }
-
-  function render() {
-    if (!turns.length) {
-      conversationEl.innerHTML = '<span class="muted">No conversation yet.</span>';
-      return;
-    }
-    conversationEl.innerHTML = turns.slice().reverse().map(t => {
-      const latency = t.firstAudioMs == null ? '' : `<span class="good">first audio ${Math.round(t.firstAudioMs)} ms</span>`;
-      let coach = '<span class="muted">Coach running…</span>';
-      if (t.coach) {
-        coach = `<b>Correction:</b> ${escapeHtml(t.coach.correction || t.userText || '')}`;
-        const explanation = t.coach.explanation || t.coach.explanation_ja || '';
-        if (explanation) coach += `<br>${escapeHtml(explanation)}`;
-        if (pronEl.checked) coach += `<br><br>${pronHtml(t.coach.pronunciation)}`;
-        coach += `<br><span class="muted">coach ${Number(t.coach.coach_wall_s || 0).toFixed(2)}s</span>`;
-      }
-      return `<div class="turn">
-        <div class="who">You</div><div class="text">${escapeHtml(t.userText || '…')}</div>
-        <div class="who">AI ${latency}</div><div class="text">${escapeHtml(t.aiText || '…')}</div>
-        <div class="who">Coach</div><div class="coach">${coach}</div>
-      </div>`;
-    }).join('');
-  }
-
-  function createTurn() {
-    if (activeTurn || !recording) return;
-    activeTurn = {
-      no: turnNo,
-      pcmChunks: [],
-      userText: '',
-      aiText: '',
-      speechEndAt: null,
-      firstAudioMs: null,
-      coachSent: false,
-      coach: null
-    };
-    turns.push(activeTurn);
-    render();
-  }
-
-  async function readJsonResponse(res) {
-    const text = await res.text();
-    try { return JSON.parse(text); }
-    catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 160)}`); }
-  }
-
-  function cleanupMic() {
-    clearTimeout(armTimer);
-    armTimer = null;
-    try { processor?.disconnect(); } catch {}
-    try { micSource?.disconnect(); } catch {}
-    micStream?.getTracks().forEach(t => t.stop());
-    try { inputCtx?.close(); } catch {}
-    processor = null;
-    micSource = null;
-    micStream = null;
-    inputCtx = null;
-  }
-
-  function showReconnect(message) {
-    recording = false;
-    activeTurn = null;
-    cleanupMic();
-    setupReady = false;
-    updateSetupIndicator();
-    reconnectNeeded = true;
-    connecting = false;
-    talk.disabled = false;
-    talk.className = 'ready';
-    talk.textContent = '↻ Reconnect';
-    setStatus(message || 'Live session ended. Tap Reconnect.');
-  }
-
-  async function newLiveSession() {
-    if (connecting) return;
-    connecting = true;
-    reconnectNeeded = false;
-    setupReady = false;
-    updateSetupIndicator();
-    talk.disabled = true;
-    talk.className = 'ready';
-    talk.textContent = 'Connecting…';
-    setStatus('Creating secure live session…');
-
-    const res = await fetch('/api/session', {cache: 'no-store'});
-    const data = await readJsonResponse(res);
-    if (!res.ok) throw new Error(data.error || 'Could not create live session');
-
-    sessionId = data.session_id;
-    const url = `${WS_BASE}?access_token=${encodeURIComponent(data.token)}`;
-    ws = new WebSocket(url);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      setStatus('WebSocket open. Configuring Gemini Live…');
-      ws.send(JSON.stringify({
-        setup: {
-          model: `models/${MODEL}`,
-          generationConfig: { responseModalities: ['AUDIO'] },
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              silenceDurationMs: Number(silenceDurationEl.value)
-            }
-          },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {}
-        }
-      }));
-    };
-
-    ws.onmessage = onLiveMessage;
-    ws.onerror = () => setStatus('Gemini Live WebSocket error.', 'error');
-    ws.onclose = ev => {
-      const reason = ev.reason ? `: ${ev.reason}` : '';
-      showReconnect(ev.code === 1008
-        ? 'Live session paused after being idle. Tap Reconnect.'
-        : `Live session closed (${ev.code})${reason}. Tap Reconnect.`);
-    };
-  }
-
-  async function webSocketDataToText(data) {
-    if (typeof data === 'string') return data;
-    if (data instanceof Blob) return await data.text();
-    if (data instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(data));
-    if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
-    return String(data);
-  }
-
-  async function onLiveMessage(event) {
-    let msg;
-    try {
-      msg = JSON.parse(await webSocketDataToText(event.data));
-    } catch (e) {
-      setStatus(`Could not decode Gemini message: ${e.message}`, 'error');
-      return;
-    }
-
-    if (msg.error) {
-      setStatus(`Gemini error: ${msg.error.message || JSON.stringify(msg.error)}`, 'error');
-      return;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(msg, 'setupComplete')) {
-      connecting = false;
-      reconnectNeeded = false;
-      setupReady = true;
-      updateSetupIndicator();
-      talk.disabled = false;
-      talk.className = 'ready';
-      talk.textContent = '🎙 Start conversation';
-      setStatus('Ready. Tap once, then talk hands-free.');
-      return;
-    }
-
-    const content = msg.serverContent;
-    if (!content || !activeTurn) return;
-
-    if (content.inputTranscription?.text) {
-      activeTurn.userText = concatTranscript(activeTurn.userText, content.inputTranscription.text);
-      render();
-    }
-    if (content.outputTranscription?.text) {
-      activeTurn.aiText = concatTranscript(activeTurn.aiText, content.outputTranscription.text);
-      render();
-    }
-
-    for (const part of (content.modelTurn?.parts || [])) {
-      if (part.inlineData?.data) queueAiPcm(part.inlineData.data, activeTurn);
-    }
-
-    if (content.turnComplete) finishTurn(activeTurn);
-  }
-
-  async function ensurePlayContext() {
-    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (playCtx.state === 'suspended') await playCtx.resume();
-  }
-
-  function b64ToBytes(b64) {
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
-  function bytesToB64(bytes) {
-    let out = '';
-    const step = 0x8000;
-    for (let i = 0; i < bytes.length; i += step) out += String.fromCharCode(...bytes.subarray(i, i + step));
-    return btoa(out);
-  }
-
-  function queueAiPcm(b64, turn) {
-    if (!playCtx) return;
-    const bytes = b64ToBytes(b64);
-    const count = Math.floor(bytes.byteLength / 2);
-    const floats = new Float32Array(count);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let i = 0; i < count; i++) floats[i] = view.getInt16(i * 2, true) / 32768;
-    const buffer = playCtx.createBuffer(1, count, 24000);
-    buffer.copyToChannel(floats, 0);
-    const source = playCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(playCtx.destination);
-    const now = playCtx.currentTime;
-    if (playAt < now + 0.025) playAt = now + 0.025;
-    source.start(playAt);
-    playAt += buffer.duration;
-  }
-
-  function downsample(input, inputRate, outputRate=16000) {
-    if (inputRate === outputRate) return new Float32Array(input);
-    const ratio = inputRate / outputRate;
-    const length = Math.max(1, Math.round(input.length / ratio));
-    const output = new Float32Array(length);
-    for (let i = 0; i < length; i++) {
-      const start = Math.floor(i * ratio);
-      const end = Math.min(input.length, Math.max(start + 1, Math.floor((i + 1) * ratio)));
-      let sum = 0;
-      for (let j = start; j < end; j++) sum += input[j];
-      output[i] = sum / (end - start);
-    }
-    return output;
-  }
-
-  function floatToPcm16(floatData) {
-    const pcm = new Int16Array(floatData.length);
-    for (let i = 0; i < floatData.length; i++) {
-      const s = Math.max(-1, Math.min(1, floatData[i]));
-      pcm[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
-    }
-    return pcm;
-  }
-
-  function pcmToBase64(pcm) {
-    return bytesToB64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
-  }
-
-  async function startConversation() {
-    if (!setupReady || recording) return;
-    await ensurePlayContext();
-    metricEl.textContent = '';
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true},
-      video: false
-    });
-    inputCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (inputCtx.state === 'suspended') await inputCtx.resume();
-    micSource = inputCtx.createMediaStreamSource(micStream);
-    processor = inputCtx.createScriptProcessor(4096, 1, 1);
-
-    recording = true;
-    createTurn();
-
-    processor.onaudioprocess = ev => {
-      if (!recording || !activeTurn || ws?.readyState !== WebSocket.OPEN) return;
-      const mono = ev.inputBuffer.getChannelData(0);
-      const pcm = floatToPcm16(downsample(mono, inputCtx.sampleRate, 16000));
-      activeTurn.pcmChunks.push(new Int16Array(pcm));
-      ws.send(JSON.stringify({
-        realtimeInput: { audio: { data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000' } }
-      }));
-    };
-
-    micSource.connect(processor);
-    processor.connect(inputCtx.destination);
-    talk.className = 'recording';
-    talk.textContent = '■ Stop conversation';
-    setStatus('Listening… speak naturally.');
-  }
-
-  function stopConversation() {
-    if (!recording) return;
-    recording = false;
-    activeTurn = null;
-    cleanupMic();
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
-    }
-    talk.disabled = false;
-    talk.className = 'ready';
-    talk.textContent = '🎙 Start conversation';
-    setStatus('Conversation stopped.');
-  }
-
-  function joinPcm(chunks) {
-    const total = chunks.reduce((n, c) => n + c.length, 0);
-    const all = new Int16Array(total);
-    let offset = 0;
-    for (const c of chunks) { all.set(c, offset); offset += c.length; }
-    return all;
-  }
-
-  async function runCoach(turn) {
-    if (turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
-    turn.coachSent = true;
-    const pcm = joinPcm(turn.pcmChunks);
-    try {
-      const res = await fetch('/api/coach', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          session_id: sessionId,
-          turn: turn.no,
-          transcript: turn.userText,
-          teacher: teacherEl.value,
-          feedback_language: feedbackLanguageEl.value,
-          pronunciation_enabled: pronEl.checked,
-          sample_rate: 16000,
-          pcm_b64: pcmToBase64(pcm)
-        })
-      });
-      const data = await readJsonResponse(res);
-      if (!res.ok) throw new Error(data.error || 'coach failed');
-      turn.coach = data;
-      render();
-    } catch (e) {
-      turn.coach = {correction: turn.userText, explanation: `Coach error: ${e.message}`, pronunciation: null, coach_wall_s: 0};
-      render();
-    }
-  }
-
-  function armNextTurnAfterPlayback() {
-    clearTimeout(armTimer);
-    const remainingMs = playCtx ? Math.max(0, (playAt - playCtx.currentTime) * 1000 + 100) : 100;
-    setStatus(remainingMs > 150 ? 'AI speaking…' : 'Listening…');
-    armTimer = setTimeout(() => {
-      armTimer = null;
-      if (!recording || !setupReady || ws?.readyState !== WebSocket.OPEN) return;
-      createTurn();
-      setStatus('Listening… speak naturally.');
-    }, remainingMs);
-  }
-
-  function finishTurn(turn) {
-    runCoach(turn);
-    turnNo++;
-    activeTurn = null;
-
-    const frontendState = {
-      recording,
-      activeTurn: null,
-      buttonEnabled: !talk.disabled,
-      setupReady
-    };
-    console.log('[TURN STATE]', turn.no, frontendState);
-
-    fetch('/api/metric', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        session_id: sessionId,
-        turn: turn.no,
-        user_text: turn.userText,
-        ai_text: turn.aiText,
-        first_audio_ms: null,
-        frontend_state: frontendState
-      })
-    }).catch(() => {});
-
-    render();
-    if (recording && setupReady && ws?.readyState === WebSocket.OPEN) {
-      armNextTurnAfterPlayback();
-    } else if (!setupReady || ws?.readyState !== WebSocket.OPEN) {
-      showReconnect('Live session ended. Tap Reconnect.');
-    }
-  }
-
-  silenceDurationEl.addEventListener('change', () => {
-    localStorage.setItem('silenceDurationMs', silenceDurationEl.value);
-    setStatus(`Silence timeout ${silenceDurationEl.value} ms saved. Reconnect to apply.`);
-  });
-
-  talk.addEventListener('click', async () => {
-    try {
-      if (reconnectNeeded || !setupReady || !ws || ws.readyState !== WebSocket.OPEN) {
-        await newLiveSession();
-        return;
-      }
-      if (recording) stopConversation(); else await startConversation();
-    } catch (e) {
-      showReconnect(`Connection error: ${e.message}. Tap Reconnect.`);
-    }
-  });
-
-  newLiveSession().catch(e => {
-    showReconnect(`Startup error: ${e.message}. Tap Reconnect.`);
-  });
-})();
-</script>
 </body>
 </html>
