@@ -23,6 +23,7 @@ if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
 import test_full_loop as full  # noqa: E402
+import web_coach  # noqa: E402
 
 MODEL = "gemini-3.1-flash-live-preview"
 TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
@@ -81,12 +82,6 @@ def get_session_dir(session_id: str) -> Path | None:
 
 
 def create_ephemeral_token(api_key: str) -> str:
-    """Create a short-lived token; Live setup is supplied by the first WS message.
-
-    The current AuthToken REST schema accepts uses/expiry fields and optionally
-    bidiGenerateContentSetup. Leaving setup unconstrained here lets the browser
-    provide the model/config in its first BidiGenerateContentSetup message.
-    """
     now = datetime.now(timezone.utc)
     body = {
         "uses": 1,
@@ -134,6 +129,7 @@ def coach_turn(payload: dict) -> dict:
     teacher_choice = TEACHER_UI.get(teacher_name, "2")
     resolved_teacher, teacher_rule = full.TEACHER_MODES[teacher_choice]
     pronunciation_enabled = bool(payload.get("pronunciation_enabled", True))
+    feedback_language = "ja" if str(payload.get("feedback_language", "vi")).lower() == "ja" else "vi"
     sample_rate = int(payload.get("sample_rate", 16000))
     raw_pcm = base64.b64decode(str(payload.get("pcm_b64", "")), validate=True)
     if not raw_pcm:
@@ -145,12 +141,16 @@ def coach_turn(payload: dict) -> dict:
     started = time.perf_counter()
 
     def correction_job():
-        return full.make_turn(key, transcript, resolved_teacher, teacher_rule, [])
+        return web_coach.correction(
+            full, key, transcript, resolved_teacher, teacher_rule, feedback_language
+        )
 
     def pronunciation_job():
         if not pronunciation_enabled:
             return None, 0.0, None
-        return full.run_pronunciation(key, user_wav, transcript, teacher_choice)
+        return web_coach.pronunciation(
+            full, key, user_wav, transcript, teacher_choice, feedback_language
+        )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         correction_future = pool.submit(correction_job)
@@ -160,10 +160,10 @@ def coach_turn(payload: dict) -> dict:
 
     coach_wall = time.perf_counter() - started
     correction = transcript
-    explanation_ja = ""
+    explanation = ""
     if turn:
         correction = turn.get("correction") or transcript
-        explanation_ja = turn.get("explanation_ja") or ""
+        explanation = turn.get("explanation") or ""
 
     log_event(
         session_dir,
@@ -172,9 +172,10 @@ def coach_turn(payload: dict) -> dict:
         user_audio=user_wav.name,
         user_text=transcript,
         teacher=resolved_teacher,
+        feedback_language=feedback_language,
         key_slot=key_no,
         correction=correction,
-        explanation_ja=explanation_ja,
+        explanation=explanation,
         pronunciation={
             "enabled": pronunciation_enabled,
             "model": pron_model,
@@ -190,7 +191,8 @@ def coach_turn(payload: dict) -> dict:
     )
     return {
         "correction": correction,
-        "explanation_ja": explanation_ja,
+        "explanation": explanation,
+        "feedback_language": feedback_language,
         "pronunciation": pron_result,
         "coach_wall_s": round(coach_wall, 3),
     }
