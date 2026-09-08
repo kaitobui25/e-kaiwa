@@ -57,6 +57,15 @@
         <option value="ja">日本語</option>
       </select>
     </label>
+    <label>Silence timeout
+      <select id="silence-duration">
+        <option value="700">0.7 s</option>
+        <option value="1000" selected>1.0 s</option>
+        <option value="1200">1.2 s</option>
+        <option value="1500">1.5 s</option>
+      </select>
+      <span class="muted">Ends your turn after this much silence. Applies on next reconnect.</span>
+    </label>
     <label><input id="pron" type="checkbox" checked> Pronunciation coaching</label>
   </details>
 </main>
@@ -74,7 +83,11 @@
   const conversationEl = document.getElementById('conversation');
   const teacherEl = document.getElementById('teacher');
   const feedbackLanguageEl = document.getElementById('feedback-language');
+  const silenceDurationEl = document.getElementById('silence-duration');
   const pronEl = document.getElementById('pron');
+
+  const savedSilence = localStorage.getItem('silenceDurationMs');
+  if (['700', '1000', '1200', '1500'].includes(savedSilence)) silenceDurationEl.value = savedSilence;
 
   let ws = null;
   let sessionId = null;
@@ -195,6 +208,12 @@
         setup: {
           model: `models/${MODEL}`,
           generationConfig: { responseModalities: ['AUDIO'] },
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              silenceDurationMs: Number(silenceDurationEl.value)
+            }
+          },
           inputAudioTranscription: {},
           outputAudioTranscription: {}
         }
@@ -485,6 +504,11 @@
 
     render();
   }
+
+  silenceDurationEl.addEventListener('change', () => {
+    localStorage.setItem('silenceDurationMs', silenceDurationEl.value);
+    setStatus(`Silence timeout ${silenceDurationEl.value} ms saved. Reconnect to apply.`);
+  });
 
   talk.addEventListener('click', async () => {
     try {
