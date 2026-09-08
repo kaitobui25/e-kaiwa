@@ -18,7 +18,7 @@ set "PYTHONPATH=%CD%\src"
 
 echo ========================================
 echo E-KAIWA PYTHON TESTS
- echo ========================================
+echo ========================================
 echo.
 %PY% -m unittest discover -s src\tests\python -p "test_*.py" -v
 set "RC=%ERRORLEVEL%"
