@@ -71,20 +71,13 @@ def parse_json_text(text: str) -> dict:
     return result
 
 
-def create_ephemeral_token(api_key: str, *, model: str | None = None) -> str:
+def create_ephemeral_token(api_key: str) -> str:
     now = datetime.now(timezone.utc)
-    body: dict = {
+    body = {
         "uses": 1,
         "expireTime": (now + timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
         "newSessionExpireTime": (now + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
     }
-    if model:
-        body["liveConnectConstraints"] = {
-            "model": f"models/{model}",
-            "config": {
-                "responseModalities": ["AUDIO"],
-            },
-        }
 
     status, payload, _, error = post_json(TOKEN_URL, body, api_key, timeout_s=20)
     if status != 200:
