@@ -226,7 +226,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 effective_model = fallback_model if use_fallback else requested_model
                 persisted = runtime.settings.snapshot()["settings"]
                 try:
-                    token = create_ephemeral_token(runtime.keys[0][1], model=effective_model)
+                    token = create_ephemeral_token(runtime.keys[0][1])
                     session_id, session_dir = runtime.sessions.create(mode="live", model=effective_model)
                     runtime.sessions.log(
                         session_dir,
