@@ -24,7 +24,7 @@ const COPY = Object.freeze({
     pronunciation: '発音コーチ',
     start: '話し始める',
     stop: '会話を停止',
-    holdToTalk: 'タップして話す',
+    holdToTalk: '長押しして話す',
     releaseToSend: '離して送信',
     waiting: 'AIの返答を待っています…',
     reconnect: '再接続',
@@ -123,10 +123,22 @@ const DEV_TALK_LABELS = Object.freeze({
 
 export {publicTurnHtml};
 
+function resolveUiElements(elements) {
+  return {
+    ...elements,
+    overlayRoot: elements.overlayRoot || document.getElementById('overlay-root'),
+    overlayBackdrop: elements.overlayBackdrop || document.getElementById('overlay-backdrop'),
+    overlaySurface: elements.overlaySurface || document.getElementById('overlay-surface'),
+    overlayDynamic: elements.overlayDynamic || document.getElementById('overlay-dynamic'),
+    quickLanguage: elements.quickLanguage || document.getElementById('quick-language'),
+    quickSpeed: elements.quickSpeed || document.getElementById('quick-speed')
+  };
+}
+
 export class UiController {
   constructor({mode = 'dev', elements, onAction = () => {}}) {
     this.mode = mode === 'public' ? 'public' : 'dev';
-    this.elements = elements;
+    this.elements = resolveUiElements(elements);
     this.onAction = onAction;
     this.language = 'ja';
     this.theme = 'light';
@@ -140,19 +152,20 @@ export class UiController {
 
     this.overlay = new UiOverlayController({
       mode: this.mode,
-      root: elements.overlayRoot,
-      backdrop: elements.overlayBackdrop,
-      surface: elements.overlaySurface,
-      dynamic: elements.overlayDynamic,
-      settingsPanel: elements.settingsPanel,
-      settingsOpen: elements.settingsOpen,
-      settingsClose: elements.settingsClose,
+      root: this.elements.overlayRoot,
+      backdrop: this.elements.overlayBackdrop,
+      surface: this.elements.overlaySurface,
+      dynamic: this.elements.overlayDynamic,
+      settingsPanel: this.elements.settingsPanel,
+      settingsOpen: this.elements.settingsOpen,
+      settingsClose: this.elements.settingsClose,
       translate: key => this.t(key),
       audioActionsAllowed: () => !isHandsFreeMode(this.conversationMode),
       onAudioAction: (action, detail) => this.onAction(action, detail)
     });
 
     this._bindConversation();
+    this.elements.aiSpeed?.addEventListener('change', () => this.setPlaybackRate(this.elements.aiSpeed.value));
     this.applyMode(this.mode);
   }
 
@@ -277,6 +290,7 @@ export class UiController {
   render(turns, {pronunciationEnabled = true, conversationMode = this.conversationMode} = {}) {
     const target = this.elements.conversation;
     this.turns = Array.isArray(turns) ? turns : [];
+    this.setPlaybackRate(this.elements.aiSpeed?.value ?? this.playbackRate);
     if (!target) return;
     if (!this.turns.length) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(this.mode === 'public' ? this.t('noConversation') : 'No conversation yet.')}</div>`;
