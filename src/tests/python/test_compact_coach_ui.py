@@ -5,66 +5,93 @@ from pathlib import Path
 
 
 SRC = Path(__file__).resolve().parents[2]
-UI = SRC / "web" / "ui.js"
-CSS = SRC / "web" / "live.css"
-HTML = SRC / "web" / "live.html"
+WEB = SRC / "web"
+UI = WEB / "ui.js"
+RENDER = WEB / "ui_render.js"
+OVERLAY = WEB / "ui_overlay.js"
+ICONS = WEB / "ui_icons.js"
+CSS = WEB / "live.css"
+HTML = WEB / "live.html"
 
 
-class CompactCoachUiTests(unittest.TestCase):
-    def test_ai_and_user_are_rendered_on_opposite_sides(self):
+class ReferenceUiTests(unittest.TestCase):
+    def test_plan06_ui_is_split_by_clear_responsibility(self):
         ui = UI.read_text(encoding="utf-8")
+        render = RENDER.read_text(encoding="utf-8")
+        overlay = OVERLAY.read_text(encoding="utf-8")
+        icons = ICONS.read_text(encoding="utf-8")
+        self.assertIn("from './ui_render.js'", ui)
+        self.assertIn("from './ui_overlay.js'", ui)
+        self.assertIn("from './ui_icons.js'", ui)
+        self.assertIn("export function publicTurnHtml", render)
+        self.assertIn("export class UiOverlayController", overlay)
+        self.assertIn("export function icon", icons)
+        self.assertNotIn("generativelanguage.googleapis.com", render)
+        self.assertNotIn("generativelanguage.googleapis.com", overlay)
+
+    def test_conversation_keeps_ai_left_user_right_and_inline_actions(self):
+        render = RENDER.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
-        self.assertIn('class="message-row user-row"', ui)
-        self.assertIn('class="message-row ai-row"', ui)
-        self.assertIn('class="avatar user-avatar"', ui)
-        self.assertIn('class="avatar ai-avatar"', ui)
+        self.assertIn('class="message-row user-row"', render)
+        self.assertIn('class="message-row ai-row"', render)
+        self.assertIn('data-ui-action="open-replay"', render)
+        self.assertIn('data-ui-action="open-coach"', render)
+        self.assertIn('class="avatar user-avatar"', render)
+        self.assertIn('class="avatar ai-avatar"', render)
         self.assertIn(".user-row { justify-content: flex-end; }", css)
         self.assertIn(".ai-row { justify-content: flex-start; }", css)
+        self.assertIn("vertical-align: middle;", css)
 
-    def test_public_coach_uses_inline_replay_score_and_mode_specific_audio_actions(self):
-        ui = UI.read_text(encoding="utf-8")
+    def test_reference_shell_has_sticky_header_safe_dock_and_shared_overlay(self):
+        html = HTML.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
-        self.assertIn('class="user-inline-actions"', ui)
-        self.assertIn('class="inline-audio-button"', ui)
-        self.assertIn('data-action="replay-user"', ui)
-        self.assertIn('data-coach-toggle=', ui)
-        self.assertIn('class="score-pill coach-toggle"', ui)
-        self.assertIn('data-action="speak-correction"', ui)
-        self.assertIn('data-action="speak-problem"', ui)
-        self.assertIn(".user-inline-actions", css)
-        self.assertIn("white-space: nowrap;", css)
-
-    def test_coach_panel_closes_when_pointer_moves_outside_coach(self):
-        ui = UI.read_text(encoding="utf-8")
-        self.assertIn("_closeCoachPanels", ui)
-        self.assertIn("target.closest?.('[data-coach-panel], [data-coach-toggle]')", ui)
-        self.assertIn("if (!insideCoach) this._closeCoachPanels();", ui)
-        self.assertIn("aria-expanded", ui)
-
-    def test_problem_words_are_highlighted_inside_user_transcript(self):
-        ui = UI.read_text(encoding="utf-8")
-        css = CSS.read_text(encoding="utf-8")
-        self.assertIn("function highlightProblems(text, pronunciation)", ui)
-        self.assertIn("pron-problem", ui)
-        self.assertIn("text-decoration-skip-ink: none;", css)
-        self.assertIn(".pron-problem.severity-yellow", css)
-        self.assertIn(".pron-problem.severity-red", css)
-
-    def test_public_layout_has_sticky_header_safe_dock_and_modal_backdrop(self):
-        css = CSS.read_text(encoding="utf-8")
-        ui = UI.read_text(encoding="utf-8")
+        self.assertIn('id="overlay-root"', html)
+        self.assertIn('id="overlay-backdrop"', html)
+        self.assertIn('id="overlay-dynamic"', html)
+        self.assertIn('class="voice-waves', html)
+        self.assertIn('id="quick-language"', html)
+        self.assertIn('id="quick-speed"', html)
+        self.assertNotIn("⚙", html)
         self.assertIn("position: sticky;", css)
-        self.assertIn("scroll-margin-bottom: 160px;", css)
-        self.assertIn("body.settings-open::before", css)
-        self.assertIn("document.addEventListener('pointerdown'", ui)
+        self.assertIn("position: fixed;", css)
+        self.assertIn("env(safe-area-inset-top)", css)
+        self.assertIn("env(safe-area-inset-bottom)", css)
+        self.assertIn("scroll-margin-bottom: 176px;", css)
 
-    def test_dev_controls_remain_available_but_public_only_controls_are_separate(self):
+    def test_visual_system_uses_semantic_tokens_and_local_svg_icons(self):
+        css = CSS.read_text(encoding="utf-8")
+        html = HTML.read_text(encoding="utf-8")
+        for token in (
+            "--bg", "--surface", "--surface-soft", "--text", "--text-muted",
+            "--primary", "--success", "--warning", "--danger", "--shadow-sm", "--shadow-md"
+        ):
+            self.assertIn(token, css)
+        self.assertIn("body[data-theme=\"dark\"]", css)
+        self.assertIn("<svg", html)
+        self.assertNotIn("fonts.googleapis.com", html)
+        self.assertNotIn("cdnjs.cloudflare.com", html)
+
+    def test_overlay_closes_on_backdrop_escape_and_reuses_one_active_state(self):
+        overlay = OVERLAY.read_text(encoding="utf-8")
+        self.assertIn("this.backdrop?.addEventListener('click', () => this.close())", overlay)
+        self.assertIn("event.key === 'Escape'", overlay)
+        self.assertIn("this.state.open(type", overlay)
+        self.assertIn("this.state.close()", overlay)
+        self.assertIn("openCoach(turn)", overlay)
+        self.assertIn("openCorrection(turn)", overlay)
+        self.assertIn("openWord(turn", overlay)
+        self.assertIn("openReplay(turn)", overlay)
+
+    def test_public_and_dev_controls_remain_separate(self):
         html = HTML.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
         self.assertIn('class="dev-only"', html)
         self.assertIn('class="public-only"', html)
         self.assertIn('body[data-app-mode="dev"]', css)
         self.assertIn('body[data-app-mode="public"]', css)
+        self.assertIn('id="realtime-model"', html)
+        self.assertIn('id="coach-model"', html)
+        self.assertIn('body[data-app-mode="public"] .dev-only', css)
 
 
 if __name__ == "__main__":
