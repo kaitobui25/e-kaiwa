@@ -37,9 +37,9 @@ class ConfigTests(unittest.TestCase):
 
 
 class SessionTests(unittest.TestCase):
-    def test_session_id_validation_accepts_random_token_and_rejects_paths(self):
+    def test_session_id_validation_accepts_safe_random_token_and_rejects_paths(self):
         self.assertTrue(valid_session_id("abcdefghijklmnopqrstuvwxyz_ABCDEFG-123456"))
-        self.assertFalse(valid_session_id("20260908_120000_live"))
+        self.assertFalse(valid_session_id("too-short"))
         self.assertFalse(valid_session_id("../runtime_logs"))
         self.assertFalse(valid_session_id("a/b"))
         self.assertFalse(valid_session_id(""))
