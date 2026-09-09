@@ -144,7 +144,7 @@ import {
   }
 
   function pronunciationHtml(result) {
-    if (!result) return '<span class="muted">Pronunciation unavailable.</span>';
+    if (!result) return '';
 
     const score = value => Math.max(0, Math.min(100, Math.round(Number(value || 0))));
     const overall = score(result.overall_score ?? result.pronunciation_score);
@@ -154,9 +154,17 @@ import {
       summary
     ].filter(Boolean).map(escapeHtml).join('<br>');
 
-    return `<div class="pronunciation-compact">
-      <span>Pronunciation <span class="pron-score has-tooltip" tabindex="0">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span></span>
-    </div>`;
+    return `<span class="pron-score has-tooltip" tabindex="0" aria-label="Pronunciation score ${overall}">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span>`;
+  }
+
+  function coachDetailsHtml(turn) {
+    if (!turn.coach) return '<span class="muted">Coach running…</span>';
+
+    let details = `<div><strong>Correction:</strong> ${escapeHtml(turn.coach.correction || turn.userText || '')}</div>`;
+    const explanation = turn.coach.explanation || turn.coach.explanation_ja || '';
+    if (explanation) details += `<div class="coach-explanation">${escapeHtml(explanation)}</div>`;
+    details += `<div class="coach-runtime">${Number(turn.coach.coach_wall_s || 0).toFixed(2)}s</div>`;
+    return details;
   }
 
   function render() {
@@ -177,15 +185,12 @@ import {
 
       let coachSection = '';
       if (isCoachEligible(turn)) {
-        let coach = '<span class="muted">Coach running…</span>';
-        if (turn.coach) {
-          coach = `<b>Correction:</b> ${escapeHtml(turn.coach.correction || turn.userText || '')}`;
-          const explanation = turn.coach.explanation || turn.coach.explanation_ja || '';
-          if (explanation) coach += `<br>${escapeHtml(explanation)}`;
-          if (pronEl.checked) coach += `<br><br>${pronunciationHtml(turn.coach.pronunciation)}`;
-          coach += `<br><span class="muted">coach ${Number(turn.coach.coach_wall_s || 0).toFixed(2)}s</span>`;
-        }
-        coachSection = `<div class="who who-coach">Coach</div><div class="coach">${coach}</div>`;
+        const coachDetails = coachDetailsHtml(turn);
+        const scoreHtml = pronEl.checked ? pronunciationHtml(turn.coach?.pronunciation) : '';
+        coachSection = `<div class="coach-summary">
+          <span class="who who-coach coach-trigger has-tooltip" tabindex="0">Coach<span class="tooltip coach-tooltip" role="tooltip">${coachDetails}</span></span>
+          ${scoreHtml}
+        </div>`;
       }
 
       return `<div class="turn">
