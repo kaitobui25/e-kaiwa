@@ -8,17 +8,11 @@ SRC_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = SRC_ROOT.parent
 WEB_DIR = SRC_ROOT / "web"
 API_FILE = PROJECT_ROOT / "api.txt"
+CONFIG_FILE = PROJECT_ROOT / "config.yaml"
 LOG_ROOT = PROJECT_ROOT / "runtime_logs"
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 TOKEN_URL = f"{API_BASE}/auth_tokens"
-LIVE_MODEL = "gemini-3.1-flash-live-preview"
-COACH_LLM_MODEL = "gemini-3.5-flash-lite"
-PRONUNCIATION_MODELS = (
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.6-flash",
-)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7860

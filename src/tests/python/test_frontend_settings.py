@@ -7,6 +7,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[2]
 HTML = SRC / "web" / "live.html"
 JS = SRC / "web" / "live.js"
+SERVER = SRC / "e_kaiwa" / "server.py"
 
 
 class FrontendSettingsTests(unittest.TestCase):
@@ -17,13 +18,42 @@ class FrontendSettingsTests(unittest.TestCase):
             self.assertIn(f'value="{value}"', html)
         self.assertIn('<option value="0.8" selected>0.8×</option>', html)
 
-    def test_ai_speed_is_persisted_and_applied_to_playback_queue(self):
+    def test_settings_are_loaded_and_persisted_through_server_api(self):
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn("fetch('/api/settings', {cache: 'no-store'})", js)
+        self.assertIn("fetch('/api/settings', {", js)
+        self.assertIn("method: 'POST'", js)
+        self.assertNotIn("localStorage.getItem", js)
+        self.assertNotIn("localStorage.setItem", js)
+
+    def test_ai_speed_is_applied_to_playback_queue(self):
         js = JS.read_text(encoding="utf-8")
         self.assertIn("const DEFAULT_AI_SPEED = '0.8';", js)
-        self.assertIn("localStorage.getItem('aiPlaybackRate')", js)
-        self.assertIn("localStorage.setItem('aiPlaybackRate', value)", js)
         self.assertIn("source.playbackRate.value = rate;", js)
         self.assertIn("state.playAt += buffer.duration / rate;", js)
+
+    def test_realtime_and_coach_model_selectors_exist(self):
+        html = HTML.read_text(encoding="utf-8")
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn('id="realtime-model"', html)
+        self.assertIn('id="coach-model"', html)
+        self.assertIn("choices.realtime_conversation", js)
+        self.assertIn("choices.coach", js)
+        self.assertIn("realtime_conversation_model", js)
+        self.assertIn("coach_model", js)
+
+    def test_live_setup_uses_model_returned_by_server(self):
+        js = JS.read_text(encoding="utf-8")
+        self.assertNotIn("const MODEL =", js)
+        self.assertIn("model: `models/${data.model}`", js)
+        self.assertIn("data.requested_model", js)
+        self.assertIn("data.fallback_model", js)
+
+    def test_server_exposes_settings_api(self):
+        server = SERVER.read_text(encoding="utf-8")
+        self.assertIn('path == "/api/settings"', server)
+        self.assertIn("runtime.settings.public_payload()", server)
+        self.assertIn("runtime.settings.update(self.read_json())", server)
 
 
 if __name__ == "__main__":

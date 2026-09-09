@@ -14,7 +14,7 @@
 
   <section class="card" aria-label="Conversation controls">
     <button id="talk" class="ready" disabled>Connecting…</button>
-    <div id="status" class="muted">Creating secure live session…</div>
+    <div id="status" class="muted">Loading settings…</div>
     <div class="setup-state">
       <span id="setup-dot" class="setup-dot" aria-hidden="true"></span>
       <span id="setup-label">setupReady=false</span>
@@ -41,7 +41,15 @@
       <option value="vi" selected>Tiếng Việt</option>
       <option value="ja">日本語</option>
     </select>
-    <span class="muted setting-note">Used for Coach feedback and short non-English rescue. Changes reconnect when idle or after the current conversation stops.</span>
+    <span class="muted setting-note">Used for Coach feedback and short non-English rescue. Session-level changes reconnect when idle or after the current conversation stops.</span>
+
+    <label for="realtime-model">Realtime model</label>
+    <select id="realtime-model"></select>
+    <span class="muted setting-note">Live audio-to-audio model. Changes reconnect when idle or after the current conversation stops.</span>
+
+    <label for="coach-model">Coach model</label>
+    <select id="coach-model"></select>
+    <span class="muted setting-note">Auto rotates API keys first, then Coach models on retryable failures.</span>
 
     <label for="ai-speed">AI response speed</label>
     <select id="ai-speed">
@@ -66,7 +74,7 @@
       <option value="1200">1.2 s</option>
       <option value="1500">1.5 s</option>
     </select>
-    <span class="muted setting-note">Ends your turn after this much silence. Applies on next reconnect.</span>
+    <span class="muted setting-note">Ends your turn after this much silence. Session-level changes reconnect when idle or after Stop.</span>
 
     <label>
       <input id="pron" type="checkbox" checked>
