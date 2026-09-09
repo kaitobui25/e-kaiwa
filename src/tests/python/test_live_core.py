@@ -5,6 +5,7 @@ import unittest
 import wave
 from pathlib import Path
 
+from e_kaiwa.access import AccessPolicy, SlidingWindowLimiter, normalize_app_mode
 from e_kaiwa.config import load_api_keys, normalize_feedback_language, resolve_teacher
 from e_kaiwa.gemini import parse_json_text
 from e_kaiwa.sessions import SessionStore, save_pcm_wav, valid_session_id
@@ -36,8 +37,9 @@ class ConfigTests(unittest.TestCase):
 
 
 class SessionTests(unittest.TestCase):
-    def test_session_id_validation_rejects_paths(self):
-        self.assertTrue(valid_session_id("20260908_120000_live"))
+    def test_session_id_validation_accepts_random_token_and_rejects_paths(self):
+        self.assertTrue(valid_session_id("abcdefghijklmnopqrstuvwxyz_ABCDEFG-123456"))
+        self.assertFalse(valid_session_id("20260908_120000_live"))
         self.assertFalse(valid_session_id("../runtime_logs"))
         self.assertFalse(valid_session_id("a/b"))
         self.assertFalse(valid_session_id(""))
@@ -46,6 +48,8 @@ class SessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             store = SessionStore(Path(tmp))
             session_id, session_dir = store.create(mode="live", model="test-model")
+            self.assertTrue(valid_session_id(session_id))
+            self.assertNotEqual(session_id, session_dir.name)
             self.assertEqual(store.get(session_id), session_dir)
             self.assertTrue((session_dir / "conversation.jsonl").is_file())
             self.assertIsNone(store.get("../bad"))
@@ -61,13 +65,31 @@ class SessionTests(unittest.TestCase):
                 self.assertEqual(wav_file.getnframes(), 160)
 
 
+class PublicAccessTests(unittest.TestCase):
+    def test_app_mode_is_allowlisted(self):
+        self.assertEqual(normalize_app_mode("DEV"), "dev")
+        self.assertEqual(normalize_app_mode("public"), "public")
+        with self.assertRaises(ValueError):
+            normalize_app_mode("admin")
+
+    def test_sliding_window_limiter_is_bounded(self):
+        limiter = SlidingWindowLimiter(2, 10)
+        self.assertTrue(limiter.allow("ip", now=100))
+        self.assertTrue(limiter.allow("ip", now=101))
+        self.assertFalse(limiter.allow("ip", now=102))
+        self.assertTrue(limiter.allow("ip", now=111))
+
+    def test_public_origin_defaults_to_same_host(self):
+        policy = AccessPolicy(mode="public")
+        self.assertTrue(policy.origin_allowed({"Origin": "https://e-kaiwa.jp", "Host": "e-kaiwa.jp"}))
+        self.assertFalse(policy.origin_allowed({"Origin": "https://evil.example", "Host": "e-kaiwa.jp"}))
+        self.assertTrue(policy.origin_allowed({"Sec-Fetch-Site": "same-origin"}))
+
+
 class GeminiHelperTests(unittest.TestCase):
     def test_parse_json_text_accepts_plain_and_fenced_objects(self):
         self.assertEqual(parse_json_text('{"ok": true}'), {"ok": True})
-        self.assertEqual(
-            parse_json_text('```json\n{"ok": true}\n```'),
-            {"ok": True},
-        )
+        self.assertEqual(parse_json_text('```json\n{"ok": true}\n```'), {"ok": True})
 
 
 if __name__ == "__main__":
