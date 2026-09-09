@@ -44,9 +44,10 @@ test('hands-free shows sentence plus one clickable score and no manual audio act
   assert.doesNotMatch(html, /data-action="replay-user"/);
   assert.doesNotMatch(html, /data-action="speak-correction"/);
   assert.doesNotMatch(html, /data-action="speak-problem"/);
-  assert.match(html, /I like listening music\./);
+  assert.match(html, /I like /);
+  assert.match(html, /class="pron-problem severity-yellow">listening</);
+  assert.match(html, / music\./);
   assert.match(html, /I like listening to music\./);
-  assert.match(html, /listening/);
   assert.equal(countScore(html, 82), 1);
   assert.doesNotMatch(html, />you</);
   assert.doesNotMatch(html, />coach</);
