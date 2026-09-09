@@ -5,6 +5,9 @@ import {
   normalizeConversationMode,
   normalizeTheme
 } from './preferences.js';
+import {icon} from './ui_icons.js';
+import {devTurnHtml, escapeHtml, publicTurnHtml} from './ui_render.js';
+import {UiOverlayController} from './ui_overlay.js';
 
 const COPY = Object.freeze({
   ja: {
@@ -31,19 +34,32 @@ const COPY = Object.freeze({
     listening: '聞いています…自然に話してください',
     aiSpeaking: 'AIが話しています…',
     stopped: '会話を停止しました',
-    noConversation: '会話を始めると、ここに内容が表示されます。',
+    noConversation: 'マイクを押して、英会話を始めましょう。',
     you: 'あなた',
     ai: 'AI',
     coach: '発音・表現のフィードバック',
     correction: 'より自然な表現',
-    replayMine: '自分の声',
+    replayMine: '自分の声を聞く',
     playCorrect: '正しい文を聞く',
     problem: '注目の単語',
     coachRunning: 'コーチが分析中…',
     score: '総合スコア',
     playbackUnavailable: '音声を再生できませんでした。',
     appLanguageJa: '日本語',
-    appLanguageVi: 'Tiếng Việt'
+    appLanguageVi: 'Tiếng Việt',
+    accuracy: '発音の正確さ',
+    fluency: '流暢さ',
+    intonation: 'イントネーション',
+    pronunciationDetails: '発音の詳細',
+    problemWords: '注目の単語',
+    naturalExpression: 'より自然な表現',
+    yourSpeech: 'あなたの発話',
+    naturalExample: 'より自然な表現（例）',
+    onePoint: 'ワンポイント解説',
+    wordPractice: '単語の発音練習',
+    heardLike: '聞こえ方',
+    focusHere: 'ここを意識しよう',
+    replayHint: '自分の声を聞き返すことで、発音やリズムを客観的に確認できます。'
   },
   vi: {
     appTagline: 'Cứ nói nhiều, tiếng Anh sẽ gần hơn!',
@@ -59,7 +75,7 @@ const COPY = Object.freeze({
     pronunciation: 'Coach phát âm',
     start: 'Bắt đầu nói',
     stop: 'Dừng hội thoại',
-    holdToTalk: 'Giữ để nói',
+    holdToTalk: 'Chạm và giữ để nói',
     releaseToSend: 'Thả để gửi',
     waiting: 'Đang chờ AI trả lời…',
     reconnect: 'Kết nối lại',
@@ -69,7 +85,7 @@ const COPY = Object.freeze({
     listening: 'Đang nghe… cứ nói tự nhiên',
     aiSpeaking: 'AI đang nói…',
     stopped: 'Đã dừng hội thoại',
-    noConversation: 'Bắt đầu nói để xem hội thoại ở đây.',
+    noConversation: 'Nhấn mic để bắt đầu hội thoại.',
     you: 'Bạn',
     ai: 'AI',
     coach: 'Phản hồi phát âm & diễn đạt',
@@ -81,7 +97,20 @@ const COPY = Object.freeze({
     score: 'Điểm tổng',
     playbackUnavailable: 'Không thể phát âm thanh.',
     appLanguageJa: '日本語',
-    appLanguageVi: 'Tiếng Việt'
+    appLanguageVi: 'Tiếng Việt',
+    accuracy: 'Độ chính xác',
+    fluency: 'Độ trôi chảy',
+    intonation: 'Ngữ điệu',
+    pronunciationDetails: 'Chi tiết phát âm',
+    problemWords: 'Từ cần chú ý',
+    naturalExpression: 'Cách nói tự nhiên hơn',
+    yourSpeech: 'Câu bạn đã nói',
+    naturalExample: 'Cách nói tự nhiên hơn',
+    onePoint: 'Gợi ý nhanh',
+    wordPractice: 'Luyện phát âm từ',
+    heardLike: 'Nghe gần giống',
+    focusHere: 'Điểm cần chú ý',
+    replayHint: 'Nghe lại giọng của bạn giúp kiểm tra phát âm và nhịp điệu khách quan hơn.'
   }
 });
 
@@ -92,210 +121,63 @@ const DEV_TALK_LABELS = Object.freeze({
   reconnect: '↻ Reconnect'
 });
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
+export {publicTurnHtml};
 
-function score(value) {
-  return Math.max(0, Math.min(100, Math.round(Number(value || 0))));
-}
-
-function severityClass(problem) {
-  return problem?.severity === 'red' ? 'severity-red' : 'severity-yellow';
-}
-
-function highlightProblems(text, pronunciation) {
-  const raw = String(text || '…');
-  const problems = Array.isArray(pronunciation?.problems) ? pronunciation.problems.slice(0, 4) : [];
-  if (!problems.length) return escapeHtml(raw);
-
-  const byWord = new Map();
-  for (const problem of problems) {
-    const word = String(problem?.word || '').trim();
-    if (!word) continue;
-    byWord.set(word.toLocaleLowerCase('en-US'), problem);
-  }
-  const words = [...byWord.keys()].sort((a, b) => b.length - a.length);
-  if (!words.length) return escapeHtml(raw);
-
-  const pattern = words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
-  let html = '';
-  let lastIndex = 0;
-  raw.replace(regex, (match, _captured, offset) => {
-    html += escapeHtml(raw.slice(lastIndex, offset));
-    const problem = byWord.get(match.toLocaleLowerCase('en-US'));
-    html += `<span class="pron-problem ${severityClass(problem)}">${escapeHtml(match)}</span>`;
-    lastIndex = offset + match.length;
-    return match;
-  });
-  html += escapeHtml(raw.slice(lastIndex));
-  return html;
-}
-
-function coachData(turn) {
-  const pronunciation = turn.coach?.pronunciation;
-  if (!pronunciation) return null;
-  const overall = score(pronunciation.overall_score ?? pronunciation.pronunciation_score);
+function resolveUiElements(elements) {
   return {
-    overall,
-    pronunciation,
-    correction: turn.coach.correction || turn.userText || '',
-    explanation: turn.coach.explanation || '',
-    problems: Array.isArray(pronunciation.problems) ? pronunciation.problems.slice(0, 4) : []
+    ...elements,
+    overlayRoot: elements.overlayRoot || document.getElementById('overlay-root'),
+    overlayBackdrop: elements.overlayBackdrop || document.getElementById('overlay-backdrop'),
+    overlaySurface: elements.overlaySurface || document.getElementById('overlay-surface'),
+    overlayDynamic: elements.overlayDynamic || document.getElementById('overlay-dynamic'),
+    quickLanguage: elements.quickLanguage || document.getElementById('quick-language'),
+    quickSpeed: elements.quickSpeed || document.getElementById('quick-speed')
   };
-}
-
-function coachPanelHtml(turn, t, data, {allowAudioActions = true} = {}) {
-  if (!data) return '';
-  return `<div id="coach-${turn.no}" class="coach-card coach-panel" data-coach-panel="${turn.no}" hidden>
-    <div class="coach-body">
-      <div class="coach-section">
-        <div class="coach-label">${escapeHtml(t('correction'))}</div>
-        <div class="coach-correction-row">
-          <div class="coach-correction">${escapeHtml(data.correction)}</div>
-          ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-correction" data-turn="${turn.no}" aria-label="${escapeHtml(t('playCorrect'))}">🔊</button>` : ''}
-        </div>
-        ${data.explanation ? `<div class="coach-explanation">${escapeHtml(data.explanation)}</div>` : ''}
-      </div>
-      ${data.problems.map((problem, index) => `<div class="coach-problem ${severityClass(problem)}">
-        <div class="coach-problem-head">
-          <strong>${escapeHtml(problem.word || '')}</strong>
-          ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-problem" data-turn="${turn.no}" data-problem="${index}" aria-label="${escapeHtml(t('problem'))}">🔊</button>` : ''}
-        </div>
-        ${problem.sound ? `<div class="coach-sound">${escapeHtml(problem.sound)}</div>` : ''}
-        ${problem.tip ? `<div>${escapeHtml(problem.tip)}</div>` : ''}
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-
-export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) {
-  const pronunciation = pronunciationEnabled ? turn.coach?.pronunciation : null;
-  const userText = pronunciation
-    ? highlightProblems(turn.userText || '…', pronunciation)
-    : escapeHtml(turn.userText || '…');
-  const allowAudioActions = !isHandsFreeMode(conversationMode);
-  const coach = pronunciationEnabled && turn.coachEligible ? coachData(turn) : null;
-  const replay = allowAudioActions && turn.replayPcm?.length
-    ? `<button class="inline-audio-button" type="button" data-action="replay-user" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}">🔊</button>`
-    : '';
-  const coachToggle = coach
-    ? `<button class="score-pill coach-toggle" type="button" data-coach-toggle="${turn.no}" aria-controls="coach-${turn.no}" aria-expanded="false" aria-label="${escapeHtml(t('score'))} ${coach.overall}">${coach.overall}</button>`
-    : '';
-  const inlineActions = replay || coachToggle
-    ? `<span class="user-inline-actions">${replay}${coachToggle}</span>`
-    : '';
-
-  const userRow = `<div class="message-row user-row">
-    <div class="message-stack user-stack">
-      <div class="bubble user-bubble"><div class="message-text">${userText}${inlineActions}</div></div>
-      ${coachPanelHtml(turn, t, coach, {allowAudioActions})}
-    </div>
-    <div class="avatar user-avatar" aria-hidden="true">YOU</div>
-  </div>`;
-
-  const aiRow = `<div class="message-row ai-row">
-    <div class="avatar ai-avatar" aria-hidden="true">AI</div>
-    <div class="message-stack ai-stack">
-      <div class="message-meta">${escapeHtml(t('ai'))}</div>
-      <div class="bubble ai-bubble"><div class="message-text">${escapeHtml(turn.aiText || '…')}</div></div>
-    </div>
-  </div>`;
-
-  return `<article class="turn public-turn">${userRow}${aiRow}</article>`;
-}
-
-function devTurnHtml(turn, pronunciationEnabled) {
-  const pronunciation = pronunciationEnabled ? turn.coach?.pronunciation : null;
-  const userText = pronunciation ? highlightProblems(turn.userText || '…', pronunciation) : escapeHtml(turn.userText || '…');
-  const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
-  const coach = turn.coach
-    ? `<div class="dev-coach"><strong>Coach${overall == null ? '' : ` ${overall}`}:</strong> ${escapeHtml(turn.coach.correction || turn.userText || '')}${turn.coach.explanation ? `<br><span class="muted">${escapeHtml(turn.coach.explanation)}</span>` : ''}</div>`
-    : (turn.coachEligible ? '<div class="muted">Coach running…</div>' : '');
-  return `<div class="turn dev-turn">
-    <div class="who who-you">You</div><div class="text">${userText}</div>
-    <div class="who who-ai">AI</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
-    ${coach}
-  </div>`;
 }
 
 export class UiController {
   constructor({mode = 'dev', elements, onAction = () => {}}) {
     this.mode = mode === 'public' ? 'public' : 'dev';
-    this.elements = elements;
+    this.elements = resolveUiElements(elements);
     this.onAction = onAction;
     this.language = 'ja';
     this.theme = 'light';
+    this.playbackRate = 0.8;
+    this.turns = [];
     this.conversationMode = this.mode === 'public'
       ? CONVERSATION_MODES.PUSH_TO_TALK
       : CONVERSATION_MODES.HANDS_FREE;
     this.lastStatus = '';
     this.lastStatusError = false;
-    this._bind();
+
+    this.overlay = new UiOverlayController({
+      mode: this.mode,
+      root: this.elements.overlayRoot,
+      backdrop: this.elements.overlayBackdrop,
+      surface: this.elements.overlaySurface,
+      dynamic: this.elements.overlayDynamic,
+      settingsPanel: this.elements.settingsPanel,
+      settingsOpen: this.elements.settingsOpen,
+      settingsClose: this.elements.settingsClose,
+      translate: key => this.t(key),
+      audioActionsAllowed: () => !isHandsFreeMode(this.conversationMode),
+      onAudioAction: (action, detail) => this.onAction(action, detail)
+    });
+
+    this._bindConversation();
+    this.elements.aiSpeed?.addEventListener('change', () => this.setPlaybackRate(this.elements.aiSpeed.value));
     this.applyMode(this.mode);
   }
 
-  _closeCoachPanels(exceptTurn = null) {
-    const conversation = this.elements.conversation;
-    if (!conversation) return;
-    for (const panel of conversation.querySelectorAll?.('[data-coach-panel]:not([hidden])') || []) {
-      if (exceptTurn != null && String(panel.dataset.coachPanel) === String(exceptTurn)) continue;
-      panel.hidden = true;
-      const toggle = conversation.querySelector?.(`[data-coach-toggle="${panel.dataset.coachPanel}"]`);
-      toggle?.setAttribute?.('aria-expanded', 'false');
-    }
-  }
-
-  _toggleCoach(button) {
-    const conversation = this.elements.conversation;
-    const turn = button?.dataset?.coachToggle;
-    if (!conversation || !turn) return;
-    const panel = conversation.querySelector?.(`[data-coach-panel="${turn}"]`);
-    if (!panel) return;
-    const willOpen = panel.hidden;
-    this._closeCoachPanels(willOpen ? turn : null);
-    panel.hidden = !willOpen;
-    button.setAttribute?.('aria-expanded', String(willOpen));
-  }
-
-  _bind() {
+  _bindConversation() {
     this.elements.conversation?.addEventListener('click', event => {
-      const coachToggle = event.target.closest?.('[data-coach-toggle]');
-      if (coachToggle) {
-        this._toggleCoach(coachToggle);
-        return;
-      }
-      const button = event.target.closest?.('[data-action]');
-      if (!button) return;
-      this.onAction(button.dataset.action, {
-        turn: Number(button.dataset.turn || 0),
-        problem: Number(button.dataset.problem || 0)
-      });
-    });
-    this.elements.settingsOpen?.addEventListener('click', () => this.openSettings());
-    this.elements.settingsClose?.addEventListener('click', () => this.closeSettings());
-
-    document.addEventListener('pointerdown', event => {
-      const target = event.target;
-      const conversation = this.elements.conversation;
-      const insideCoach = target.closest?.('[data-coach-panel], [data-coach-toggle]');
-      if (!insideCoach) this._closeCoachPanels();
-
-      if (!document.body.classList.contains('settings-open')) return;
-      if (this.elements.settingsPanel?.contains?.(target)) return;
-      if (this.elements.settingsOpen?.contains?.(target)) return;
-      this.closeSettings();
-    });
-
-    document.addEventListener('keydown', event => {
-      if (event.key !== 'Escape') return;
-      this._closeCoachPanels();
-      if (document.body.classList.contains('settings-open')) this.closeSettings();
+      const trigger = event.target.closest?.('[data-ui-action]');
+      if (!trigger) return;
+      const turnNo = Number(trigger.dataset.turn || 0);
+      const turn = this.turns.find(item => item.no === turnNo);
+      if (!turn) return;
+      if (trigger.dataset.uiAction === 'open-coach') this.overlay.openCoach(turn);
+      else if (trigger.dataset.uiAction === 'open-replay') this.overlay.openReplay(turn);
     });
   }
 
@@ -306,6 +188,7 @@ export class UiController {
   applyMode(mode) {
     this.mode = mode === 'public' ? 'public' : 'dev';
     document.body.dataset.appMode = this.mode;
+    this.overlay.setMode(this.mode);
     if (this.elements.settingsPanel) this.elements.settingsPanel.hidden = this.mode === 'public';
     if (this.elements.settingsOpen) this.elements.settingsOpen.hidden = this.mode !== 'public';
   }
@@ -316,6 +199,7 @@ export class UiController {
       : CONVERSATION_MODES.HANDS_FREE;
     document.body.dataset.conversationMode = this.conversationMode;
     if (this.elements.talkMode) this.elements.talkMode.checked = isHandsFreeMode(this.conversationMode);
+    this.overlay.refresh(this.turns);
   }
 
   setLanguage(language) {
@@ -326,13 +210,21 @@ export class UiController {
       if (key) node.textContent = this.t(key);
     }
     if (this.elements.feedbackLanguage) this.elements.feedbackLanguage.value = this.language;
+    if (this.elements.quickLanguage) this.elements.quickLanguage.textContent = this.t(this.language === 'vi' ? 'appLanguageVi' : 'appLanguageJa');
     if (this.lastStatus) this.setStatus(this.lastStatus, {error: this.lastStatusError});
+    this.overlay.refresh(this.turns);
   }
 
   setTheme(theme) {
     this.theme = normalizeTheme(theme, this.theme);
     document.body.dataset.theme = this.theme;
     if (this.elements.theme) this.elements.theme.value = this.theme;
+  }
+
+  setPlaybackRate(rate) {
+    const numeric = Number(rate);
+    this.playbackRate = Number.isFinite(numeric) ? numeric : 0.8;
+    if (this.elements.quickSpeed) this.elements.quickSpeed.textContent = `${this.playbackRate.toFixed(1)}×`;
   }
 
   setStatus(text, {error = false} = {}) {
@@ -352,7 +244,7 @@ export class UiController {
     const button = this.elements.talk;
     if (!button) return;
     button.dataset.state = state;
-    button.className = ['recording', 'pressed'].includes(state) ? 'recording' : 'ready';
+    button.className = `talk-button talk-${state}`;
     button.disabled = ['connecting', 'waiting', 'speaking'].includes(state);
 
     if (this.mode === 'dev') {
@@ -381,39 +273,34 @@ export class UiController {
           reconnect: this.t('reconnect')
         };
 
-    if (state === 'pressed') button.textContent = '●';
-    else if (state === 'recording') button.textContent = '■';
-    else if (['connecting', 'waiting', 'speaking'].includes(state)) button.textContent = '…';
-    else if (state === 'reconnect') button.textContent = '↻';
-    else button.textContent = '🎙';
-
-    if (this.elements.talkLabel) this.elements.talkLabel.textContent = labels[state] || labels.ready;
+    const label = labels[state] || labels.ready;
+    button.innerHTML = state === 'reconnect' ? '<span class="reconnect-glyph">↻</span>' : icon('mic', 'talk-icon');
+    button.setAttribute('aria-label', label);
+    if (this.elements.talkLabel) this.elements.talkLabel.textContent = label;
   }
 
   openSettings() {
-    if (this.mode !== 'public' || !this.elements.settingsPanel) return;
-    this.elements.settingsPanel.hidden = false;
-    this.elements.settingsOpen?.setAttribute?.('aria-expanded', 'true');
-    document.body.classList.add('settings-open');
+    this.overlay.openSettings();
   }
 
   closeSettings() {
-    if (this.mode !== 'public' || !this.elements.settingsPanel) return;
-    this.elements.settingsPanel.hidden = true;
-    this.elements.settingsOpen?.setAttribute?.('aria-expanded', 'false');
-    document.body.classList.remove('settings-open');
+    this.overlay.close();
   }
 
   render(turns, {pronunciationEnabled = true, conversationMode = this.conversationMode} = {}) {
     const target = this.elements.conversation;
+    this.turns = Array.isArray(turns) ? turns : [];
+    this.setPlaybackRate(this.elements.aiSpeed?.value ?? this.playbackRate);
     if (!target) return;
-    if (!turns.length) {
+    if (!this.turns.length) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(this.mode === 'public' ? this.t('noConversation') : 'No conversation yet.')}</div>`;
+      this.overlay.refresh(this.turns);
       return;
     }
     target.innerHTML = this.mode === 'public'
-      ? turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled, conversationMode)).join('')
-      : turns.slice().reverse().map(turn => devTurnHtml(turn, pronunciationEnabled)).join('');
+      ? this.turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled, conversationMode)).join('')
+      : this.turns.slice().reverse().map(turn => devTurnHtml(turn, pronunciationEnabled)).join('');
+    this.overlay.refresh(this.turns);
     if (this.mode === 'public') target.lastElementChild?.scrollIntoView?.({block: 'end', behavior: 'smooth'});
   }
 }
