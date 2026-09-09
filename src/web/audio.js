@@ -91,6 +91,7 @@ export class PlaybackCoordinator {
     this.resumeTimer = null;
     this.blockReason = null;
     this.manualPlaying = false;
+    this.manualGeneration = 0;
   }
 
   async ensureContext() {
@@ -149,9 +150,9 @@ export class PlaybackCoordinator {
     const pcm = decodePcm16Base64(base64);
     if (!pcm.length) return false;
 
-    // Live output owns the speaker whenever it arrives. Switching the block
-    // reason before cancelling manual playback prevents a stale manual finally
-    // handler from reopening the microphone during AI speech.
+    // Live output owns the speaker whenever it arrives. Invalidate any older
+    // manual playback before switching the block reason so stale cleanup can
+    // never reopen input while the AI is speaking.
     this._block('live');
     this.stopManual({releaseBlock: false});
 
@@ -189,13 +190,16 @@ export class PlaybackCoordinator {
     this.playAt = this.context ? this.context.currentTime : 0;
   }
 
+  interruptLive() {
+    this.clearLive();
+    this._unblock('live');
+  }
+
   armAfterLive(callback) {
     clearTimeout(this.resumeTimer);
     const delay = this.livePlaybackRemainingMs + this._guardMs();
 
     const finish = () => {
-      // A manual replay may have started before the server completed the turn.
-      // Never create/re-arm the next microphone turn while that playback exists.
       if (this.manualPlaying) {
         this.resumeTimer = setTimeout(finish, 50);
         return;
@@ -242,16 +246,23 @@ export class PlaybackCoordinator {
 
   async _runManual(action) {
     if (this.livePlaying) return false;
+
     this.stopManual({releaseBlock: false});
+    const generation = ++this.manualGeneration;
     this.manualPlaying = true;
     this._block('manual');
+
     let result = false;
     try {
       result = Boolean(await action());
-      await wait(this._guardMs());
+      if (this.manualGeneration === generation) await wait(this._guardMs());
     } finally {
-      this.manualPlaying = false;
-      this._unblock('manual');
+      // A newer manual playback or Live audio may have invalidated this run.
+      // Only the current generation is allowed to release the manual block.
+      if (this.manualGeneration === generation) {
+        this.manualPlaying = false;
+        this._unblock('manual');
+      }
     }
     return result;
   }
@@ -265,6 +276,7 @@ export class PlaybackCoordinator {
   }
 
   stopManual({releaseBlock = true} = {}) {
+    this.manualGeneration += 1;
     this.speechService.cancel();
     if (this.manualSource) {
       try { this.manualSource.stop(); } catch {}
