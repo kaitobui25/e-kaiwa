@@ -22,6 +22,7 @@ class SettingsStoreTests(unittest.TestCase):
             store = SettingsStore(path)
             self.assertTrue(path.is_file())
             self.assertEqual(store.snapshot(), default_config())
+            self.assertEqual(store.snapshot()["settings"]["echo_guard_ms"], 250)
 
     def test_partial_update_is_persisted_and_reloaded(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -31,6 +32,7 @@ class SettingsStoreTests(unittest.TestCase):
                 "teacher": "Strict",
                 "support_language": "ja",
                 "ai_playback_rate": 1.1,
+                "echo_guard_ms": 400,
                 "realtime_conversation_model": "gemini-2.5-flash-native-audio-preview-12-2025",
                 "coach_model": "gemini-3.1-flash-lite",
             })
@@ -40,12 +42,34 @@ class SettingsStoreTests(unittest.TestCase):
             self.assertEqual(data["settings"]["teacher"], "Strict")
             self.assertEqual(data["settings"]["support_language"], "ja")
             self.assertEqual(data["settings"]["ai_playback_rate"], 1.1)
+            self.assertEqual(data["settings"]["echo_guard_ms"], 400)
             self.assertEqual(
                 data["models"]["realtime_conversation"],
                 "gemini-2.5-flash-native-audio-preview-12-2025",
             )
             self.assertEqual(data["models"]["coach_mode"], "manual")
             self.assertEqual(data["models"]["coach_model"], "gemini-3.1-flash-lite")
+
+    def test_echo_guard_accepts_safe_runtime_range(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            store = SettingsStore(path)
+            self.assertEqual(store.update({"echo_guard_ms": 0})["settings"]["echo_guard_ms"], 0)
+            self.assertEqual(store.update({"echo_guard_ms": 2000})["settings"]["echo_guard_ms"], 2000)
+
+            for value in (-1, 2001, 250.5, True):
+                with self.assertRaises(ValueError):
+                    store.update({"echo_guard_ms": value})
+
+    def test_invalid_echo_guard_in_yaml_is_normalized_to_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            raw = default_config()
+            raw["settings"]["echo_guard_ms"] = 9999
+            path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+            store = SettingsStore(path)
+            self.assertEqual(store.snapshot()["settings"]["echo_guard_ms"], 250)
 
     def test_auto_coach_restores_default_model_order(self):
         with tempfile.TemporaryDirectory() as tmp:
