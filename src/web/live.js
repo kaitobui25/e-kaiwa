@@ -543,7 +543,6 @@ import {
     state.connecting = true;
     state.reconnectNeeded = false;
     state.setupReady = false;
-    state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
     updateSetupIndicator();
 
     talk.disabled = true;
@@ -569,6 +568,7 @@ import {
 
     socket.onopen = () => {
       if (state.ws !== socket) return;
+      state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
       setStatus('WebSocket open. Configuring Gemini Live…');
       socket.send(JSON.stringify({
         setup: {
@@ -668,8 +668,17 @@ import {
 
     talk.disabled = false;
     talk.className = 'ready';
-    talk.textContent = '🎙 Start conversation';
-    setStatus('Conversation stopped.');
+
+    if (selectedSupportLanguage(feedbackLanguageEl.value) !== state.supportLanguage) {
+      talk.textContent = 'Connecting…';
+      setStatus('Applying support / correction language…');
+      newLiveSession().catch(error => {
+        showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
+      });
+    } else {
+      talk.textContent = '🎙 Start conversation';
+      setStatus('Conversation stopped.');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -683,7 +692,17 @@ import {
   });
 
   feedbackLanguageEl.addEventListener('change', () => {
-    setStatus('Support / correction language changed. Reconnect to apply to AI rescue.');
+    if (state.recording) {
+      setStatus('Support / correction language changed. It will apply after you stop this conversation.');
+      return;
+    }
+    if (state.connecting) {
+      setStatus('Support / correction language changed. It will apply to the connecting session.');
+      return;
+    }
+    newLiveSession().catch(error => {
+      showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
+    });
   });
 
   silenceDurationEl.addEventListener('change', () => {
