@@ -2,7 +2,7 @@ name: Core checks
 
 on:
   push:
-    branches: [main, "refactor/**", "test/**"]
+    branches: [main, "refactor/**", "test/**", "feature/**"]
   pull_request:
 
 permissions:
@@ -26,13 +26,14 @@ jobs:
       - name: Python core regression tests
         run: python -m unittest discover -s src/tests/python -p "test_*.py"
 
-      - name: JavaScript language policy tests
-        run: node --test src/tests/js/language_policy.test.mjs
+      - name: Browser module tests
+        run: node --test src/tests/js/*.test.mjs
 
       - name: Python syntax check
         run: python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py
 
       - name: Browser JavaScript syntax check
         run: |
-          node --input-type=module --check < src/web/language_policy.js
-          node --input-type=module --check < src/web/live.js
+          for file in src/web/*.js; do
+            node --input-type=module --check < "$file"
+          done
