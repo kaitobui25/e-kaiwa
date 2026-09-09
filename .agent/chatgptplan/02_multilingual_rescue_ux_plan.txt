@@ -1,0 +1,499 @@
+E-KAIWA - PRELIMINARY MULTILINGUAL RESCUE UX PLAN
+Status: REVIEW ONLY - NO APPLICATION CODE CHANGES YET
+Scope: English-first conversation, support-language rescue, Coach gating, structured debug logs
+
+===============================================================================
+1. GOALS
+===============================================================================
+
+Product behavior:
+- English remains the target language and default conversation language.
+- If the learner uses a non-English language, AI handles the rescue itself and pulls the learner back to English.
+- Rescue/support language follows the EXISTING user setting:
+    feedback_language = vi  -> Vietnamese support/rescue text
+    feedback_language = ja  -> Japanese support/rescue text
+- Do NOT automatically reply in whatever non-English language Gemini detected.
+- For any non-English turn, do NOT show Coach and do NOT call /api/coach.
+- Keep the original transcript as Gemini heard it; do not silently translate/correct the You line.
+
+Engineering goals:
+- Clean separation of language policy from Live transport/audio/rendering.
+- No extra LLM/STT/classifier call just to detect language.
+- Use Gemini Live inputTranscription.languageCode as the primary language signal.
+- Small, structured logs that make language-switch bugs easy to reproduce later.
+- Keep current no-build/static frontend architecture; avoid framework/bundler migration.
+
+Non-goals for this change:
+- Do not redesign the entire conversation UI.
+- Do not add another STT provider/model.
+- Do not add confidence scoring that Gemini Live does not expose.
+- Do not rewrite the whole live.js just for style.
+- Do not add database infrastructure.
+
+===============================================================================
+2. TARGET UX STATE MATRIX
+===============================================================================
+
+A) English turn
+
+  YOU
+  I went to Tokyo yesterday.
+
+  AI
+  Nice! What did you do in Tokyo?
+
+  COACH
+  Correction: ...
+  Pronunciation 82
+
+Behavior:
+- AI conversation: English.
+- Coach: visible and works exactly as now.
+- Pronunciation highlighting: works exactly as now.
+
+-------------------------------------------------------------------------------
+
+B) Non-English turn - support language = Japanese
+
+  YOU
+  昨日東京に行ったって言いたい
+
+  AI
+  「I went to Tokyo yesterday.」と言えます。
+  Try saying it in English.
+
+Behavior:
+- AI may use a SHORT Japanese rescue explanation because setting = ja.
+- AI supplies the natural English phrase and asks learner to return to English.
+- NO Coach label.
+- NO Coach content.
+- NO pronunciation score.
+- NO /api/coach request.
+
+-------------------------------------------------------------------------------
+
+C) Non-English turn - support language = Vietnamese
+
+  YOU
+  昨日東京に行ったって言いたい
+
+  AI
+  Bạn có thể nói: "I went to Tokyo yesterday."
+  Try saying it in English.
+
+Behavior:
+- Rescue language is Vietnamese because the USER SETTING is vi.
+- It does NOT automatically use Japanese just because input language was Japanese.
+- NO Coach section and NO coach API call.
+
+-------------------------------------------------------------------------------
+
+D) Unexpected / unclear non-English recognition
+
+Example: learner intended English but Gemini transcription is non-English.
+
+  YOU
+  <non-English transcription Gemini heard>
+
+  AI (setting = ja)
+  うまく聞き取れませんでした。もう一度、英語で言ってみてください。
+
+or
+
+  AI (setting = vi)
+  Mình chưa nghe rõ. Hãy thử nói lại bằng tiếng Anh nhé.
+
+Behavior:
+- Do not continue the conversation in the detected language.
+- Do not pretend the non-English transcript is definitely what the learner intended.
+- Ask for conversational repair and return to English.
+- Coach remains fully hidden.
+
+-------------------------------------------------------------------------------
+
+E) Mixed English + non-English turn
+
+Default safe policy:
+- If Gemini reports any clear non-English input language for the turn, classify the turn as non-English/mixed.
+- AI handles the rescue.
+- Skip Coach for that turn because English correction/pronunciation scoring on a mixed-language reference is unreliable.
+
+===============================================================================
+3. LANGUAGE POLICY
+===============================================================================
+
+Use Gemini Live transcription metadata instead of adding another classifier.
+
+Current code reads:
+    inputTranscription.text
+
+New turn state should also collect:
+    inputTranscription.languageCode
+
+Suggested internal state per turn:
+
+    inputLanguageCodes: Set<string>
+    outputLanguageCodes: Set<string>
+    languageMode: "english" | "non_english" | "unknown"
+    coachEligible: boolean
+    coachSkipReason: string | null
+
+Normalization examples:
+    en-US -> en
+    en-GB -> en
+    ja-JP -> ja
+    vi-VN -> vi
+
+Classification rule (simple and deterministic):
+
+    if at least one known input language code is non-en:
+        languageMode = non_english
+        coachEligible = false
+        coachSkipReason = non_english_input
+
+    else if at least one known input language code is en:
+        languageMode = english
+        coachEligible = true
+
+    else:
+        languageMode = unknown
+        preserve current behavior for compatibility
+        coachEligible = true
+        log the unknown state for later review
+
+Reason for keeping unknown backward-compatible:
+- Avoid accidentally disabling Coach if Gemini occasionally omits languageCode.
+- We can tighten this later after real logs show how often languageCode is absent.
+
+Important:
+- languageCode controls classification/gating, NOT the rescue language.
+- Rescue language always comes from the user's existing vi/ja setting.
+
+===============================================================================
+4. LIVE MODEL POLICY / SYSTEM INSTRUCTION
+===============================================================================
+
+Add one versioned English-first system policy to Gemini Live session setup.
+
+Conceptual rules:
+
+1. You are an English conversation partner for an English learner.
+2. Keep normal conversation in English.
+3. The configured support language is either Vietnamese or Japanese.
+4. If the learner clearly uses a non-English language to ask for help:
+   - briefly help in the configured support language,
+   - provide the natural English phrase,
+   - ask the learner to say it in English,
+   - do not permanently switch the conversation language.
+5. If the input seems unclear / likely misheard:
+   - do not confidently translate a doubtful transcript,
+   - briefly ask the learner in the configured support language to retry in English.
+6. Keep rescue responses short so speaking practice remains the focus.
+
+Version it, for example:
+    LANGUAGE_POLICY_VERSION = "english-first-rescue-v1"
+
+Reason:
+- Future logs can tell exactly which policy produced a behavior.
+
+Setting behavior:
+- Reuse existing feedback_language value as support language.
+- Do NOT create a second language setting.
+- Because Live system instruction is session setup state, changing vi <-> ja should apply on the next Live connection/reconnect.
+- UI can show a small note such as "Reconnect to apply to AI support language" if changed mid-session.
+
+Possible UI label review:
+- Keep backend/API field name feedback_language for compatibility.
+- Frontend can internally call it supportLanguage.
+- Optional later UI label: "Support / feedback language".
+
+===============================================================================
+5. COACH RULE
+===============================================================================
+
+Current problem:
+- Coach always assumes the learner sentence is English.
+- Sending Japanese/Vietnamese/mixed text to English correction/pronunciation can produce meaningless output.
+
+New rule:
+
+    English / unknown turn:
+        existing Coach flow
+
+    Non-English / mixed turn:
+        DO NOT call /api/coach
+        DO NOT create fake Coach result
+        DO NOT show "Coach running..."
+        DO NOT render the COACH heading at all
+
+Frontend rendering should be driven by one explicit boolean:
+    turn.coachEligible
+
+Do not scatter checks such as:
+    if language != ...
+through multiple render functions.
+
+Suggested orchestration:
+
+    finishTurn(turn)
+        -> finalizeLanguageMode(turn)
+        -> if turn.coachEligible: runCoach(turn)
+        -> else: mark coach skipped for metrics only
+
+This also improves performance:
+- no PCM base64 conversion for non-English Coach requests
+- no browser -> local server audio upload for skipped turns
+- no correction/pronunciation Gemini API calls for skipped turns
+- less JSON/audio processing
+
+===============================================================================
+6. MODULE DESIGN - MINIMAL, NOT OVERENGINEERED
+===============================================================================
+
+Keep live.js as the main orchestrator. Extract only the new policy logic first.
+
+Suggested frontend layout:
+
+    src/web/
+      live.html
+      live.css
+      live.js                  # session/audio/turn orchestration
+      language_policy.js       # NEW: pure language/support policy helpers
+
+language_policy.js responsibilities ONLY:
+
+    normalizeLanguageCode(code)
+    recordLanguageCode(turn, code, direction)
+    finalizeLanguageMode(turn)
+    isCoachEligible(turn)
+    selectedSupportLanguage(value)
+    buildLiveLanguageInstruction(supportLanguage)
+    LANGUAGE_POLICY_VERSION
+
+No DOM access inside language_policy.js.
+No fetch/WebSocket/audio code inside language_policy.js.
+Pure functions where possible -> easy unit testing.
+
+Implementation style:
+- Use browser-native ES modules.
+- live.html loads live.js as type="module".
+- live.js imports from ./language_policy.js.
+- No npm package, bundler, framework, TypeScript migration, or build step.
+
+Backend:
+- Keep coach.py focused on actual English coaching.
+- Keep sessions.py focused on persistence.
+- Only extend metric/log schema where needed.
+- Do NOT add language-detection logic to backend unless future data proves browser-side metadata is insufficient.
+
+===============================================================================
+7. LOGGING / DEBUGGING PLAN
+===============================================================================
+
+Goal:
+When a user reports "I spoke English but it switched language", logs should answer:
+- What text did Gemini transcribe?
+- What languageCode did Gemini report?
+- What support language was selected?
+- Was the turn classified English/non-English/unknown?
+- Was Coach called or skipped, and why?
+- What language did Gemini output transcription report?
+- Which language policy version was active?
+
+Extend per-turn metric JSONL with SMALL metadata only:
+
+    session_id
+    turn
+    user_text                     # existing
+    ai_text                       # existing
+    first_audio_ms                # existing
+
+    input_language_codes          # e.g. ["en-US"] / ["ja-JP"]
+    output_language_codes         # e.g. ["en-US", "ja-JP"]
+    language_mode                 # english | non_english | unknown
+    support_language              # vi | ja
+    language_policy_version       # english-first-rescue-v1
+
+    coach_eligible                # true/false
+    coach_called                  # true/false
+    coach_skip_reason             # null | non_english_input | ...
+
+    settings snapshot (small):
+      teacher
+      pronunciation_enabled
+      silence_duration_ms
+      ai_playback_rate
+
+Logging rules:
+- Never log API keys/tokens.
+- Do not add duplicate full audio logging in this first version.
+- Do not add a database.
+- Keep JSONL because current local filesystem logging is simple and inspectable.
+
+Why no new non-English WAV persistence yet:
+- It adds browser -> server upload, storage, privacy surface, and cleanup work.
+- First collect languageCode/text/mode logs.
+- If real bugs cannot be diagnosed from these fields, add opt-in/sampled debug audio later.
+
+Optional useful session-start record:
+
+    event = session_start
+    live_model
+    support_language
+    language_policy_version
+    teacher
+    silence_duration_ms
+    ai_playback_rate
+
+This makes config mismatches obvious without reading UI screenshots.
+
+===============================================================================
+8. PERFORMANCE PRINCIPLES
+===============================================================================
+
+This feature should improve or preserve performance:
+
+- Zero new inference calls for language classification.
+- Use languageCode already returned by Gemini Live.
+- Skip Coach API work for non-English turns.
+- No extra backend round trip before AI answers; Live model handles rescue directly.
+- Store only tiny language-code sets in turn state.
+- No language-regex scanning on every audio/transcription chunk.
+- No framework/bundler dependency.
+
+Do NOT refactor conversation rendering to incremental DOM in this feature unless profiling shows a real issue.
+Reason:
+- That is independent scope and increases regression risk.
+- Current biggest win is avoiding unnecessary Coach work.
+
+===============================================================================
+9. TEST PLAN
+===============================================================================
+
+A) New pure JS unit tests (Node built-in test runner, zero npm dependencies)
+
+    src/tests/js/language_policy.test.mjs
+
+Cases:
+- en-US -> english
+- en-GB -> english
+- ja-JP -> non_english
+- vi-VN -> non_english
+- mixed en-US + ja-JP -> non_english
+- no language code -> unknown
+- non-English -> coachEligible false
+- support setting vi stays vi regardless of detected input language
+- support setting ja stays ja regardless of detected input language
+- system instruction contains correct support-language rule/version
+
+B) Existing Python regression tests
+
+Update/add structural checks for:
+- Coach heading is conditionally rendered.
+- /api/coach is not called for coachEligible=false path.
+- metric payload includes language/debug fields.
+
+C) Manual system matrix
+
+1. setting=ja, speak clear English
+   expected: English AI + Coach visible
+
+2. setting=ja, speak Japanese
+   expected: short Japanese rescue + English phrase + no Coach
+
+3. setting=vi, speak Japanese
+   expected: Vietnamese rescue + English phrase + no Coach
+
+4. setting=vi, speak Vietnamese
+   expected: Vietnamese rescue + English phrase + no Coach
+
+5. English with very bad pronunciation causing non-English detection
+   expected: short retry/rescue in selected support language + no Coach
+
+6. mixed Japanese + English
+   expected: rescue behavior + no Coach
+
+7. change vi <-> ja, reconnect
+   expected: next Live session uses new support language
+
+8. pronunciation OFF on English
+   expected: correction behavior unchanged; no pronunciation scoring
+
+===============================================================================
+10. IMPLEMENTATION ORDER / PR SLICING
+===============================================================================
+
+Prefer small reviewable steps instead of one large rewrite.
+
+PR A - Language policy foundation
+- add language_policy.js
+- convert live.js loading to browser ES module
+- collect input/output languageCode per turn
+- add pure JS unit tests
+- no UX behavior change yet except logs if desired
+
+PR B - English-first rescue + Coach gating
+- add versioned Live system instruction using selected vi/ja support language
+- finalize languageMode at turn end
+- skip /api/coach for non-English/mixed
+- hide COACH heading completely for skipped turns
+- preserve normal English flow
+
+PR C - Structured debug metrics
+- add language_mode, input/output language codes, support language, policy version
+- add coach called/skipped fields and settings snapshot
+- optional session-start config record
+- update docs/test instructions
+
+If PR A feels too ceremonial for this small app, A+B can be combined into one PR, but keep language_policy.js isolated and pure.
+
+===============================================================================
+11. ACCEPTANCE CRITERIA
+===============================================================================
+
+Feature is done when:
+
+- English turn behaves exactly as before.
+- User-selected vi/ja determines support/rescue language.
+- Detected input language does NOT override selected support language.
+- Non-English/mixed turns never call Coach.
+- Non-English/mixed turns render no COACH label at all.
+- AI rescue remains short and returns learner to English.
+- No new language-classification API/model call exists.
+- Turn logs contain enough metadata to diagnose language switching.
+- No API key/token is logged.
+- Offline CI remains dependency-light.
+- Existing realtime audio path/latency is not blocked by Coach or language processing.
+
+===============================================================================
+12. REVIEW POINTS BEFORE IMPLEMENTATION
+===============================================================================
+
+Default recommendations for review:
+
+[1] Reuse current feedback_language = vi/ja as support language: YES.
+    No second setting.
+
+[2] Non-English input with setting=vi:
+    rescue response is Vietnamese even if detected input was Japanese: YES.
+    Predictable UX follows user preference, not detector choice.
+
+[3] Non-English/mixed turn:
+    hide COACH heading completely and skip /api/coach: YES.
+
+[4] Unknown/missing languageCode:
+    preserve current Coach behavior initially, but log language_mode=unknown: YES.
+    Revisit from real logs.
+
+[5] New raw audio logging for skipped turns:
+    NO for first version.
+    Add only if metadata proves insufficient for debugging.
+
+[6] UI language badge on non-English turns:
+    OPTIONAL / defer until behavior is stable.
+    Do not clutter MVP unless real users need it.
+
+[7] Support-language setting change mid-session:
+    apply after reconnect because Live system instruction is session setup state: YES.
+
+END OF PRELIMINARY PLAN
