@@ -7,8 +7,10 @@ import {
   selectedSupportLanguage
 } from './language_policy.js';
 import {
+  CONVERSATION_MODES,
   PreferencesStore,
   TARGET_LANGUAGE,
+  isHandsFreeMode,
   normalizePlaybackRate,
   targetSpeechLocale
 } from './preferences.js';
@@ -26,6 +28,7 @@ import {UiController} from './ui.js';
   const elements = {
     talk: document.getElementById('talk'),
     talkLabel: document.getElementById('talk-label'),
+    talkMode: document.getElementById('talk-mode'),
     status: document.getElementById('status'),
     setupDot: document.getElementById('setup-dot'),
     setupLabel: document.getElementById('setup-label'),
@@ -46,6 +49,11 @@ import {UiController} from './ui.js';
 
   const state = {
     appMode: 'dev',
+    conversationMode: CONVERSATION_MODES.HANDS_FREE,
+    conversationActive: false,
+    pushToTalkPressed: false,
+    pushActivityOpen: false,
+    pushHoldGeneration: 0,
     ws: null,
     sessionId: null,
     configuredRealtimeModel: '',
@@ -61,9 +69,10 @@ import {UiController} from './ui.js';
     reconnectNeeded: false,
     reconnectAfterConnect: false,
     connecting: false,
-    recording: false,
     inputForwarding: false,
     inputCtx: null,
+    micReadyPromise: null,
+    micAcquireGeneration: 0,
     micStream: null,
     micSource: null,
     processor: null,
@@ -118,8 +127,19 @@ import {UiController} from './ui.js';
     state.ui?.setStatus(`${publicOrDev(publicKey, devText)}${suffix}`, {error});
   }
 
+  function handsFree() {
+    return state.appMode !== 'public' || isHandsFreeMode(state.conversationMode);
+  }
+
+  function inputBusy() {
+    return state.conversationActive || state.pushToTalkPressed || state.pushActivityOpen;
+  }
+
   function render() {
-    state.ui?.render(state.turns, {pronunciationEnabled: elements.pron.checked});
+    state.ui?.render(state.turns, {
+      pronunciationEnabled: elements.pron.checked,
+      conversationMode: state.conversationMode
+    });
   }
 
   function concatTranscript(previous, incoming) {
@@ -186,6 +206,9 @@ import {UiController} from './ui.js';
 
   function initializeUi(payload) {
     state.appMode = payload?.app_mode === 'public' ? 'public' : 'dev';
+    state.conversationMode = state.appMode === 'public'
+      ? CONVERSATION_MODES.PUSH_TO_TALK
+      : CONVERSATION_MODES.HANDS_FREE;
     state.preferences = new PreferencesStore({
       storage: state.appMode === 'public' ? window.localStorage : null,
       browserLanguage: navigator.language,
@@ -197,14 +220,32 @@ import {UiController} from './ui.js';
       elements,
       onAction: handleUiAction
     });
+    state.ui.setConversationMode(state.conversationMode);
 
     state.playback = new PlaybackCoordinator({
       getEchoGuardMs: () => state.echoGuardMs,
       onBlockedChange: (blocked, reason) => {
-        state.inputForwarding = !blocked && Boolean(
-          state.recording && state.activeTurn && state.setupReady && state.ws?.readyState === WebSocket.OPEN
-        );
-        if (blocked && reason === 'live') setStatus('aiSpeaking', 'AI speaking…');
+        if (blocked) {
+          state.inputForwarding = false;
+          if (reason === 'live') {
+            state.ui?.setTalkState('speaking');
+            setStatus('aiSpeaking', 'AI speaking…');
+          }
+          return;
+        }
+
+        // Only hands-free mode may automatically reopen microphone forwarding.
+        // Push-to-talk forwarding is owned exclusively by press/release events.
+        if (handsFree()) {
+          state.inputForwarding = Boolean(
+            state.conversationActive &&
+            state.activeTurn &&
+            state.setupReady &&
+            state.ws?.readyState === WebSocket.OPEN
+          );
+        } else {
+          state.inputForwarding = false;
+        }
       }
     });
   }
@@ -224,19 +265,24 @@ import {UiController} from './ui.js';
       const preferences = state.preferences.load({
         appLanguage: settings.support_language || 'ja',
         playbackRate: settings.ai_playback_rate ?? 0.8,
-        pronunciationEnabled: settings.pronunciation_enabled !== false
+        pronunciationEnabled: settings.pronunciation_enabled !== false,
+        conversationMode: CONVERSATION_MODES.PUSH_TO_TALK
       });
       elements.feedbackLanguage.value = preferences.appLanguage;
       elements.aiSpeed.value = String(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
+      state.conversationMode = preferences.conversationMode;
       state.ui.setLanguage(preferences.appLanguage);
       state.ui.setTheme(preferences.theme);
+      state.ui.setConversationMode(state.conversationMode);
     } else {
       elements.feedbackLanguage.value = settings.support_language || 'vi';
       elements.aiSpeed.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
         ? String(settings.ai_playback_rate)
         : DEFAULT_AI_SPEED;
       elements.pron.checked = settings.pronunciation_enabled !== false;
+      state.conversationMode = CONVERSATION_MODES.HANDS_FREE;
+      state.ui.setConversationMode(state.conversationMode);
       state.ui.setTheme('dark');
       state.configuredRealtimeModel = models.realtime_conversation || '';
       state.realtimeFallbackModel = models.realtime_fallback || '';
@@ -277,7 +323,7 @@ import {UiController} from './ui.js';
   }
 
   function requestSessionReconnect(message) {
-    if (state.recording) {
+    if (inputBusy()) {
       state.ui.setStatus(message);
       return;
     }
@@ -289,8 +335,9 @@ import {UiController} from './ui.js';
     newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
   }
 
-  function cleanupMic() {
+  function cleanupMic({clearSettings = true} = {}) {
     state.inputForwarding = false;
+    state.micAcquireGeneration += 1;
     try { state.processor?.disconnect(); } catch {}
     try { state.micSource?.disconnect(); } catch {}
     state.micStream?.getTracks().forEach(track => track.stop());
@@ -299,11 +346,64 @@ import {UiController} from './ui.js';
     state.micSource = null;
     state.micStream = null;
     state.inputCtx = null;
-    state.micAudioSettings = {};
+    if (clearSettings) state.micAudioSettings = {};
+  }
+
+  async function ensureMicReady() {
+    if (state.processor && state.micStream && state.inputCtx) return true;
+    if (state.micReadyPromise) return state.micReadyPromise;
+
+    const generation = state.micAcquireGeneration;
+    state.micReadyPromise = (async () => {
+      await state.playback.ensureContext();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+        video: false
+      });
+
+      if (generation !== state.micAcquireGeneration) {
+        stream.getTracks().forEach(track => track.stop());
+        return false;
+      }
+
+      state.micStream = stream;
+      const audioTrack = stream.getAudioTracks()[0];
+      const actualSettings = audioTrack?.getSettings?.() || {};
+      state.micAudioSettings = {
+        echoCancellation: actualSettings.echoCancellation ?? null,
+        noiseSuppression: actualSettings.noiseSuppression ?? null,
+        autoGainControl: actualSettings.autoGainControl ?? null
+      };
+      console.log('[MIC SETTINGS]', state.micAudioSettings);
+
+      state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
+      state.micSource = state.inputCtx.createMediaStreamSource(stream);
+      state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
+      state.processor.onaudioprocess = event => {
+        if (!state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN || !state.activeTurn) return;
+        const mono = event.inputBuffer.getChannelData(0);
+        const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
+        state.activeTurn.pcmChunks.push(new Int16Array(pcm));
+        state.ws.send(JSON.stringify({
+          realtimeInput: {audio: {data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000'}}
+        }));
+      };
+
+      state.micSource.connect(state.processor);
+      state.processor.connect(state.inputCtx.destination);
+      return true;
+    })();
+
+    try {
+      return await state.micReadyPromise;
+    } finally {
+      state.micReadyPromise = null;
+    }
   }
 
   function createTurn() {
-    if (state.activeTurn || !state.recording) return null;
+    if (state.activeTurn) return null;
     const turn = {
       no: state.turnNo,
       pcmChunks: [],
@@ -370,7 +470,7 @@ import {UiController} from './ui.js';
 
   function postTurnMetric(turn) {
     const frontendState = {
-      recording: state.recording,
+      recording: handsFree() ? state.conversationActive : state.pushToTalkPressed,
       activeTurn: state.activeTurn ? state.activeTurn.no : null,
       buttonEnabled: !elements.talk.disabled,
       setupReady: state.setupReady
@@ -407,14 +507,27 @@ import {UiController} from './ui.js';
     }).catch(() => {});
   }
 
-  function armNextTurnAfterPlayback() {
+  function armHandsFreeAfterPlayback() {
     const delay = state.playback.armAfterLive(() => {
-      if (!state.recording || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return;
+      if (!state.conversationActive || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return;
       createTurn();
       state.inputForwarding = true;
+      state.ui.setTalkState('recording');
       setStatus('listening', 'Listening… speak naturally.');
     });
+    state.ui.setTalkState(delay > 0 ? 'speaking' : 'recording');
     setStatus(delay > 0 ? 'aiSpeaking' : 'listening', delay > 0 ? 'AI speaking…' : 'Listening…');
+  }
+
+  function armPushToTalkAfterPlayback() {
+    const delay = state.playback.armAfterLive(() => {
+      if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN || state.activeTurn) return;
+      state.ui.setTalkState('ready');
+      state.ui.setStatus(state.ui.t('holdToTalk'));
+    });
+    state.ui.setTalkState(delay > 0 ? 'speaking' : 'ready');
+    if (delay > 0) setStatus('aiSpeaking', 'AI speaking…');
+    else state.ui.setStatus(state.ui.t('holdToTalk'));
   }
 
   function finishTurn(turn) {
@@ -429,14 +542,17 @@ import {UiController} from './ui.js';
     state.turnNo += 1;
     state.activeTurn = null;
     state.inputForwarding = false;
+    state.pushActivityOpen = false;
     postTurnMetric(turn);
     render();
 
-    if (state.recording && state.setupReady && state.ws?.readyState === WebSocket.OPEN) {
-      armNextTurnAfterPlayback();
-    } else if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
+    if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
       showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
+      return;
     }
+
+    if (handsFree() && state.conversationActive) armHandsFreeAfterPlayback();
+    else if (!handsFree()) armPushToTalkAfterPlayback();
   }
 
   async function webSocketDataToText(data) {
@@ -447,10 +563,16 @@ import {UiController} from './ui.js';
     return String(data);
   }
 
-  function showReconnect(message) {
-    state.recording = false;
+  function resetInputState() {
+    state.conversationActive = false;
+    state.pushToTalkPressed = false;
+    state.pushActivityOpen = false;
     state.inputForwarding = false;
     state.activeTurn = null;
+  }
+
+  function showReconnect(message) {
+    resetInputState();
     state.playback?.clear();
     cleanupMic();
     state.setupReady = false;
@@ -502,8 +624,12 @@ import {UiController} from './ui.js';
       state.setupReady = true;
       state.ui.setSetupReady(true);
       state.ui.setTalkState('ready');
-      state.ui.setStatus(state.appMode === 'public' ? state.ui.t('ready') : `Ready · ${modelLabel(state.effectiveRealtimeModel)}`);
-      if (state.reconnectAfterConnect && !state.recording) {
+      state.ui.setStatus(
+        state.appMode === 'public'
+          ? (handsFree() ? state.ui.t('ready') : state.ui.t('holdToTalk'))
+          : `Ready · ${modelLabel(state.effectiveRealtimeModel)}`
+      );
+      if (state.reconnectAfterConnect && !inputBusy()) {
         state.reconnectAfterConnect = false;
         newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
       }
@@ -512,7 +638,7 @@ import {UiController} from './ui.js';
 
     const content = message.serverContent;
     if (!content) return;
-    if (content.interrupted) state.playback.clearLive();
+    if (content.interrupted) state.playback.interruptLive();
 
     const turn = state.activeTurn;
     if (!turn) return;
@@ -535,6 +661,14 @@ import {UiController} from './ui.js';
     if (content.turnComplete) finishTurn(turn);
   }
 
+  function liveVadConfig() {
+    if (!handsFree()) return {disabled: true};
+    return {
+      disabled: false,
+      silenceDurationMs: state.sessionSilenceDurationMs
+    };
+  }
+
   async function newLiveSession({fallback = false} = {}) {
     if (state.connecting) return;
     state.connecting = true;
@@ -545,6 +679,8 @@ import {UiController} from './ui.js';
     state.ui.setTalkState('connecting');
     setStatus('connecting', fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
     state.playback.clear();
+    resetInputState();
+    cleanupMic();
 
     const oldSocket = state.ws;
     state.ws = null;
@@ -580,10 +716,7 @@ import {UiController} from './ui.js';
           generationConfig: {responseModalities: ['AUDIO']},
           systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]},
           realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              silenceDurationMs: state.sessionSilenceDurationMs
-            }
+            automaticActivityDetection: liveVadConfig()
           },
           inputAudioTranscription: {},
           outputAudioTranscription: {}
@@ -604,44 +737,13 @@ import {UiController} from './ui.js';
     };
   }
 
-  async function startConversation() {
-    if (!state.setupReady || state.recording) return;
-    await state.playback.ensureContext();
+  async function startHandsFreeConversation() {
+    if (!handsFree() || !state.setupReady || state.conversationActive) return;
+    if (!await ensureMicReady()) return;
     elements.metric.textContent = '';
-    state.micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true},
-      video: false
-    });
-
-    const audioTrack = state.micStream.getAudioTracks()[0];
-    const actualSettings = audioTrack?.getSettings?.() || {};
-    state.micAudioSettings = {
-      echoCancellation: actualSettings.echoCancellation ?? null,
-      noiseSuppression: actualSettings.noiseSuppression ?? null,
-      autoGainControl: actualSettings.autoGainControl ?? null
-    };
-    console.log('[MIC SETTINGS]', state.micAudioSettings);
-
-    state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
-    state.micSource = state.inputCtx.createMediaStreamSource(state.micStream);
-    state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
-    state.recording = true;
+    state.conversationActive = true;
     createTurn();
     state.inputForwarding = true;
-
-    state.processor.onaudioprocess = event => {
-      if (!state.recording || !state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN) return;
-      const mono = event.inputBuffer.getChannelData(0);
-      const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
-      if (state.activeTurn) state.activeTurn.pcmChunks.push(new Int16Array(pcm));
-      state.ws.send(JSON.stringify({
-        realtimeInput: {audio: {data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000'}}
-      }));
-    };
-
-    state.micSource.connect(state.processor);
-    state.processor.connect(state.inputCtx.destination);
     state.ui.setTalkState('recording');
     setStatus('listening', 'Listening… speak naturally.');
   }
@@ -655,9 +757,9 @@ import {UiController} from './ui.js';
     );
   }
 
-  function stopConversation() {
-    if (!state.recording) return;
-    state.recording = false;
+  function stopHandsFreeConversation() {
+    if (!state.conversationActive) return;
+    state.conversationActive = false;
     state.inputForwarding = false;
     state.activeTurn = null;
     state.playback.clear();
@@ -674,25 +776,106 @@ import {UiController} from './ui.js';
     }
   }
 
-  async function handleUiAction(action, detail) {
-    const turn = state.turns.find(item => item.no === detail.turn);
-    if (!turn || !state.playback || state.playback.livePlaying) return;
-    if (action === 'replay-user' && turn.replayPcm?.length) {
-      await state.playback.playUserPcm(turn.replayPcm, 16000);
+  async function beginPushToTalk() {
+    if (handsFree() || state.appMode !== 'public' || state.pushToTalkPressed) return false;
+    if (state.reconnectNeeded || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return false;
+    if (state.activeTurn || state.playback.livePlaying) return false;
+
+    state.playback.stopManual();
+    const holdGeneration = ++state.pushHoldGeneration;
+    state.pushToTalkPressed = true;
+    state.ui.setTalkState('pressed');
+    state.ui.setStatus(state.ui.t('releaseToSend'));
+
+    try {
+      const micReady = await ensureMicReady();
+      if (!micReady) return false;
+    } catch (error) {
+      state.pushToTalkPressed = false;
+      state.ui.setTalkState('ready');
+      throw error;
+    }
+
+    if (
+      holdGeneration !== state.pushHoldGeneration ||
+      !state.pushToTalkPressed ||
+      handsFree() ||
+      !state.setupReady ||
+      state.ws?.readyState !== WebSocket.OPEN
+    ) {
+      state.inputForwarding = false;
+      if (!state.pushToTalkPressed) cleanupMic({clearSettings: false});
+      return false;
+    }
+
+    const turn = createTurn();
+    if (!turn) {
+      state.pushToTalkPressed = false;
+      state.ui.setTalkState('ready');
+      return false;
+    }
+
+    state.ws.send(JSON.stringify({realtimeInput: {activityStart: {}}}));
+    state.pushActivityOpen = true;
+    state.inputForwarding = true;
+    setStatus('listening', 'Listening…');
+    return true;
+  }
+
+  function endPushToTalk() {
+    if (handsFree() || state.appMode !== 'public' || !state.pushToTalkPressed) return;
+    state.pushToTalkPressed = false;
+    state.pushHoldGeneration += 1;
+    state.inputForwarding = false;
+
+    if (state.pushActivityOpen && state.ws?.readyState === WebSocket.OPEN) {
+      state.ws.send(JSON.stringify({realtimeInput: {activityEnd: {}}}));
+      state.pushActivityOpen = false;
+      cleanupMic({clearSettings: false});
+      state.ui.setTalkState('waiting');
+      state.ui.setStatus(state.ui.t('waiting'));
       return;
     }
-    if (action === 'speak-correction') {
-      await state.playback.speak(turn.coach?.correction || turn.userText, {
+
+    if (!state.micReadyPromise) cleanupMic({clearSettings: false});
+    state.ui.setTalkState('ready');
+    state.ui.setStatus(state.ui.t('holdToTalk'));
+  }
+
+  function endInputBeforeModeChange() {
+    state.inputForwarding = false;
+    if (state.ws?.readyState === WebSocket.OPEN) {
+      if (handsFree() && state.conversationActive) {
+        state.ws.send(JSON.stringify({realtimeInput: {audioStreamEnd: true}}));
+      } else if (!handsFree() && state.pushActivityOpen) {
+        state.ws.send(JSON.stringify({realtimeInput: {activityEnd: {}}}));
+      }
+    }
+    resetInputState();
+    state.playback.clear();
+    cleanupMic();
+  }
+
+  async function handleUiAction(action, detail) {
+    if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) return;
+    const turn = state.turns.find(item => item.no === detail.turn);
+    if (!turn || !state.playback || state.playback.livePlaying) return;
+
+    let played = true;
+    if (action === 'replay-user' && turn.replayPcm?.length) {
+      played = await state.playback.playUserPcm(turn.replayPcm, 16000);
+    } else if (action === 'speak-correction') {
+      played = await state.playback.speak(turn.coach?.correction || turn.userText, {
         lang: targetSpeechLocale(state.targetLanguage),
         rate: Math.min(1, aiPlaybackRate())
       });
-      return;
-    }
-    if (action === 'speak-problem') {
+    } else if (action === 'speak-problem') {
       const problems = turn.coach?.pronunciation?.problems || [];
       const word = problems[detail.problem]?.word;
-      if (word) await state.playback.speak(word, {lang: targetSpeechLocale(state.targetLanguage), rate: 0.8});
+      if (word) played = await state.playback.speak(word, {lang: targetSpeechLocale(state.targetLanguage), rate: 0.8});
     }
+
+    if (!played) state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
   }
 
   elements.feedbackLanguage.addEventListener('change', async () => {
@@ -712,6 +895,29 @@ import {UiController} from './ui.js';
   elements.theme.addEventListener('change', () => {
     if (state.appMode !== 'public') return;
     state.ui.setTheme(state.preferences.setTheme(elements.theme.value));
+  });
+
+  elements.talkMode?.addEventListener('change', async () => {
+    if (state.appMode !== 'public') return;
+    const nextMode = elements.talkMode.checked
+      ? CONVERSATION_MODES.HANDS_FREE
+      : CONVERSATION_MODES.PUSH_TO_TALK;
+    if (nextMode === state.conversationMode) return;
+
+    try {
+      const wasConnecting = state.connecting;
+      endInputBeforeModeChange();
+      state.conversationMode = state.preferences.setConversationMode(nextMode);
+      state.ui.setConversationMode(state.conversationMode);
+      render();
+      if (wasConnecting) {
+        state.reconnectAfterConnect = true;
+        return;
+      }
+      await newLiveSession();
+    } catch (error) {
+      showReconnect(`Connection error: ${error.message}.`);
+    }
   });
 
   elements.teacher.addEventListener('change', async () => {
@@ -759,20 +965,63 @@ import {UiController} from './ui.js';
     try { await persistSettings({pronunciation_enabled: elements.pron.checked}); } catch (error) { await recoverSettings(error); render(); }
   });
 
+  elements.talk.addEventListener('pointerdown', event => {
+    if (state.appMode !== 'public' || handsFree() || elements.talk.disabled) return;
+    event.preventDefault();
+    try { elements.talk.setPointerCapture?.(event.pointerId); } catch {}
+    beginPushToTalk().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+  });
+
+  elements.talk.addEventListener('pointerup', event => {
+    if (state.appMode !== 'public' || handsFree()) return;
+    event.preventDefault();
+    endPushToTalk();
+    try { elements.talk.releasePointerCapture?.(event.pointerId); } catch {}
+  });
+
+  elements.talk.addEventListener('pointercancel', event => {
+    if (state.appMode !== 'public' || handsFree()) return;
+    event.preventDefault();
+    endPushToTalk();
+  });
+
+  elements.talk.addEventListener('lostpointercapture', () => {
+    if (state.appMode === 'public' && !handsFree()) endPushToTalk();
+  });
+
+  elements.talk.addEventListener('keydown', event => {
+    if (state.appMode !== 'public' || handsFree() || event.repeat || ![' ', 'Enter'].includes(event.key)) return;
+    event.preventDefault();
+    beginPushToTalk().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+  });
+
+  elements.talk.addEventListener('keyup', event => {
+    if (state.appMode !== 'public' || handsFree() || ![' ', 'Enter'].includes(event.key)) return;
+    event.preventDefault();
+    endPushToTalk();
+  });
+
   elements.talk.addEventListener('click', async () => {
     try {
+      if (state.appMode === 'public' && !handsFree()) {
+        if (state.reconnectNeeded || !state.setupReady || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
+          await newLiveSession();
+        }
+        return;
+      }
       if (state.reconnectNeeded || !state.setupReady || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
         await newLiveSession();
         return;
       }
-      if (state.recording) stopConversation();
-      else await startConversation();
+      if (state.conversationActive) stopHandsFreeConversation();
+      else await startHandsFreeConversation();
     } catch (error) {
       showReconnect(`Connection error: ${error.message}.`);
     }
   });
 
   window.addEventListener('beforeunload', () => {
+    state.inputForwarding = false;
     state.playback?.clear();
     cleanupMic();
     try { state.ws?.close(); } catch {}
