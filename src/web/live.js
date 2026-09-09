@@ -10,10 +10,6 @@ import {
 (() => {
   'use strict';
 
-  // ---------------------------------------------------------------------------
-  // DOM + runtime configuration
-  // ---------------------------------------------------------------------------
-  const MODEL = 'gemini-3.1-flash-live-preview';
   const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
   const AI_SPEED_VALUES = ['0.5', '0.6', '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5'];
   const DEFAULT_AI_SPEED = '0.8';
@@ -26,24 +22,25 @@ import {
   const conversationEl = document.getElementById('conversation');
   const teacherEl = document.getElementById('teacher');
   const feedbackLanguageEl = document.getElementById('feedback-language');
+  const realtimeModelEl = document.getElementById('realtime-model');
+  const coachModelEl = document.getElementById('coach-model');
   const aiSpeedEl = document.getElementById('ai-speed');
   const silenceDurationEl = document.getElementById('silence-duration');
   const pronEl = document.getElementById('pron');
 
-  const savedSilence = localStorage.getItem('silenceDurationMs');
-  if (['700', '1000', '1200', '1500'].includes(savedSilence)) {
-    silenceDurationEl.value = savedSilence;
-  }
-
-  const savedAiSpeed = localStorage.getItem('aiPlaybackRate');
-  aiSpeedEl.value = AI_SPEED_VALUES.includes(savedAiSpeed) ? savedAiSpeed : DEFAULT_AI_SPEED;
-
   const state = {
     ws: null,
     sessionId: null,
-    supportLanguage: selectedSupportLanguage(feedbackLanguageEl.value),
+    configuredRealtimeModel: '',
+    realtimeFallbackModel: '',
+    effectiveRealtimeModel: '',
+    sessionRequestedModel: '',
+    sessionFallbackTried: false,
+    supportLanguage: 'vi',
+    sessionSilenceDurationMs: 1000,
     setupReady: false,
     reconnectNeeded: false,
+    reconnectAfterConnect: false,
     connecting: false,
     recording: false,
     inputForwarding: false,
@@ -60,7 +57,7 @@ import {
   };
 
   // ---------------------------------------------------------------------------
-  // UI + rendering
+  // UI + settings
   // ---------------------------------------------------------------------------
   function setStatus(text, className = '') {
     statusEl.className = `muted ${className}`.trim();
@@ -79,6 +76,109 @@ import {
       .replaceAll('>', '&gt;');
   }
 
+  function readJsonResponse(response) {
+    return response.text().then(text => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`HTTP ${response.status}: ${text.slice(0, 160)}`);
+      }
+    });
+  }
+
+  function modelLabel(model) {
+    const labels = {
+      auto: 'Auto (recommended)',
+      'gemini-3.1-flash-live-preview': 'Gemini 3.1 Flash Live (recommended)',
+      'gemini-2.5-flash-native-audio-preview-12-2025': 'Gemini 2.5 Native Audio',
+      'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+      'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+      'gemini-3.6-flash': 'Gemini 3.6 Flash'
+    };
+    return labels[model] || model;
+  }
+
+  function setSelectChoices(element, choices, selected) {
+    const values = Array.isArray(choices) ? choices : [];
+    element.innerHTML = values
+      .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(modelLabel(value))}</option>`)
+      .join('');
+    element.value = selected;
+  }
+
+  function applySettingsPayload(payload) {
+    const settings = payload?.settings || {};
+    const models = payload?.models || {};
+    const choices = payload?.choices || {};
+
+    teacherEl.value = settings.teacher || 'Normal';
+    feedbackLanguageEl.value = settings.support_language || 'vi';
+    aiSpeedEl.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
+      ? String(settings.ai_playback_rate)
+      : DEFAULT_AI_SPEED;
+    silenceDurationEl.value = String(settings.silence_duration_ms || 1000);
+    pronEl.checked = settings.pronunciation_enabled !== false;
+
+    state.configuredRealtimeModel = models.realtime_conversation || '';
+    state.realtimeFallbackModel = models.realtime_fallback || '';
+    setSelectChoices(
+      realtimeModelEl,
+      choices.realtime_conversation,
+      state.configuredRealtimeModel
+    );
+    const coachSelected = models.coach_mode === 'auto' ? 'auto' : models.coach_model;
+    setSelectChoices(coachModelEl, choices.coach, coachSelected);
+
+    if (!state.ws && !state.connecting && !state.setupReady) {
+      state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
+    }
+  }
+
+  async function loadSettings() {
+    const response = await fetch('/api/settings', {cache: 'no-store'});
+    const data = await readJsonResponse(response);
+    if (!response.ok) throw new Error(data.error || 'Could not load settings');
+    applySettingsPayload(data);
+    return data;
+  }
+
+  async function persistSettings(changes) {
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(changes)
+    });
+    const data = await readJsonResponse(response);
+    if (!response.ok) throw new Error(data.error || 'Could not save settings');
+    applySettingsPayload(data);
+    return data;
+  }
+
+  async function recoverSettings(error) {
+    try {
+      await loadSettings();
+    } catch {}
+    setStatus(`Settings error: ${error.message}`, 'error');
+  }
+
+  function requestSessionReconnect(message) {
+    if (state.recording) {
+      setStatus(`${message} It will apply after you stop this conversation.`);
+      return;
+    }
+    if (state.connecting) {
+      state.reconnectAfterConnect = true;
+      setStatus(`${message} It will apply as soon as the current connection finishes.`);
+      return;
+    }
+    newLiveSession().catch(error => {
+      showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Conversation rendering
+  // ---------------------------------------------------------------------------
   function concatTranscript(previous, incoming) {
     const oldText = (previous || '').trim();
     const newText = (incoming || '').trim();
@@ -204,15 +304,6 @@ import {
   // ---------------------------------------------------------------------------
   // Small data helpers
   // ---------------------------------------------------------------------------
-  async function readJsonResponse(response) {
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(`HTTP ${response.status}: ${text.slice(0, 160)}`);
-    }
-  }
-
   function b64ToBytes(base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -417,8 +508,10 @@ import {
         settings: {
           teacher: teacherEl.value,
           pronunciation_enabled: pronEl.checked,
-          silence_duration_ms: Number(silenceDurationEl.value),
-          ai_playback_rate: aiPlaybackRate()
+          silence_duration_ms: state.sessionSilenceDurationMs,
+          ai_playback_rate: aiPlaybackRate(),
+          realtime_model: state.effectiveRealtimeModel,
+          coach_model: coachModelEl.value
         },
         frontend_state: frontendState
       })
@@ -446,7 +539,6 @@ import {
     turn.finished = true;
     finalizeLanguageMode(turn);
 
-    // Coach is intentionally fire-and-forget relative to the spoken Live response.
     if (isCoachEligible(turn)) runCoach(turn);
     state.turnNo += 1;
     state.activeTurn = null;
@@ -489,6 +581,27 @@ import {
     setStatus(message || 'Live session ended. Tap Reconnect.');
   }
 
+  async function retryWithRealtimeFallback(reason) {
+    if (
+      state.setupReady ||
+      state.sessionFallbackTried ||
+      !state.realtimeFallbackModel ||
+      state.realtimeFallbackModel === state.effectiveRealtimeModel
+    ) {
+      return false;
+    }
+
+    state.sessionFallbackTried = true;
+    state.connecting = false;
+    setStatus(`Primary realtime model failed (${reason}). Trying fallback…`);
+    try {
+      await newLiveSession({fallback: true});
+    } catch (error) {
+      showReconnect(`Fallback connection error: ${error.message}. Tap Reconnect.`);
+    }
+    return true;
+  }
+
   async function onLiveMessage(event, socket) {
     if (state.ws !== socket) return;
 
@@ -501,7 +614,14 @@ import {
     }
 
     if (message.error) {
-      setStatus(`Gemini error: ${message.error.message || JSON.stringify(message.error)}`, 'error');
+      const detail = message.error.message || JSON.stringify(message.error);
+      if (!state.setupReady) {
+        state.connecting = false;
+        if (await retryWithRealtimeFallback(detail)) return;
+        showReconnect(`Gemini setup error: ${detail}. Tap Reconnect.`);
+        return;
+      }
+      setStatus(`Gemini error: ${detail}`, 'error');
       return;
     }
 
@@ -513,7 +633,14 @@ import {
       talk.disabled = false;
       talk.className = 'ready';
       talk.textContent = '🎙 Start conversation';
-      setStatus('Ready. Tap once, then talk hands-free.');
+      setStatus(`Ready · ${modelLabel(state.effectiveRealtimeModel)}`);
+
+      if (state.reconnectAfterConnect && !state.recording) {
+        state.reconnectAfterConnect = false;
+        newLiveSession().catch(error => {
+          showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
+        });
+      }
       return;
     }
 
@@ -543,17 +670,18 @@ import {
     if (content.turnComplete) finishTurn(turn);
   }
 
-  async function newLiveSession() {
+  async function newLiveSession({fallback = false} = {}) {
     if (state.connecting) return;
     state.connecting = true;
     state.reconnectNeeded = false;
     state.setupReady = false;
+    if (!fallback) state.sessionFallbackTried = false;
     updateSetupIndicator();
 
     talk.disabled = true;
     talk.className = 'ready';
     talk.textContent = 'Connecting…';
-    setStatus('Creating secure live session…');
+    setStatus(fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
 
     const oldSocket = state.ws;
     state.ws = null;
@@ -561,11 +689,19 @@ import {
       try { oldSocket.close(); } catch {}
     }
 
-    const response = await fetch('/api/session', {cache: 'no-store'});
+    const response = await fetch(`/api/session${fallback ? '?fallback=1' : ''}`, {cache: 'no-store'});
     const data = await readJsonResponse(response);
-    if (!response.ok) throw new Error(data.error || 'Could not create live session');
+    if (!response.ok) {
+      state.connecting = false;
+      throw new Error(data.error || 'Could not create live session');
+    }
 
     state.sessionId = data.session_id;
+    state.effectiveRealtimeModel = data.model;
+    state.sessionRequestedModel = data.requested_model || state.configuredRealtimeModel;
+    state.realtimeFallbackModel = data.fallback_model || state.realtimeFallbackModel;
+    if (data.fallback_used) state.sessionFallbackTried = true;
+
     const url = `${WS_BASE}?access_token=${encodeURIComponent(data.token)}`;
     const socket = new WebSocket(url);
     state.ws = socket;
@@ -574,10 +710,11 @@ import {
     socket.onopen = () => {
       if (state.ws !== socket) return;
       state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
-      setStatus('WebSocket open. Configuring Gemini Live…');
+      state.sessionSilenceDurationMs = Number(silenceDurationEl.value);
+      setStatus(`WebSocket open · configuring ${modelLabel(data.model)}…`);
       socket.send(JSON.stringify({
         setup: {
-          model: `models/${MODEL}`,
+          model: `models/${data.model}`,
           generationConfig: {responseModalities: ['AUDIO']},
           systemInstruction: {
             parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]
@@ -585,7 +722,7 @@ import {
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
-              silenceDurationMs: Number(silenceDurationEl.value)
+              silenceDurationMs: state.sessionSilenceDurationMs
             }
           },
           inputAudioTranscription: {},
@@ -596,12 +733,20 @@ import {
 
     socket.onmessage = event => onLiveMessage(event, socket);
     socket.onerror = () => {
-      if (state.ws === socket) setStatus('Gemini Live WebSocket error.', 'error');
+      if (state.ws === socket && state.setupReady) {
+        setStatus('Gemini Live WebSocket error.', 'error');
+      }
     };
-    socket.onclose = event => {
+    socket.onclose = async event => {
       if (state.ws !== socket) return;
       state.ws = null;
+      state.connecting = false;
       const reason = event.reason ? `: ${event.reason}` : '';
+
+      if (!state.setupReady) {
+        if (await retryWithRealtimeFallback(`WebSocket closed ${event.code}${reason}`)) return;
+      }
+
       showReconnect(
         event.code === 1008
           ? 'Live session paused after being idle. Tap Reconnect.'
@@ -660,6 +805,14 @@ import {
     setStatus('Listening… speak naturally.');
   }
 
+  function sessionSettingsChanged() {
+    return (
+      selectedSupportLanguage(feedbackLanguageEl.value) !== state.supportLanguage ||
+      realtimeModelEl.value !== state.sessionRequestedModel ||
+      Number(silenceDurationEl.value) !== state.sessionSilenceDurationMs
+    );
+  }
+
   function stopConversation() {
     if (!state.recording) return;
     state.recording = false;
@@ -674,9 +827,9 @@ import {
     talk.disabled = false;
     talk.className = 'ready';
 
-    if (selectedSupportLanguage(feedbackLanguageEl.value) !== state.supportLanguage) {
+    if (sessionSettingsChanged()) {
       talk.textContent = 'Connecting…';
-      setStatus('Applying support / correction language…');
+      setStatus('Applying session settings…');
       newLiveSession().catch(error => {
         showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
       });
@@ -689,33 +842,72 @@ import {
   // ---------------------------------------------------------------------------
   // Events + bootstrap
   // ---------------------------------------------------------------------------
-  aiSpeedEl.addEventListener('change', () => {
+  teacherEl.addEventListener('change', async () => {
+    try {
+      await persistSettings({teacher: teacherEl.value});
+      setStatus(`Teacher ${teacherEl.value} saved.`);
+    } catch (error) {
+      await recoverSettings(error);
+    }
+  });
+
+  feedbackLanguageEl.addEventListener('change', async () => {
+    try {
+      await persistSettings({support_language: feedbackLanguageEl.value});
+      requestSessionReconnect('Support / correction language saved.');
+    } catch (error) {
+      await recoverSettings(error);
+    }
+  });
+
+  realtimeModelEl.addEventListener('change', async () => {
+    try {
+      await persistSettings({realtime_conversation_model: realtimeModelEl.value});
+      requestSessionReconnect('Realtime model saved.');
+    } catch (error) {
+      await recoverSettings(error);
+    }
+  });
+
+  coachModelEl.addEventListener('change', async () => {
+    try {
+      await persistSettings({coach_model: coachModelEl.value});
+      setStatus(`Coach model ${modelLabel(coachModelEl.value)} saved.`);
+    } catch (error) {
+      await recoverSettings(error);
+    }
+  });
+
+  aiSpeedEl.addEventListener('change', async () => {
     const value = AI_SPEED_VALUES.includes(aiSpeedEl.value) ? aiSpeedEl.value : DEFAULT_AI_SPEED;
     aiSpeedEl.value = value;
-    localStorage.setItem('aiPlaybackRate', value);
-    setStatus(`AI response speed ${value}× saved.`);
-  });
-
-  feedbackLanguageEl.addEventListener('change', () => {
-    if (state.recording) {
-      setStatus('Support / correction language changed. It will apply after you stop this conversation.');
-      return;
+    try {
+      await persistSettings({ai_playback_rate: Number(value)});
+      setStatus(`AI response speed ${value}× saved.`);
+    } catch (error) {
+      await recoverSettings(error);
     }
-    if (state.connecting) {
-      setStatus('Support / correction language changed. It will apply to the connecting session.');
-      return;
+  });
+
+  silenceDurationEl.addEventListener('change', async () => {
+    try {
+      await persistSettings({silence_duration_ms: Number(silenceDurationEl.value)});
+      requestSessionReconnect(`Silence timeout ${silenceDurationEl.value} ms saved.`);
+    } catch (error) {
+      await recoverSettings(error);
     }
-    newLiveSession().catch(error => {
-      showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
-    });
   });
 
-  silenceDurationEl.addEventListener('change', () => {
-    localStorage.setItem('silenceDurationMs', silenceDurationEl.value);
-    setStatus(`Silence timeout ${silenceDurationEl.value} ms saved. Reconnect to apply.`);
+  pronEl.addEventListener('change', async () => {
+    render();
+    try {
+      await persistSettings({pronunciation_enabled: pronEl.checked});
+      setStatus(`Pronunciation coaching ${pronEl.checked ? 'on' : 'off'} saved.`);
+    } catch (error) {
+      await recoverSettings(error);
+      render();
+    }
   });
-
-  pronEl.addEventListener('change', render);
 
   talk.addEventListener('click', async () => {
     try {
@@ -735,9 +927,17 @@ import {
     try { state.ws?.close(); } catch {}
   });
 
-  updateSetupIndicator();
-  render();
-  newLiveSession().catch(error => {
-    showReconnect(`Startup error: ${error.message}. Tap Reconnect.`);
-  });
+  async function bootstrap() {
+    updateSetupIndicator();
+    render();
+    try {
+      await loadSettings();
+      setStatus('Settings loaded. Creating secure live session…');
+      await newLiveSession();
+    } catch (error) {
+      showReconnect(`Startup error: ${error.message}. Tap Reconnect.`);
+    }
+  }
+
+  bootstrap();
 })();
