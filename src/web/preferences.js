@@ -80,10 +80,9 @@ export class PreferencesStore {
   }
 
   load(defaults = {}) {
-    const defaultLanguage = normalizeAppLanguage(
-      defaults.appLanguage,
-      detectDefaultAppLanguage(this.browserLanguage)
-    );
+    // App language is a learner/browser preference, never a server-global setting.
+    // This keeps dev support_language from leaking into public UI defaults.
+    const defaultLanguage = detectDefaultAppLanguage(this.browserLanguage);
     const defaultTheme = normalizeTheme(defaults.theme, this.prefersDark ? 'dark' : 'light');
     const defaultRate = normalizePlaybackRate(defaults.playbackRate, 0.8);
     const defaultPronunciation = normalizePronunciationEnabled(defaults.pronunciationEnabled, true);
