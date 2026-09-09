@@ -38,6 +38,7 @@ import {
     sessionFallbackTried: false,
     supportLanguage: 'vi',
     sessionSilenceDurationMs: 1000,
+    echoGuardMs: 0,
     setupReady: false,
     reconnectNeeded: false,
     reconnectAfterConnect: false,
@@ -48,8 +49,10 @@ import {
     micStream: null,
     micSource: null,
     processor: null,
+    micAudioSettings: {},
     playCtx: null,
     playAt: 0,
+    playbackSources: new Set(),
     armTimer: null,
     turnNo: 1,
     activeTurn: null,
@@ -118,6 +121,9 @@ import {
       : DEFAULT_AI_SPEED;
     silenceDurationEl.value = String(settings.silence_duration_ms || 1000);
     pronEl.checked = settings.pronunciation_enabled !== false;
+
+    const echoGuardMs = Number(settings.echo_guard_ms);
+    state.echoGuardMs = Number.isFinite(echoGuardMs) && echoGuardMs >= 0 ? echoGuardMs : 0;
 
     state.configuredRealtimeModel = models.realtime_conversation || '';
     state.realtimeFallbackModel = models.realtime_fallback || '';
@@ -375,11 +381,28 @@ import {
     return pcm;
   }
 
+  function pauseInputForAiPlayback() {
+    if (!state.recording) return;
+    state.inputForwarding = false;
+    setStatus('AI speaking…');
+  }
+
+  function clearAiPlayback() {
+    for (const source of state.playbackSources) {
+      try { source.stop(); } catch {}
+      try { source.disconnect(); } catch {}
+    }
+    state.playbackSources.clear();
+    state.playAt = state.playCtx ? state.playCtx.currentTime : 0;
+  }
+
   function queueAiPcm(base64) {
     if (!state.playCtx) return;
     const bytes = b64ToBytes(base64);
     const sampleCount = Math.floor(bytes.byteLength / 2);
     if (!sampleCount) return;
+
+    pauseInputForAiPlayback();
 
     const floats = new Float32Array(sampleCount);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -394,6 +417,11 @@ import {
     source.buffer = buffer;
     source.playbackRate.value = rate;
     source.connect(state.playCtx.destination);
+    state.playbackSources.add(source);
+    source.onended = () => {
+      state.playbackSources.delete(source);
+      try { source.disconnect(); } catch {}
+    };
 
     const now = state.playCtx.currentTime;
     if (state.playAt < now + 0.025) state.playAt = now + 0.025;
@@ -415,6 +443,7 @@ import {
     state.micSource = null;
     state.micStream = null;
     state.inputCtx = null;
+    state.micAudioSettings = {};
   }
 
   // ---------------------------------------------------------------------------
@@ -505,11 +534,13 @@ import {
         coach_eligible: turn.coachEligible,
         coach_called: turn.coachSent,
         coach_skip_reason: turn.coachSkipReason,
+        mic_audio_settings: state.micAudioSettings,
         settings: {
           teacher: teacherEl.value,
           pronunciation_enabled: pronEl.checked,
           silence_duration_ms: state.sessionSilenceDurationMs,
           ai_playback_rate: aiPlaybackRate(),
+          echo_guard_ms: state.echoGuardMs,
           realtime_model: state.effectiveRealtimeModel,
           coach_model: coachModelEl.value
         },
@@ -520,11 +551,12 @@ import {
 
   function armNextTurnAfterPlayback() {
     clearTimeout(state.armTimer);
-    const remainingMs = state.playCtx
-      ? Math.max(0, (state.playAt - state.playCtx.currentTime) * 1000 + 100)
-      : 100;
+    const playbackMs = state.playCtx
+      ? Math.max(0, (state.playAt - state.playCtx.currentTime) * 1000)
+      : 0;
+    const remainingMs = playbackMs + state.echoGuardMs;
 
-    setStatus(remainingMs > 150 ? 'AI speaking…' : 'Listening…');
+    setStatus(remainingMs > 0 ? 'AI speaking…' : 'Listening…');
     state.armTimer = setTimeout(() => {
       state.armTimer = null;
       if (!state.recording || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return;
@@ -569,6 +601,7 @@ import {
     state.recording = false;
     state.inputForwarding = false;
     state.activeTurn = null;
+    clearAiPlayback();
     cleanupMic();
     state.setupReady = false;
     state.reconnectNeeded = true;
@@ -645,8 +678,11 @@ import {
     }
 
     const content = message.serverContent;
+    if (!content) return;
+    if (content.interrupted) clearAiPlayback();
+
     const turn = state.activeTurn;
-    if (!content || !turn) return;
+    if (!turn) return;
 
     if (content.inputTranscription?.languageCode) {
       recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
@@ -682,6 +718,7 @@ import {
     talk.className = 'ready';
     talk.textContent = 'Connecting…';
     setStatus(fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
+    clearAiPlayback();
 
     const oldSocket = state.ws;
     state.ws = null;
@@ -772,6 +809,16 @@ import {
       },
       video: false
     });
+
+    const audioTrack = state.micStream.getAudioTracks()[0];
+    const actualSettings = audioTrack?.getSettings?.() || {};
+    state.micAudioSettings = {
+      echoCancellation: actualSettings.echoCancellation ?? null,
+      noiseSuppression: actualSettings.noiseSuppression ?? null,
+      autoGainControl: actualSettings.autoGainControl ?? null
+    };
+    console.log('[MIC SETTINGS]', state.micAudioSettings);
+
     state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
 
@@ -818,6 +865,7 @@ import {
     state.recording = false;
     state.inputForwarding = false;
     state.activeTurn = null;
+    clearAiPlayback();
     cleanupMic();
 
     if (state.ws?.readyState === WebSocket.OPEN) {
@@ -923,6 +971,7 @@ import {
   });
 
   window.addEventListener('beforeunload', () => {
+    clearAiPlayback();
     cleanupMic();
     try { state.ws?.close(); } catch {}
   });

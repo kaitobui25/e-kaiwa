@@ -23,6 +23,9 @@ ALLOWED_SILENCE_MS = (700, 1000, 1200, 1500)
 ALLOWED_PLAYBACK_RATES = tuple(round(0.5 + 0.1 * i, 1) for i in range(11))
 ALLOWED_SUPPORT_LANGUAGES = ("vi", "ja")
 ALLOWED_TEACHERS = tuple(mode.name for mode in TEACHER_MODES.values())
+DEFAULT_ECHO_GUARD_MS = 250
+MIN_ECHO_GUARD_MS = 0
+MAX_ECHO_GUARD_MS = 2000
 
 
 def default_config() -> dict:
@@ -34,6 +37,7 @@ def default_config() -> dict:
             "pronunciation_enabled": True,
             "silence_duration_ms": 1000,
             "ai_playback_rate": 0.8,
+            "echo_guard_ms": DEFAULT_ECHO_GUARD_MS,
         },
         "models": {
             "realtime_conversation": {
@@ -53,8 +57,15 @@ def _mapping(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _valid_echo_guard_ms(value: object) -> bool:
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and MIN_ECHO_GUARD_MS <= value <= MAX_ECHO_GUARD_MS
+    )
+
+
 def _normalize_document(raw: dict) -> tuple[dict, list[str]]:
-    defaults = default_config()
     warnings: list[str] = []
     settings_raw = _mapping(raw.get("settings"))
     models_raw = _mapping(raw.get("models"))
@@ -97,6 +108,12 @@ def _normalize_document(raw: dict) -> tuple[dict, list[str]]:
             warnings.append("settings.ai_playback_rate invalid; using 0.8")
     elif "ai_playback_rate" in settings_raw:
         warnings.append("settings.ai_playback_rate invalid; using 0.8")
+
+    echo_guard = settings_raw.get("echo_guard_ms")
+    if _valid_echo_guard_ms(echo_guard):
+        result["settings"]["echo_guard_ms"] = echo_guard
+    elif "echo_guard_ms" in settings_raw:
+        warnings.append(f"settings.echo_guard_ms invalid; using {DEFAULT_ECHO_GUARD_MS}")
 
     selected_realtime = str(realtime_raw.get("selected", "")).strip()
     if selected_realtime in REALTIME_MODELS:
@@ -245,6 +262,7 @@ class SettingsStore:
             "pronunciation_enabled",
             "silence_duration_ms",
             "ai_playback_rate",
+            "echo_guard_ms",
             "realtime_conversation_model",
             "coach_model",
         }
@@ -290,6 +308,12 @@ class SettingsStore:
                 if value not in ALLOWED_PLAYBACK_RATES:
                     raise ValueError("invalid ai_playback_rate")
                 settings["ai_playback_rate"] = value
+
+            if "echo_guard_ms" in changes:
+                value = changes["echo_guard_ms"]
+                if not _valid_echo_guard_ms(value):
+                    raise ValueError("invalid echo_guard_ms")
+                settings["echo_guard_ms"] = value
 
             if "realtime_conversation_model" in changes:
                 model = str(changes["realtime_conversation_model"] or "").strip()

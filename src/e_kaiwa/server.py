@@ -91,6 +91,15 @@ def _language_mode(value: object) -> str:
     return mode if mode in {"english", "non_english", "unknown"} else "unknown"
 
 
+def _mic_audio_settings(value: object) -> dict:
+    data = value if isinstance(value, dict) else {}
+    return {
+        "echoCancellation": _optional_bool(data.get("echoCancellation")),
+        "noiseSuppression": _optional_bool(data.get("noiseSuppression")),
+        "autoGainControl": _optional_bool(data.get("autoGainControl")),
+    }
+
+
 def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
     class LiveRequestHandler(BaseHTTPRequestHandler):
         server_version = "EKaiwaLive/0.3"
@@ -177,6 +186,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         fallback_reason=("client_setup_retry" if use_fallback else None),
                         support_language=persisted["support_language"],
                         silence_duration_ms=persisted["silence_duration_ms"],
+                        echo_guard_ms=persisted["echo_guard_ms"],
                     )
                     self.send_json(
                         200,
@@ -189,6 +199,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                             "fallback_used": use_fallback,
                             "support_language": persisted["support_language"],
                             "silence_duration_ms": persisted["silence_duration_ms"],
+                            "echo_guard_ms": persisted["echo_guard_ms"],
                         },
                     )
                     print(
@@ -252,11 +263,13 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         coach_eligible=_optional_bool(payload.get("coach_eligible")),
                         coach_called=_optional_bool(payload.get("coach_called")),
                         coach_skip_reason=_short_text(payload.get("coach_skip_reason")),
+                        mic_audio_settings=_mic_audio_settings(payload.get("mic_audio_settings")),
                         settings={
                             "teacher": _short_text(settings.get("teacher"), 16),
                             "pronunciation_enabled": _optional_bool(settings.get("pronunciation_enabled")),
                             "silence_duration_ms": _optional_number(settings.get("silence_duration_ms")),
                             "ai_playback_rate": _optional_number(settings.get("ai_playback_rate")),
+                            "echo_guard_ms": _optional_number(settings.get("echo_guard_ms")),
                             "realtime_model": _short_text(settings.get("realtime_model"), 80),
                             "coach_model": _short_text(settings.get("coach_model"), 80),
                         },

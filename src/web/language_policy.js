@@ -1,4 +1,4 @@
-export const LANGUAGE_POLICY_VERSION = 'english-first-rescue-v1';
+export const LANGUAGE_POLICY_VERSION = 'english-first-rescue-v2';
 
 const SUPPORT_LANGUAGES = {
   vi: 'Vietnamese',
@@ -6,6 +6,8 @@ const SUPPORT_LANGUAGES = {
 };
 
 const UNKNOWN_LANGUAGE_CODES = new Set(['und', 'zxx']);
+const ASCII_ENGLISH_TEXT = /^[\x00-\x7F]+$/;
+const ENGLISH_LETTER = /[A-Za-z]/;
 
 export function normalizeLanguageCode(code) {
   const raw = String(code || '').trim().toLowerCase();
@@ -29,6 +31,11 @@ export function recordLanguageCode(turn, code, direction) {
   if (target instanceof Set) target.add(raw);
 }
 
+export function isEnglishText(text) {
+  const value = String(text || '').trim();
+  return Boolean(value) && ENGLISH_LETTER.test(value) && ASCII_ENGLISH_TEXT.test(value);
+}
+
 export function finalizeLanguageMode(turn) {
   const normalized = [...(turn?.inputLanguageCodes || [])]
     .map(normalizeLanguageCode)
@@ -42,10 +49,14 @@ export function finalizeLanguageMode(turn) {
     turn.languageMode = 'english';
     turn.coachEligible = true;
     turn.coachSkipReason = null;
-  } else {
-    turn.languageMode = 'unknown';
+  } else if (isEnglishText(turn?.userText)) {
+    turn.languageMode = 'english';
     turn.coachEligible = true;
     turn.coachSkipReason = null;
+  } else {
+    turn.languageMode = 'non_english';
+    turn.coachEligible = false;
+    turn.coachSkipReason = 'non_english_or_unknown_text';
   }
 
   return turn.languageMode;

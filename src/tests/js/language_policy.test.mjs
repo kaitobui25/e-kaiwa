@@ -5,10 +5,11 @@ import test from 'node:test';
 const source = await readFile(new URL('../../web/language_policy.js', import.meta.url), 'utf8');
 const policy = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
-function turn(...codes) {
+function turn(codes = [], userText = '') {
   return {
     inputLanguageCodes: new Set(codes),
     outputLanguageCodes: new Set(),
+    userText,
     languageMode: 'unknown',
     coachEligible: true,
     coachSkipReason: null
@@ -20,36 +21,73 @@ test('normalizes English regional codes', () => {
   assert.equal(policy.normalizeLanguageCode('en-GB'), 'en');
 });
 
-test('classifies English as coach eligible', () => {
-  const value = turn('en-US');
+test('classifies English language metadata as coach eligible', () => {
+  const value = turn(['en-US'], 'Hello there.');
   assert.equal(policy.finalizeLanguageMode(value), 'english');
   assert.equal(value.coachEligible, true);
   assert.equal(value.coachSkipReason, null);
 });
 
-test('classifies Japanese and Vietnamese as non-English', () => {
+test('classifies Japanese and Vietnamese metadata as non-English', () => {
   for (const code of ['ja-JP', 'vi-VN']) {
-    const value = turn(code);
+    const value = turn([code], 'Hello there.');
     assert.equal(policy.finalizeLanguageMode(value), 'non_english');
     assert.equal(value.coachEligible, false);
     assert.equal(value.coachSkipReason, 'non_english_input');
   }
 });
 
-test('mixed English plus non-English skips Coach', () => {
-  const value = turn('en-US', 'ja-JP');
+test('mixed English plus non-English metadata skips Coach', () => {
+  const value = turn(['en-US', 'ja-JP'], 'Hello there.');
   assert.equal(policy.finalizeLanguageMode(value), 'non_english');
   assert.equal(policy.isCoachEligible(value), false);
 });
 
-test('missing or undefined language code stays backward compatible', () => {
-  const missing = turn();
-  assert.equal(policy.finalizeLanguageMode(missing), 'unknown');
-  assert.equal(missing.coachEligible, true);
+test('missing language metadata falls back to English transcript text', () => {
+  for (const text of [
+    'Can you hear me?',
+    "I'm learning English.",
+    'Play this single song on loop.'
+  ]) {
+    const value = turn([], text);
+    assert.equal(policy.finalizeLanguageMode(value), 'english');
+    assert.equal(value.coachEligible, true);
+    assert.equal(value.coachSkipReason, null);
+  }
+});
 
-  const undefinedCode = turn('und');
-  assert.equal(policy.finalizeLanguageMode(undefinedCode), 'unknown');
-  assert.equal(undefinedCode.coachEligible, true);
+test('missing language metadata skips Coach for non-English or empty transcript text', () => {
+  for (const text of [
+    '日本語は難しい。',
+    'Hôm nay trời đất đẹp.',
+    '진짜 진짜',
+    '재반이 is hot',
+    ''
+  ]) {
+    const value = turn([], text);
+    assert.equal(policy.finalizeLanguageMode(value), 'non_english');
+    assert.equal(value.coachEligible, false);
+    assert.equal(value.coachSkipReason, 'non_english_or_unknown_text');
+  }
+});
+
+test('undefined language metadata also falls back to transcript text', () => {
+  const english = turn(['und'], 'This is English.');
+  assert.equal(policy.finalizeLanguageMode(english), 'english');
+  assert.equal(english.coachEligible, true);
+
+  const japanese = turn(['und'], 'これは日本語です。');
+  assert.equal(policy.finalizeLanguageMode(japanese), 'non_english');
+  assert.equal(japanese.coachEligible, false);
+});
+
+test('English transcript fallback only accepts ASCII English-form text', () => {
+  assert.equal(policy.isEnglishText('Hello, how are you?'), true);
+  assert.equal(policy.isEnglishText("Let's go!"), true);
+  assert.equal(policy.isEnglishText('Hôm nay trời đẹp.'), false);
+  assert.equal(policy.isEnglishText('日本語 is hard'), false);
+  assert.equal(policy.isEnglishText('진짜 is real'), false);
+  assert.equal(policy.isEnglishText('12345'), false);
 });
 
 test('support language follows user setting, not detected input', () => {

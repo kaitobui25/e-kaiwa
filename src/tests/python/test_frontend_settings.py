@@ -32,6 +32,21 @@ class FrontendSettingsTests(unittest.TestCase):
         self.assertIn("source.playbackRate.value = rate;", js)
         self.assertIn("state.playAt += buffer.duration / rate;", js)
 
+    def test_echo_guard_is_loaded_from_runtime_config_and_used_after_playback(self):
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn("settings.echo_guard_ms", js)
+        self.assertIn("state.echoGuardMs", js)
+        self.assertIn("const remainingMs = playbackMs + state.echoGuardMs;", js)
+        self.assertNotIn("* 1000 + 100", js)
+
+    def test_ai_playback_pauses_mic_forwarding_and_supports_interruption(self):
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn("function pauseInputForAiPlayback()", js)
+        self.assertIn("state.inputForwarding = false;", js)
+        self.assertIn("state.playbackSources.add(source);", js)
+        self.assertIn("if (content.interrupted) clearAiPlayback();", js)
+        self.assertIn("mic_audio_settings", js)
+
     def test_realtime_and_coach_model_selectors_exist(self):
         html = HTML.read_text(encoding="utf-8")
         js = JS.read_text(encoding="utf-8")
@@ -54,6 +69,8 @@ class FrontendSettingsTests(unittest.TestCase):
         self.assertIn('path == "/api/settings"', server)
         self.assertIn("runtime.settings.public_payload()", server)
         self.assertIn("runtime.settings.update(self.read_json())", server)
+        self.assertIn('"echo_guard_ms"', server)
+        self.assertIn("_mic_audio_settings", server)
 
 
 if __name__ == "__main__":
