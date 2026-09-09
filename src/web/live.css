@@ -106,21 +106,35 @@ h1 {
   white-space: pre-wrap;
 }
 
-.coach {
-  font-size: 15px;
-  line-height: 1.5;
+.coach-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.pronunciation-compact {
-  display: flex;
-  flex-wrap: wrap;
+.coach-summary .who {
+  margin-top: 0;
+}
+
+.coach-trigger {
+  display: inline-flex;
   align-items: center;
-  gap: 8px 12px;
 }
 
 .pron-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(242, 204, 96, 0.35);
+  border-radius: 50%;
+  background: rgba(242, 204, 96, 0.14);
+  color: #f6dc78;
+  font-size: 14px;
   font-weight: 800;
-  border-bottom: 2px dotted #777;
+  line-height: 1;
 }
 
 .pron-problem {
@@ -128,6 +142,7 @@ h1 {
   text-decoration-line: underline;
   text-decoration-thickness: 3px;
   text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
 }
 
 .pron-problem.severity-yellow {
@@ -147,6 +162,10 @@ h1 {
 .has-tooltip:focus-visible {
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(108, 182, 255, 0.45);
+}
+
+.pron-score.has-tooltip:focus-visible {
+  border-radius: 50%;
 }
 
 .tooltip {
@@ -174,6 +193,23 @@ h1 {
   pointer-events: none;
   transform: translateY(4px);
   transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.coach-tooltip {
+  top: calc(100% + 8px);
+  bottom: auto;
+  min-width: min(280px, calc(100vw - 48px));
+  max-width: min(420px, calc(100vw - 48px));
+}
+
+.coach-explanation {
+  margin-top: 6px;
+}
+
+.coach-runtime {
+  margin-top: 8px;
+  color: #aaa;
+  font-size: 12px;
 }
 
 .has-tooltip:hover > .tooltip,
