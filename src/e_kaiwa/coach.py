@@ -3,19 +3,30 @@ from __future__ import annotations
 import base64
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 from .config import (
     API_BASE,
-    COACH_LLM_MODEL,
-    PRONUNCIATION_MODELS,
     SUPPORTED_SAMPLE_RATES,
     TeacherMode,
     feedback_language_name,
     resolve_teacher,
 )
 from .gemini import extract_text, parse_json_text, post_json
+from .model_policy import coach_attempt_order, is_retryable_failure
 from .sessions import SessionStore, save_pcm_wav
+from .settings import SettingsStore
+
+
+@dataclass
+class StructuredCallResult:
+    value: dict | None
+    latency_s: float
+    model: str | None
+    key_slot: int | None
+    attempts: list[dict]
+    error: str
 
 
 def _as_bool(value: object, default: bool = True) -> bool:
@@ -35,12 +46,91 @@ def _positive_turn(value: object) -> int:
         return 1
 
 
+def _structured_request(
+    *,
+    keys: list[tuple[int, str]],
+    mode: str,
+    selected_model: str,
+    fallback_models: tuple[str, ...],
+    turn_no: int,
+    body: dict,
+) -> StructuredCallResult:
+    attempts: list[dict] = []
+    total_latency = 0.0
+    parse_failures = 0
+    final_error = ""
+
+    for model, key_slot, api_key in coach_attempt_order(
+        mode=mode,
+        selected=selected_model,
+        fallbacks=fallback_models,
+        keys=keys,
+        turn_no=turn_no,
+    ):
+        status, payload, latency, error = post_json(
+            f"{API_BASE}/models/{model}:generateContent",
+            body,
+            api_key,
+        )
+        total_latency += latency
+        attempt = {
+            "model": model,
+            "key_slot": key_slot,
+            "status": status,
+            "latency_s": round(latency, 3),
+        }
+
+        if status != 200:
+            final_error = f"HTTP {status or 'network'} - {error}"
+            attempt["error"] = final_error[:240]
+            attempts.append(attempt)
+            if is_retryable_failure(status, error):
+                continue
+            break
+
+        text = extract_text(payload)
+        try:
+            value = parse_json_text(text)
+        except Exception:
+            parse_failures += 1
+            final_error = f"invalid JSON: {text[:160]!r}"
+            attempt["error"] = final_error
+            attempts.append(attempt)
+            if parse_failures <= 1:
+                continue
+            break
+
+        attempts.append(attempt)
+        return StructuredCallResult(
+            value=value,
+            latency_s=total_latency,
+            model=model,
+            key_slot=key_slot,
+            attempts=attempts,
+            error="",
+        )
+
+    return StructuredCallResult(
+        value=None,
+        latency_s=total_latency,
+        model=None,
+        key_slot=None,
+        attempts=attempts,
+        error=final_error or "all Coach attempts failed",
+    )
+
+
 def correction(
-    api_key: str,
+    keys: list[tuple[int, str]],
     user_text: str,
     teacher: TeacherMode,
     feedback_language: object,
-) -> tuple[dict | None, float, str]:
+    *,
+    mode: str,
+    selected_model: str,
+    fallback_models: tuple[str, ...],
+    turn_no: int,
+) -> StructuredCallResult:
     lang_code, lang_name = feedback_language_name(feedback_language)
     prompt = f'''You are an English coach.
 The learner said: "{user_text}"
@@ -60,34 +150,35 @@ Keep the explanation concise and practical.'''
             "responseMimeType": "application/json",
         },
     }
-    status, payload, latency, error = post_json(
-        f"{API_BASE}/models/{COACH_LLM_MODEL}:generateContent",
-        body,
-        api_key,
+    result = _structured_request(
+        keys=keys,
+        mode=mode,
+        selected_model=selected_model,
+        fallback_models=fallback_models,
+        turn_no=turn_no,
+        body=body,
     )
-    if status != 200:
-        return None, latency, f"HTTP {status or 'network'} - {error}"
-
-    text = extract_text(payload)
-    try:
-        obj = parse_json_text(text)
-    except Exception:
-        return None, latency, f"invalid JSON: {text[:160]!r}"
-
-    return {
-        "correction": str(obj.get("correction", "")).strip() or user_text,
-        "explanation": str(obj.get("explanation", "")).strip(),
-        "feedback_language": lang_code,
-    }, latency, ""
+    if result.value is not None:
+        result.value = {
+            "correction": str(result.value.get("correction", "")).strip() or user_text,
+            "explanation": str(result.value.get("explanation", "")).strip(),
+            "feedback_language": lang_code,
+        }
+    return result
 
 
 def pronunciation(
-    api_key: str,
+    keys: list[tuple[int, str]],
     wav_path: Path,
     reference: str,
     teacher: TeacherMode,
     feedback_language: object,
-) -> tuple[dict | None, float, str | None]:
+    *,
+    mode: str,
+    selected_model: str,
+    fallback_models: tuple[str, ...],
+    turn_no: int,
+) -> StructuredCallResult:
     lang_code, lang_name = feedback_language_name(feedback_language)
     prompt = f'''You are an English pronunciation coach.
 Teacher mode: {teacher.name}.
@@ -122,34 +213,31 @@ Use 0-100 scores. List at most {teacher.max_pronunciation_problems} clearly audi
             "responseMimeType": "application/json",
         },
     }
-
-    total_latency = 0.0
-    for model in PRONUNCIATION_MODELS:
-        status, payload, latency, _ = post_json(
-            f"{API_BASE}/models/{model}:generateContent",
-            body,
-            api_key,
-        )
-        total_latency += latency
-        if status != 200:
-            continue
-        text = extract_text(payload)
-        try:
-            result = parse_json_text(text)
-        except Exception:
-            continue
-        result["feedback_language"] = lang_code
-        return result, total_latency, model
-
-    return None, total_latency, None
+    result = _structured_request(
+        keys=keys,
+        mode=mode,
+        selected_model=selected_model,
+        fallback_models=fallback_models,
+        turn_no=turn_no,
+        body=body,
+    )
+    if result.value is not None:
+        result.value["feedback_language"] = lang_code
+    return result
 
 
 class CoachService:
-    def __init__(self, keys: list[tuple[int, str]], sessions: SessionStore):
+    def __init__(
+        self,
+        keys: list[tuple[int, str]],
+        sessions: SessionStore,
+        settings: SettingsStore,
+    ):
         if not keys:
             raise ValueError("CoachService requires at least one API key")
         self.keys = list(keys)
         self.sessions = sessions
+        self.settings = settings
 
     def run_turn(self, payload: dict) -> dict:
         session_dir = self.sessions.get(payload.get("session_id"))
@@ -166,6 +254,7 @@ class CoachService:
         teacher = resolve_teacher(payload.get("teacher"))
         feedback_language = payload.get("feedback_language", "vi")
         pronunciation_enabled = _as_bool(payload.get("pronunciation_enabled"), True)
+        coach_mode, requested_model, fallback_models = self.settings.coach_policy()
 
         try:
             sample_rate = int(payload.get("sample_rate", 16000))
@@ -185,31 +274,51 @@ class CoachService:
 
         user_wav = session_dir / f"turn_{turn_no:03d}_user.wav"
         save_pcm_wav(raw_pcm, user_wav, sample_rate)
-        key_slot, api_key = self.keys[(turn_no - 1) % len(self.keys)]
         started = time.perf_counter()
 
-        def correction_job():
-            return correction(api_key, transcript, teacher, feedback_language)
+        def correction_job() -> StructuredCallResult:
+            return correction(
+                self.keys,
+                transcript,
+                teacher,
+                feedback_language,
+                mode=coach_mode,
+                selected_model=requested_model,
+                fallback_models=fallback_models,
+                turn_no=turn_no,
+            )
 
-        def pronunciation_job():
+        def pronunciation_job() -> StructuredCallResult:
             if not pronunciation_enabled:
-                return None, 0.0, None
-            return pronunciation(api_key, user_wav, transcript, teacher, feedback_language)
+                return StructuredCallResult(None, 0.0, None, None, [], "")
+            return pronunciation(
+                self.keys,
+                user_wav,
+                transcript,
+                teacher,
+                feedback_language,
+                mode=coach_mode,
+                selected_model=requested_model,
+                fallback_models=fallback_models,
+                turn_no=turn_no,
+            )
 
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="coach") as pool:
             correction_future = pool.submit(correction_job)
             pronunciation_future = pool.submit(pronunciation_job)
-            turn, llm_latency, llm_error = correction_future.result()
-            pron_result, pron_latency, pron_model = pronunciation_future.result()
+            correction_result = correction_future.result()
+            pronunciation_result = pronunciation_future.result()
 
         coach_wall = time.perf_counter() - started
         correction_text = transcript
         explanation = ""
         normalized_language, _ = feedback_language_name(feedback_language)
-        if turn:
-            correction_text = turn.get("correction") or transcript
-            explanation = turn.get("explanation") or ""
-            normalized_language = turn.get("feedback_language") or normalized_language
+        if correction_result.value:
+            correction_text = correction_result.value.get("correction") or transcript
+            explanation = correction_result.value.get("explanation") or ""
+            normalized_language = correction_result.value.get("feedback_language") or normalized_language
+
+        pron_value = pronunciation_result.value if pronunciation_enabled else None
 
         self.sessions.log(
             session_dir,
@@ -219,19 +328,29 @@ class CoachService:
             user_text=transcript,
             teacher=teacher.name,
             feedback_language=normalized_language,
-            key_slot=key_slot,
+            coach_model_mode=coach_mode,
+            coach_requested_model=requested_model,
             correction=correction_text,
             explanation=explanation,
+            correction_effective_model=correction_result.model,
+            correction_key_slot=correction_result.key_slot,
+            correction_llm={
+                "model": correction_result.model,
+                "key_slot": correction_result.key_slot,
+                "latency_s": round(correction_result.latency_s, 3),
+                "attempts": correction_result.attempts,
+                "error": correction_result.error,
+            },
+            pronunciation_effective_model=pronunciation_result.model,
+            pronunciation_key_slot=pronunciation_result.key_slot,
             pronunciation={
                 "enabled": pronunciation_enabled,
-                "model": pron_model,
-                "latency_s": round(pron_latency, 3),
-                "result": pron_result,
-            },
-            correction_llm={
-                "model": COACH_LLM_MODEL,
-                "latency_s": round(llm_latency, 3),
-                "error": llm_error,
+                "model": pronunciation_result.model,
+                "key_slot": pronunciation_result.key_slot,
+                "latency_s": round(pronunciation_result.latency_s, 3),
+                "attempts": pronunciation_result.attempts,
+                "error": pronunciation_result.error,
+                "result": pron_value,
             },
             coach_wall_s=round(coach_wall, 3),
         )
@@ -240,6 +359,10 @@ class CoachService:
             "correction": correction_text,
             "explanation": explanation,
             "feedback_language": normalized_language,
-            "pronunciation": pron_result,
+            "pronunciation": pron_value,
             "coach_wall_s": round(coach_wall, 3),
+            "coach_model_mode": coach_mode,
+            "coach_requested_model": requested_model,
+            "correction_effective_model": correction_result.model,
+            "pronunciation_effective_model": pronunciation_result.model,
         }
