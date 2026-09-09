@@ -37,8 +37,10 @@ class FrontendSettingsTests(unittest.TestCase):
         self.assertIn("queueLivePcm", audio)
         self.assertIn("playUserPcm", audio)
         self.assertIn("speak(text", audio)
-        self.assertIn("this._setBlocked(true, 'live')", audio)
+        self.assertIn("this._block('live')", audio)
+        self.assertIn("this._unblock('manual')", audio)
         self.assertIn("this.livePlaybackRemainingMs + this._guardMs()", audio)
+        self.assertIn("this.resumeTimer !== null", audio)
 
     def test_public_language_and_theme_controls_exist(self):
         html = HTML.read_text(encoding="utf-8")
