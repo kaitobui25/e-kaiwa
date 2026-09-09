@@ -4,10 +4,11 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 from e_kaiwa.access import AccessPolicy, SlidingWindowLimiter, normalize_app_mode
 from e_kaiwa.config import load_api_keys, normalize_feedback_language, resolve_teacher
-from e_kaiwa.gemini import parse_json_text
+from e_kaiwa.gemini import create_ephemeral_token, parse_json_text
 from e_kaiwa.sessions import SessionStore, save_pcm_wav, valid_session_id
 
 
@@ -90,6 +91,23 @@ class GeminiHelperTests(unittest.TestCase):
     def test_parse_json_text_accepts_plain_and_fenced_objects(self):
         self.assertEqual(parse_json_text('{"ok": true}'), {"ok": True})
         self.assertEqual(parse_json_text('```json\n{"ok": true}\n```'), {"ok": True})
+
+    @patch("e_kaiwa.gemini.post_json")
+    def test_ephemeral_token_is_constrained_to_live_model_and_audio(self, post_json_mock):
+        post_json_mock.return_value = (200, {"name": "short-lived-token"}, 0.01, "")
+        token = create_ephemeral_token("master-key", model="gemini-3.1-flash-live-preview")
+        self.assertEqual(token, "short-lived-token")
+
+        _url, body, api_key = post_json_mock.call_args.args
+        self.assertEqual(api_key, "master-key")
+        self.assertEqual(body["uses"], 1)
+        self.assertEqual(
+            body["liveConnectConstraints"],
+            {
+                "model": "models/gemini-3.1-flash-live-preview",
+                "config": {"responseModalities": ["AUDIO"]},
+            },
+        )
 
 
 if __name__ == "__main__":
