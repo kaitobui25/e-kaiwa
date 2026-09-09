@@ -6,6 +6,14 @@ import {
   recordLanguageCode,
   selectedSupportLanguage
 } from './language_policy.js';
+import {
+  PreferencesStore,
+  TARGET_LANGUAGE,
+  normalizePlaybackRate,
+  targetSpeechLocale
+} from './preferences.js';
+import {PlaybackCoordinator} from './audio.js';
+import {UiController} from './ui.js';
 
 (() => {
   'use strict';
@@ -13,22 +21,31 @@ import {
   const WS_BASE = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
   const AI_SPEED_VALUES = ['0.5', '0.6', '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5'];
   const DEFAULT_AI_SPEED = '0.8';
+  const REPLAY_TURN_LIMIT = 8;
 
-  const talk = document.getElementById('talk');
-  const statusEl = document.getElementById('status');
-  const setupDotEl = document.getElementById('setup-dot');
-  const setupLabelEl = document.getElementById('setup-label');
-  const metricEl = document.getElementById('metric');
-  const conversationEl = document.getElementById('conversation');
-  const teacherEl = document.getElementById('teacher');
-  const feedbackLanguageEl = document.getElementById('feedback-language');
-  const realtimeModelEl = document.getElementById('realtime-model');
-  const coachModelEl = document.getElementById('coach-model');
-  const aiSpeedEl = document.getElementById('ai-speed');
-  const silenceDurationEl = document.getElementById('silence-duration');
-  const pronEl = document.getElementById('pron');
+  const elements = {
+    talk: document.getElementById('talk'),
+    talkLabel: document.getElementById('talk-label'),
+    status: document.getElementById('status'),
+    setupDot: document.getElementById('setup-dot'),
+    setupLabel: document.getElementById('setup-label'),
+    metric: document.getElementById('metric'),
+    conversation: document.getElementById('conversation'),
+    teacher: document.getElementById('teacher'),
+    feedbackLanguage: document.getElementById('feedback-language'),
+    theme: document.getElementById('theme'),
+    realtimeModel: document.getElementById('realtime-model'),
+    coachModel: document.getElementById('coach-model'),
+    aiSpeed: document.getElementById('ai-speed'),
+    silenceDuration: document.getElementById('silence-duration'),
+    pron: document.getElementById('pron'),
+    settingsPanel: document.getElementById('settings-panel'),
+    settingsOpen: document.getElementById('settings-open'),
+    settingsClose: document.getElementById('settings-close')
+  };
 
   const state = {
+    appMode: 'dev',
     ws: null,
     sessionId: null,
     configuredRealtimeModel: '',
@@ -36,9 +53,10 @@ import {
     effectiveRealtimeModel: '',
     sessionRequestedModel: '',
     sessionFallbackTried: false,
-    supportLanguage: 'vi',
+    supportLanguage: 'ja',
+    targetLanguage: TARGET_LANGUAGE,
     sessionSilenceDurationMs: 1000,
-    echoGuardMs: 0,
+    echoGuardMs: 250,
     setupReady: false,
     reconnectNeeded: false,
     reconnectAfterConnect: false,
@@ -50,34 +68,13 @@ import {
     micSource: null,
     processor: null,
     micAudioSettings: {},
-    playCtx: null,
-    playAt: 0,
-    playbackSources: new Set(),
-    armTimer: null,
     turnNo: 1,
     activeTurn: null,
-    turns: []
+    turns: [],
+    ui: null,
+    playback: null,
+    preferences: null
   };
-
-  // ---------------------------------------------------------------------------
-  // UI + settings
-  // ---------------------------------------------------------------------------
-  function setStatus(text, className = '') {
-    statusEl.className = `muted ${className}`.trim();
-    statusEl.textContent = text;
-  }
-
-  function updateSetupIndicator() {
-    setupDotEl.className = state.setupReady ? 'setup-dot on' : 'setup-dot';
-    setupLabelEl.textContent = `setupReady=${state.setupReady}`;
-  }
-
-  function escapeHtml(value) {
-    return String(value || '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;');
-  }
 
   function readJsonResponse(response) {
     return response.text().then(text => {
@@ -102,89 +99,29 @@ import {
   }
 
   function setSelectChoices(element, choices, selected) {
+    if (!element) return;
     const values = Array.isArray(choices) ? choices : [];
-    element.innerHTML = values
-      .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(modelLabel(value))}</option>`)
-      .join('');
-    element.value = selected;
+    element.replaceChildren(...values.map(value => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = modelLabel(value);
+      return option;
+    }));
+    element.value = selected || values[0] || '';
   }
 
-  function applySettingsPayload(payload) {
-    const settings = payload?.settings || {};
-    const models = payload?.models || {};
-    const choices = payload?.choices || {};
-
-    teacherEl.value = settings.teacher || 'Normal';
-    feedbackLanguageEl.value = settings.support_language || 'vi';
-    aiSpeedEl.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
-      ? String(settings.ai_playback_rate)
-      : DEFAULT_AI_SPEED;
-    silenceDurationEl.value = String(settings.silence_duration_ms || 1000);
-    pronEl.checked = settings.pronunciation_enabled !== false;
-
-    const echoGuardMs = Number(settings.echo_guard_ms);
-    state.echoGuardMs = Number.isFinite(echoGuardMs) && echoGuardMs >= 0 ? echoGuardMs : 0;
-
-    state.configuredRealtimeModel = models.realtime_conversation || '';
-    state.realtimeFallbackModel = models.realtime_fallback || '';
-    setSelectChoices(
-      realtimeModelEl,
-      choices.realtime_conversation,
-      state.configuredRealtimeModel
-    );
-    const coachSelected = models.coach_mode === 'auto' ? 'auto' : models.coach_model;
-    setSelectChoices(coachModelEl, choices.coach, coachSelected);
-
-    if (!state.ws && !state.connecting && !state.setupReady) {
-      state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
-    }
+  function publicOrDev(publicKey, devText) {
+    return state.appMode === 'public' ? state.ui?.t(publicKey) || publicKey : devText;
   }
 
-  async function loadSettings() {
-    const response = await fetch('/api/settings', {cache: 'no-store'});
-    const data = await readJsonResponse(response);
-    if (!response.ok) throw new Error(data.error || 'Could not load settings');
-    applySettingsPayload(data);
-    return data;
+  function setStatus(publicKey, devText, {error = false, suffix = ''} = {}) {
+    state.ui?.setStatus(`${publicOrDev(publicKey, devText)}${suffix}`, {error});
   }
 
-  async function persistSettings(changes) {
-    const response = await fetch('/api/settings', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(changes)
-    });
-    const data = await readJsonResponse(response);
-    if (!response.ok) throw new Error(data.error || 'Could not save settings');
-    applySettingsPayload(data);
-    return data;
+  function render() {
+    state.ui?.render(state.turns, {pronunciationEnabled: elements.pron.checked});
   }
 
-  async function recoverSettings(error) {
-    try {
-      await loadSettings();
-    } catch {}
-    setStatus(`Settings error: ${error.message}`, 'error');
-  }
-
-  function requestSessionReconnect(message) {
-    if (state.recording) {
-      setStatus(`${message} It will apply after you stop this conversation.`);
-      return;
-    }
-    if (state.connecting) {
-      state.reconnectAfterConnect = true;
-      setStatus(`${message} It will apply as soon as the current connection finishes.`);
-      return;
-    }
-    newLiveSession().catch(error => {
-      showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Conversation rendering
-  // ---------------------------------------------------------------------------
   function concatTranscript(previous, incoming) {
     const oldText = (previous || '').trim();
     const newText = (incoming || '').trim();
@@ -194,134 +131,11 @@ import {
     return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
   }
 
-  function pronunciationProblemSpan(word, problem) {
-    const severity = problem?.severity === 'red' ? 'red' : 'yellow';
-    const tip = problem?.tip || problem?.tip_ja || '';
-    const details = [];
-    if (problem?.sound) details.push(`<strong>${escapeHtml(problem.sound)}</strong>`);
-    if (problem?.heard_like) details.push(`heard ≈ ${escapeHtml(problem.heard_like)}`);
-    if (tip) details.push(escapeHtml(tip));
-
-    const tooltip = details.join('<br>');
-    const tooltipHtml = tooltip
-      ? `<span class="tooltip" role="tooltip">${tooltip}</span>`
-      : '';
-    const tooltipClass = tooltip ? ' has-tooltip' : '';
-    const tabIndex = tooltip ? ' tabindex="0"' : '';
-    return `<span class="pron-problem severity-${severity}${tooltipClass}"${tabIndex}>${escapeHtml(word)}${tooltipHtml}</span>`;
-  }
-
-  function highlightPronunciationProblems(text, result) {
-    const rawText = String(text || '…');
-    const problems = Array.isArray(result?.problems) ? result.problems.slice(0, 3) : [];
-    if (!problems.length) return escapeHtml(rawText);
-
-    const byWord = new Map();
-    for (const problem of problems) {
-      const word = String(problem?.word || '').trim();
-      if (!word) continue;
-      const key = word.toLocaleLowerCase('en-US');
-      const existing = byWord.get(key);
-      if (!existing || (existing.severity !== 'red' && problem.severity === 'red')) {
-        byWord.set(key, problem);
-      }
-    }
-
-    const words = [...byWord.keys()].sort((a, b) => b.length - a.length);
-    if (!words.length) return escapeHtml(rawText);
-
-    const pattern = words
-      .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .join('|');
-    const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
-    let html = '';
-    let lastIndex = 0;
-
-    rawText.replace(regex, (match, _captured, offset) => {
-      html += escapeHtml(rawText.slice(lastIndex, offset));
-      const problem = byWord.get(match.toLocaleLowerCase('en-US'));
-      html += pronunciationProblemSpan(match, problem);
-      lastIndex = offset + match.length;
-      return match;
-    });
-
-    html += escapeHtml(rawText.slice(lastIndex));
-    return html;
-  }
-
-  function pronunciationHtml(result) {
-    if (!result) return '';
-
-    const score = value => Math.max(0, Math.min(100, Math.round(Number(value || 0))));
-    const overall = score(result.overall_score ?? result.pronunciation_score);
-    const summary = result.summary || result.summary_ja || '';
-    const scoreDetails = [
-      `Pronunciation ${score(result.pronunciation_score)} · Fluency ${score(result.fluency_score)} · Intonation ${score(result.intonation_score)}`,
-      summary
-    ].filter(Boolean).map(escapeHtml).join('<br>');
-
-    return `<span class="pron-score has-tooltip" tabindex="0" aria-label="Pronunciation score ${overall}">${overall}<span class="tooltip" role="tooltip">${scoreDetails}</span></span>`;
-  }
-
-  function coachDetailsHtml(turn) {
-    if (!turn.coach) return '<span class="muted">Coach running…</span>';
-
-    let details = `<div><strong>Correction:</strong> ${escapeHtml(turn.coach.correction || turn.userText || '')}</div>`;
-    const explanation = turn.coach.explanation || turn.coach.explanation_ja || '';
-    if (explanation) details += `<div class="coach-explanation">${escapeHtml(explanation)}</div>`;
-    details += `<div class="coach-runtime">${Number(turn.coach.coach_wall_s || 0).toFixed(2)}s</div>`;
-    return details;
-  }
-
-  function render() {
-    if (!state.turns.length) {
-      conversationEl.innerHTML = '<span class="muted">No conversation yet.</span>';
-      return;
-    }
-
-    conversationEl.innerHTML = state.turns.slice().reverse().map(turn => {
-      const latency = turn.firstAudioMs == null
-        ? ''
-        : `<span class="good">first audio ${Math.round(turn.firstAudioMs)} ms</span>`;
-
-      const pronunciation = pronEl.checked ? turn.coach?.pronunciation : null;
-      const userHtml = pronunciation
-        ? highlightPronunciationProblems(turn.userText || '…', pronunciation)
-        : escapeHtml(turn.userText || '…');
-
-      let coachSection = '';
-      if (isCoachEligible(turn)) {
-        const coachDetails = coachDetailsHtml(turn);
-        const scoreHtml = pronEl.checked ? pronunciationHtml(turn.coach?.pronunciation) : '';
-        coachSection = `<div class="coach-summary">
-          <span class="who who-coach coach-trigger has-tooltip" tabindex="0">Coach<span class="tooltip coach-tooltip" role="tooltip">${coachDetails}</span></span>
-          ${scoreHtml}
-        </div>`;
-      }
-
-      return `<div class="turn">
-        <div class="who who-you">You</div><div class="text">${userHtml}</div>
-        <div class="who who-ai">AI ${latency}</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
-        ${coachSection}
-      </div>`;
-    }).join('');
-  }
-
-  // ---------------------------------------------------------------------------
-  // Small data helpers
-  // ---------------------------------------------------------------------------
-  function b64ToBytes(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
   function bytesToB64(bytes) {
     let output = '';
     const step = 0x8000;
-    for (let i = 0; i < bytes.length; i += step) {
-      output += String.fromCharCode(...bytes.subarray(i, i + step));
+    for (let index = 0; index < bytes.length; index += step) {
+      output += String.fromCharCode(...bytes.subarray(index, index + step));
     }
     return btoa(output);
   }
@@ -341,104 +155,146 @@ import {
     return joined;
   }
 
-  function aiPlaybackRate() {
-    const value = aiSpeedEl.value;
-    return AI_SPEED_VALUES.includes(value) ? Number(value) : Number(DEFAULT_AI_SPEED);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Audio input/output
-  // ---------------------------------------------------------------------------
-  async function ensurePlayContext() {
-    if (!state.playCtx) {
-      state.playCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (state.playCtx.state === 'suspended') await state.playCtx.resume();
-  }
-
   function downsample(input, inputRate, outputRate = 16000) {
     if (inputRate === outputRate) return new Float32Array(input);
     const ratio = inputRate / outputRate;
     const length = Math.max(1, Math.round(input.length / ratio));
     const output = new Float32Array(length);
-
-    for (let i = 0; i < length; i++) {
-      const start = Math.floor(i * ratio);
-      const end = Math.min(input.length, Math.max(start + 1, Math.floor((i + 1) * ratio)));
+    for (let index = 0; index < length; index += 1) {
+      const start = Math.floor(index * ratio);
+      const end = Math.min(input.length, Math.max(start + 1, Math.floor((index + 1) * ratio)));
       let sum = 0;
-      for (let j = start; j < end; j++) sum += input[j];
-      output[i] = sum / (end - start);
+      for (let sourceIndex = start; sourceIndex < end; sourceIndex += 1) sum += input[sourceIndex];
+      output[index] = sum / (end - start);
     }
     return output;
   }
 
   function floatToPcm16(floatData) {
     const pcm = new Int16Array(floatData.length);
-    for (let i = 0; i < floatData.length; i++) {
-      const sample = Math.max(-1, Math.min(1, floatData[i]));
-      pcm[i] = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
+    for (let index = 0; index < floatData.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, floatData[index]));
+      pcm[index] = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
     }
     return pcm;
   }
 
-  function pauseInputForAiPlayback() {
-    if (!state.recording) return;
-    state.inputForwarding = false;
-    setStatus('AI speaking…');
+  function aiPlaybackRate() {
+    const value = elements.aiSpeed.value;
+    return AI_SPEED_VALUES.includes(value) ? Number(value) : Number(DEFAULT_AI_SPEED);
   }
 
-  function clearAiPlayback() {
-    for (const source of state.playbackSources) {
-      try { source.stop(); } catch {}
-      try { source.disconnect(); } catch {}
-    }
-    state.playbackSources.clear();
-    state.playAt = state.playCtx ? state.playCtx.currentTime : 0;
+  function initializeUi(payload) {
+    state.appMode = payload?.app_mode === 'public' ? 'public' : 'dev';
+    state.preferences = new PreferencesStore({
+      storage: state.appMode === 'public' ? window.localStorage : null,
+      browserLanguage: navigator.language,
+      prefersDark: window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false
+    });
+
+    state.ui = new UiController({
+      mode: state.appMode,
+      elements,
+      onAction: handleUiAction
+    });
+
+    state.playback = new PlaybackCoordinator({
+      getEchoGuardMs: () => state.echoGuardMs,
+      onBlockedChange: (blocked, reason) => {
+        state.inputForwarding = !blocked && Boolean(
+          state.recording && state.activeTurn && state.setupReady && state.ws?.readyState === WebSocket.OPEN
+        );
+        if (blocked && reason === 'live') setStatus('aiSpeaking', 'AI speaking…');
+      }
+    });
   }
 
-  function queueAiPcm(base64) {
-    if (!state.playCtx) return;
-    const bytes = b64ToBytes(base64);
-    const sampleCount = Math.floor(bytes.byteLength / 2);
-    if (!sampleCount) return;
+  function applySettingsPayload(payload) {
+    const settings = payload?.settings || {};
+    const models = payload?.models || {};
+    const choices = payload?.choices || {};
 
-    pauseInputForAiPlayback();
+    elements.teacher.value = settings.teacher || 'Normal';
+    elements.silenceDuration.value = String(settings.silence_duration_ms || 1000);
+    state.sessionSilenceDurationMs = Number(elements.silenceDuration.value);
+    const echoGuardMs = Number(settings.echo_guard_ms);
+    state.echoGuardMs = Number.isFinite(echoGuardMs) && echoGuardMs >= 0 ? echoGuardMs : 250;
 
-    const floats = new Float32Array(sampleCount);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let i = 0; i < sampleCount; i++) {
-      floats[i] = view.getInt16(i * 2, true) / 32768;
+    if (state.appMode === 'public') {
+      const preferences = state.preferences.load({
+        appLanguage: settings.support_language || 'ja',
+        playbackRate: settings.ai_playback_rate ?? 0.8,
+        pronunciationEnabled: settings.pronunciation_enabled !== false
+      });
+      elements.feedbackLanguage.value = preferences.appLanguage;
+      elements.aiSpeed.value = String(preferences.playbackRate);
+      elements.pron.checked = preferences.pronunciationEnabled;
+      state.ui.setLanguage(preferences.appLanguage);
+      state.ui.setTheme(preferences.theme);
+    } else {
+      elements.feedbackLanguage.value = settings.support_language || 'vi';
+      elements.aiSpeed.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
+        ? String(settings.ai_playback_rate)
+        : DEFAULT_AI_SPEED;
+      elements.pron.checked = settings.pronunciation_enabled !== false;
+      state.ui.setTheme('dark');
+      state.configuredRealtimeModel = models.realtime_conversation || '';
+      state.realtimeFallbackModel = models.realtime_fallback || '';
+      setSelectChoices(elements.realtimeModel, choices.realtime_conversation, state.configuredRealtimeModel);
+      const coachSelected = models.coach_mode === 'auto' ? 'auto' : models.coach_model;
+      setSelectChoices(elements.coachModel, choices.coach, coachSelected);
     }
 
-    const buffer = state.playCtx.createBuffer(1, sampleCount, 24000);
-    buffer.copyToChannel(floats, 0);
-    const source = state.playCtx.createBufferSource();
-    const rate = aiPlaybackRate();
-    source.buffer = buffer;
-    source.playbackRate.value = rate;
-    source.connect(state.playCtx.destination);
-    state.playbackSources.add(source);
-    source.onended = () => {
-      state.playbackSources.delete(source);
-      try { source.disconnect(); } catch {}
-    };
+    state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
+    render();
+  }
 
-    const now = state.playCtx.currentTime;
-    if (state.playAt < now + 0.025) state.playAt = now + 0.025;
-    source.start(state.playAt);
-    state.playAt += buffer.duration / rate;
+  async function loadSettings() {
+    const response = await fetch('/api/settings', {cache: 'no-store'});
+    const data = await readJsonResponse(response);
+    if (!response.ok) throw new Error(data.error || 'Could not load settings');
+    if (!state.ui) initializeUi(data);
+    applySettingsPayload(data);
+    return data;
+  }
+
+  async function persistSettings(changes) {
+    if (state.appMode === 'public') throw new Error('Public settings are local/read-only');
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(changes)
+    });
+    const data = await readJsonResponse(response);
+    if (!response.ok) throw new Error(data.error || 'Could not save settings');
+    applySettingsPayload(data);
+    return data;
+  }
+
+  async function recoverSettings(error) {
+    try { await loadSettings(); } catch {}
+    state.ui?.setStatus(`Settings error: ${error.message}`, {error: true});
+  }
+
+  function requestSessionReconnect(message) {
+    if (state.recording) {
+      state.ui.setStatus(message);
+      return;
+    }
+    if (state.connecting) {
+      state.reconnectAfterConnect = true;
+      state.ui.setStatus(message);
+      return;
+    }
+    newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
   }
 
   function cleanupMic() {
-    clearTimeout(state.armTimer);
-    state.armTimer = null;
     state.inputForwarding = false;
-
     try { state.processor?.disconnect(); } catch {}
     try { state.micSource?.disconnect(); } catch {}
     state.micStream?.getTracks().forEach(track => track.stop());
     try { state.inputCtx?.close(); } catch {}
-
     state.processor = null;
     state.micSource = null;
     state.micStream = null;
@@ -446,14 +302,12 @@ import {
     state.micAudioSettings = {};
   }
 
-  // ---------------------------------------------------------------------------
-  // Per-turn lifecycle
-  // ---------------------------------------------------------------------------
   function createTurn() {
     if (state.activeTurn || !state.recording) return null;
     const turn = {
       no: state.turnNo,
       pcmChunks: [],
+      replayPcm: null,
       userText: '',
       aiText: '',
       inputLanguageCodes: new Set(),
@@ -464,6 +318,7 @@ import {
       supportLanguage: state.supportLanguage,
       languagePolicyVersion: LANGUAGE_POLICY_VERSION,
       firstAudioMs: null,
+      startedAtMs: performance.now(),
       coachSent: false,
       coach: null,
       finished: false
@@ -474,11 +329,16 @@ import {
     return turn;
   }
 
-  async function runCoach(turn) {
-    if (!isCoachEligible(turn) || turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
-    turn.coachSent = true;
-    const pcm = joinPcm(turn.pcmChunks);
+  function boundReplayHistory() {
+    const withAudio = state.turns.filter(turn => turn.replayPcm?.length);
+    for (const oldTurn of withAudio.slice(0, Math.max(0, withAudio.length - REPLAY_TURN_LIMIT))) {
+      oldTurn.replayPcm = null;
+    }
+  }
 
+  async function runCoach(turn) {
+    if (!isCoachEligible(turn) || turn.coachSent || !turn.userText.trim() || !turn.replayPcm?.length) return;
+    turn.coachSent = true;
     try {
       const response = await fetch('/api/coach', {
         method: 'POST',
@@ -487,11 +347,11 @@ import {
           session_id: state.sessionId,
           turn: turn.no,
           transcript: turn.userText,
-          teacher: teacherEl.value,
-          feedback_language: feedbackLanguageEl.value,
-          pronunciation_enabled: pronEl.checked,
+          teacher: elements.teacher.value,
+          feedback_language: elements.feedbackLanguage.value,
+          pronunciation_enabled: elements.pron.checked,
           sample_rate: 16000,
-          pcm_b64: pcmToBase64(pcm)
+          pcm_b64: pcmToBase64(turn.replayPcm)
         })
       });
       const data = await readJsonResponse(response);
@@ -512,11 +372,9 @@ import {
     const frontendState = {
       recording: state.recording,
       activeTurn: state.activeTurn ? state.activeTurn.no : null,
-      buttonEnabled: !talk.disabled,
+      buttonEnabled: !elements.talk.disabled,
       setupReady: state.setupReady
     };
-    console.log('[TURN STATE]', turn.no, frontendState);
-
     fetch('/api/metric', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -536,13 +394,13 @@ import {
         coach_skip_reason: turn.coachSkipReason,
         mic_audio_settings: state.micAudioSettings,
         settings: {
-          teacher: teacherEl.value,
-          pronunciation_enabled: pronEl.checked,
+          teacher: elements.teacher.value,
+          pronunciation_enabled: elements.pron.checked,
           silence_duration_ms: state.sessionSilenceDurationMs,
           ai_playback_rate: aiPlaybackRate(),
           echo_guard_ms: state.echoGuardMs,
           realtime_model: state.effectiveRealtimeModel,
-          coach_model: coachModelEl.value
+          coach_model: elements.coachModel.value || 'server'
         },
         frontend_state: frontendState
       })
@@ -550,45 +408,37 @@ import {
   }
 
   function armNextTurnAfterPlayback() {
-    clearTimeout(state.armTimer);
-    const playbackMs = state.playCtx
-      ? Math.max(0, (state.playAt - state.playCtx.currentTime) * 1000)
-      : 0;
-    const remainingMs = playbackMs + state.echoGuardMs;
-
-    setStatus(remainingMs > 0 ? 'AI speaking…' : 'Listening…');
-    state.armTimer = setTimeout(() => {
-      state.armTimer = null;
+    const delay = state.playback.armAfterLive(() => {
       if (!state.recording || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return;
       createTurn();
       state.inputForwarding = true;
-      setStatus('Listening… speak naturally.');
-    }, remainingMs);
+      setStatus('listening', 'Listening… speak naturally.');
+    });
+    setStatus(delay > 0 ? 'aiSpeaking' : 'listening', delay > 0 ? 'AI speaking…' : 'Listening…');
   }
 
   function finishTurn(turn) {
     if (!turn || turn.finished || turn !== state.activeTurn) return;
     turn.finished = true;
     finalizeLanguageMode(turn);
+    turn.replayPcm = joinPcm(turn.pcmChunks);
+    turn.pcmChunks = [];
+    boundReplayHistory();
 
     if (isCoachEligible(turn)) runCoach(turn);
     state.turnNo += 1;
     state.activeTurn = null;
     state.inputForwarding = false;
-
     postTurnMetric(turn);
     render();
 
     if (state.recording && state.setupReady && state.ws?.readyState === WebSocket.OPEN) {
       armNextTurnAfterPlayback();
     } else if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
-      showReconnect('Live session ended. Tap Reconnect.');
+      showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Gemini Live session lifecycle
-  // ---------------------------------------------------------------------------
   async function webSocketDataToText(data) {
     if (typeof data === 'string') return data;
     if (data instanceof Blob) return await data.text();
@@ -601,48 +451,36 @@ import {
     state.recording = false;
     state.inputForwarding = false;
     state.activeTurn = null;
-    clearAiPlayback();
+    state.playback?.clear();
     cleanupMic();
     state.setupReady = false;
     state.reconnectNeeded = true;
     state.connecting = false;
-    updateSetupIndicator();
-
-    talk.disabled = false;
-    talk.className = 'ready';
-    talk.textContent = '↻ Reconnect';
-    setStatus(message || 'Live session ended. Tap Reconnect.');
+    state.ui?.setSetupReady(false);
+    state.ui?.setTalkState('reconnect');
+    state.ui?.setStatus(message || publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
   }
 
   async function retryWithRealtimeFallback(reason) {
-    if (
-      state.setupReady ||
-      state.sessionFallbackTried ||
-      !state.realtimeFallbackModel ||
-      state.realtimeFallbackModel === state.effectiveRealtimeModel
-    ) {
-      return false;
-    }
-
+    if (state.setupReady || state.sessionFallbackTried || !state.realtimeFallbackModel || state.realtimeFallbackModel === state.effectiveRealtimeModel) return false;
     state.sessionFallbackTried = true;
     state.connecting = false;
-    setStatus(`Primary realtime model failed (${reason}). Trying fallback…`);
+    state.ui.setStatus(`Primary realtime model failed (${reason}). Trying fallback…`);
     try {
       await newLiveSession({fallback: true});
     } catch (error) {
-      showReconnect(`Fallback connection error: ${error.message}. Tap Reconnect.`);
+      showReconnect(`Fallback connection error: ${error.message}.`);
     }
     return true;
   }
 
   async function onLiveMessage(event, socket) {
     if (state.ws !== socket) return;
-
     let message;
     try {
       message = JSON.parse(await webSocketDataToText(event.data));
     } catch (error) {
-      setStatus(`Could not decode Gemini message: ${error.message}`, 'error');
+      state.ui.setStatus(`Could not decode Gemini message: ${error.message}`, {error: true});
       return;
     }
 
@@ -651,10 +489,10 @@ import {
       if (!state.setupReady) {
         state.connecting = false;
         if (await retryWithRealtimeFallback(detail)) return;
-        showReconnect(`Gemini setup error: ${detail}. Tap Reconnect.`);
+        showReconnect(`Gemini setup error: ${detail}.`);
         return;
       }
-      setStatus(`Gemini error: ${detail}`, 'error');
+      state.ui.setStatus(`Gemini error: ${detail}`, {error: true});
       return;
     }
 
@@ -662,47 +500,38 @@ import {
       state.connecting = false;
       state.reconnectNeeded = false;
       state.setupReady = true;
-      updateSetupIndicator();
-      talk.disabled = false;
-      talk.className = 'ready';
-      talk.textContent = '🎙 Start conversation';
-      setStatus(`Ready · ${modelLabel(state.effectiveRealtimeModel)}`);
-
+      state.ui.setSetupReady(true);
+      state.ui.setTalkState('ready');
+      state.ui.setStatus(state.appMode === 'public' ? state.ui.t('ready') : `Ready · ${modelLabel(state.effectiveRealtimeModel)}`);
       if (state.reconnectAfterConnect && !state.recording) {
         state.reconnectAfterConnect = false;
-        newLiveSession().catch(error => {
-          showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
-        });
+        newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
       }
       return;
     }
 
     const content = message.serverContent;
     if (!content) return;
-    if (content.interrupted) clearAiPlayback();
+    if (content.interrupted) state.playback.clearLive();
 
     const turn = state.activeTurn;
     if (!turn) return;
-
-    if (content.inputTranscription?.languageCode) {
-      recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
-    }
+    if (content.inputTranscription?.languageCode) recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
     if (content.inputTranscription?.text) {
       turn.userText = concatTranscript(turn.userText, content.inputTranscription.text);
       render();
     }
-    if (content.outputTranscription?.languageCode) {
-      recordLanguageCode(turn, content.outputTranscription.languageCode, 'output');
-    }
+    if (content.outputTranscription?.languageCode) recordLanguageCode(turn, content.outputTranscription.languageCode, 'output');
     if (content.outputTranscription?.text) {
       turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text);
       render();
     }
 
     for (const part of (content.modelTurn?.parts || [])) {
-      if (part.inlineData?.data) queueAiPcm(part.inlineData.data);
+      if (!part.inlineData?.data) continue;
+      if (turn.firstAudioMs == null) turn.firstAudioMs = performance.now() - turn.startedAtMs;
+      state.playback.queueLivePcm(part.inlineData.data, aiPlaybackRate());
     }
-
     if (content.turnComplete) finishTurn(turn);
   }
 
@@ -712,13 +541,10 @@ import {
     state.reconnectNeeded = false;
     state.setupReady = false;
     if (!fallback) state.sessionFallbackTried = false;
-    updateSetupIndicator();
-
-    talk.disabled = true;
-    talk.className = 'ready';
-    talk.textContent = 'Connecting…';
-    setStatus(fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
-    clearAiPlayback();
+    state.ui.setSetupReady(false);
+    state.ui.setTalkState('connecting');
+    setStatus('connecting', fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
+    state.playback.clear();
 
     const oldSocket = state.ws;
     state.ws = null;
@@ -735,27 +561,24 @@ import {
 
     state.sessionId = data.session_id;
     state.effectiveRealtimeModel = data.model;
-    state.sessionRequestedModel = data.requested_model || state.configuredRealtimeModel;
+    state.sessionRequestedModel = data.requested_model || data.model;
     state.realtimeFallbackModel = data.fallback_model || state.realtimeFallbackModel;
+    state.sessionSilenceDurationMs = Number(data.silence_duration_ms || state.sessionSilenceDurationMs);
+    state.echoGuardMs = Number(data.echo_guard_ms ?? state.echoGuardMs);
     if (data.fallback_used) state.sessionFallbackTried = true;
 
-    const url = `${WS_BASE}?access_token=${encodeURIComponent(data.token)}`;
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(`${WS_BASE}?access_token=${encodeURIComponent(data.token)}`);
     state.ws = socket;
     socket.binaryType = 'arraybuffer';
-
     socket.onopen = () => {
       if (state.ws !== socket) return;
-      state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
-      state.sessionSilenceDurationMs = Number(silenceDurationEl.value);
-      setStatus(`WebSocket open · configuring ${modelLabel(data.model)}…`);
+      state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
+      state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : `WebSocket open · configuring ${modelLabel(data.model)}…`);
       socket.send(JSON.stringify({
         setup: {
           model: `models/${data.model}`,
           generationConfig: {responseModalities: ['AUDIO']},
-          systemInstruction: {
-            parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]
-          },
+          systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]},
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
@@ -767,46 +590,26 @@ import {
         }
       }));
     };
-
     socket.onmessage = event => onLiveMessage(event, socket);
     socket.onerror = () => {
-      if (state.ws === socket && state.setupReady) {
-        setStatus('Gemini Live WebSocket error.', 'error');
-      }
+      if (state.ws === socket && state.setupReady) state.ui.setStatus('Gemini Live WebSocket error.', {error: true});
     };
     socket.onclose = async event => {
       if (state.ws !== socket) return;
       state.ws = null;
       state.connecting = false;
       const reason = event.reason ? `: ${event.reason}` : '';
-
-      if (!state.setupReady) {
-        if (await retryWithRealtimeFallback(`WebSocket closed ${event.code}${reason}`)) return;
-      }
-
-      showReconnect(
-        event.code === 1008
-          ? 'Live session paused after being idle. Tap Reconnect.'
-          : `Live session closed (${event.code})${reason}. Tap Reconnect.`
-      );
+      if (!state.setupReady && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${reason}`)) return;
+      showReconnect(event.code === 1008 ? publicOrDev('reconnect', 'Live session paused after being idle. Tap Reconnect.') : `Live session closed (${event.code})${reason}.`);
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Microphone lifecycle
-  // ---------------------------------------------------------------------------
   async function startConversation() {
     if (!state.setupReady || state.recording) return;
-    await ensurePlayContext();
-    metricEl.textContent = '';
-
+    await state.playback.ensureContext();
+    elements.metric.textContent = '';
     state.micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      },
+      audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       video: false
     });
 
@@ -821,7 +624,6 @@ import {
 
     state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
-
     state.micSource = state.inputCtx.createMediaStreamSource(state.micStream);
     state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
     state.recording = true;
@@ -830,33 +632,26 @@ import {
 
     state.processor.onaudioprocess = event => {
       if (!state.recording || !state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN) return;
-
       const mono = event.inputBuffer.getChannelData(0);
       const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
       if (state.activeTurn) state.activeTurn.pcmChunks.push(new Int16Array(pcm));
-
       state.ws.send(JSON.stringify({
-        realtimeInput: {
-          audio: {
-            data: pcmToBase64(pcm),
-            mimeType: 'audio/pcm;rate=16000'
-          }
-        }
+        realtimeInput: {audio: {data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000'}}
       }));
     };
 
     state.micSource.connect(state.processor);
     state.processor.connect(state.inputCtx.destination);
-    talk.className = 'recording';
-    talk.textContent = '■ Stop conversation';
-    setStatus('Listening… speak naturally.');
+    state.ui.setTalkState('recording');
+    setStatus('listening', 'Listening… speak naturally.');
   }
 
   function sessionSettingsChanged() {
-    return (
-      selectedSupportLanguage(feedbackLanguageEl.value) !== state.supportLanguage ||
-      realtimeModelEl.value !== state.sessionRequestedModel ||
-      Number(silenceDurationEl.value) !== state.sessionSilenceDurationMs
+    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || (
+      state.appMode === 'dev' && (
+        elements.realtimeModel.value !== state.sessionRequestedModel ||
+        Number(elements.silenceDuration.value) !== state.sessionSilenceDurationMs
+      )
     );
   }
 
@@ -865,99 +660,106 @@ import {
     state.recording = false;
     state.inputForwarding = false;
     state.activeTurn = null;
-    clearAiPlayback();
+    state.playback.clear();
     cleanupMic();
-
     if (state.ws?.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify({realtimeInput: {audioStreamEnd: true}}));
     }
-
-    talk.disabled = false;
-    talk.className = 'ready';
-
     if (sessionSettingsChanged()) {
-      talk.textContent = 'Connecting…';
-      setStatus('Applying session settings…');
-      newLiveSession().catch(error => {
-        showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
-      });
+      state.ui.setTalkState('connecting');
+      newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
     } else {
-      talk.textContent = '🎙 Start conversation';
-      setStatus('Conversation stopped.');
+      state.ui.setTalkState('ready');
+      setStatus('stopped', 'Conversation stopped.');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Events + bootstrap
-  // ---------------------------------------------------------------------------
-  teacherEl.addEventListener('change', async () => {
-    try {
-      await persistSettings({teacher: teacherEl.value});
-      setStatus(`Teacher ${teacherEl.value} saved.`);
-    } catch (error) {
-      await recoverSettings(error);
+  async function handleUiAction(action, detail) {
+    const turn = state.turns.find(item => item.no === detail.turn);
+    if (!turn || !state.playback || state.playback.livePlaying) return;
+    if (action === 'replay-user' && turn.replayPcm?.length) {
+      await state.playback.playUserPcm(turn.replayPcm, 16000);
+      return;
     }
-  });
-
-  feedbackLanguageEl.addEventListener('change', async () => {
-    try {
-      await persistSettings({support_language: feedbackLanguageEl.value});
-      requestSessionReconnect('Support / correction language saved.');
-    } catch (error) {
-      await recoverSettings(error);
+    if (action === 'speak-correction') {
+      await state.playback.speak(turn.coach?.correction || turn.userText, {
+        lang: targetSpeechLocale(state.targetLanguage),
+        rate: Math.min(1, aiPlaybackRate())
+      });
+      return;
     }
-  });
-
-  realtimeModelEl.addEventListener('change', async () => {
-    try {
-      await persistSettings({realtime_conversation_model: realtimeModelEl.value});
-      requestSessionReconnect('Realtime model saved.');
-    } catch (error) {
-      await recoverSettings(error);
+    if (action === 'speak-problem') {
+      const problems = turn.coach?.pronunciation?.problems || [];
+      const word = problems[detail.problem]?.word;
+      if (word) await state.playback.speak(word, {lang: targetSpeechLocale(state.targetLanguage), rate: 0.8});
     }
-  });
+  }
 
-  coachModelEl.addEventListener('change', async () => {
-    try {
-      await persistSettings({coach_model: coachModelEl.value});
-      setStatus(`Coach model ${modelLabel(coachModelEl.value)} saved.`);
-    } catch (error) {
-      await recoverSettings(error);
-    }
-  });
-
-  aiSpeedEl.addEventListener('change', async () => {
-    const value = AI_SPEED_VALUES.includes(aiSpeedEl.value) ? aiSpeedEl.value : DEFAULT_AI_SPEED;
-    aiSpeedEl.value = value;
-    try {
-      await persistSettings({ai_playback_rate: Number(value)});
-      setStatus(`AI response speed ${value}× saved.`);
-    } catch (error) {
-      await recoverSettings(error);
-    }
-  });
-
-  silenceDurationEl.addEventListener('change', async () => {
-    try {
-      await persistSettings({silence_duration_ms: Number(silenceDurationEl.value)});
-      requestSessionReconnect(`Silence timeout ${silenceDurationEl.value} ms saved.`);
-    } catch (error) {
-      await recoverSettings(error);
-    }
-  });
-
-  pronEl.addEventListener('change', async () => {
-    render();
-    try {
-      await persistSettings({pronunciation_enabled: pronEl.checked});
-      setStatus(`Pronunciation coaching ${pronEl.checked ? 'on' : 'off'} saved.`);
-    } catch (error) {
-      await recoverSettings(error);
+  elements.feedbackLanguage.addEventListener('change', async () => {
+    if (state.appMode === 'public') {
+      const language = state.preferences.setAppLanguage(elements.feedbackLanguage.value);
+      state.ui.setLanguage(language);
       render();
+      requestSessionReconnect(state.ui.t('language'));
+      return;
     }
+    try {
+      await persistSettings({support_language: elements.feedbackLanguage.value});
+      requestSessionReconnect('Support / correction language saved.');
+    } catch (error) { await recoverSettings(error); }
   });
 
-  talk.addEventListener('click', async () => {
+  elements.theme.addEventListener('change', () => {
+    if (state.appMode !== 'public') return;
+    state.ui.setTheme(state.preferences.setTheme(elements.theme.value));
+  });
+
+  elements.teacher.addEventListener('change', async () => {
+    if (state.appMode !== 'dev') return;
+    try { await persistSettings({teacher: elements.teacher.value}); } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.realtimeModel.addEventListener('change', async () => {
+    if (state.appMode !== 'dev') return;
+    try {
+      await persistSettings({realtime_conversation_model: elements.realtimeModel.value});
+      requestSessionReconnect('Realtime model saved.');
+    } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.coachModel.addEventListener('change', async () => {
+    if (state.appMode !== 'dev') return;
+    try { await persistSettings({coach_model: elements.coachModel.value}); } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.aiSpeed.addEventListener('change', async () => {
+    const value = String(normalizePlaybackRate(elements.aiSpeed.value, 0.8));
+    elements.aiSpeed.value = value;
+    if (state.appMode === 'public') {
+      state.preferences.setPlaybackRate(value);
+      return;
+    }
+    try { await persistSettings({ai_playback_rate: Number(value)}); } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.silenceDuration.addEventListener('change', async () => {
+    if (state.appMode !== 'dev') return;
+    try {
+      await persistSettings({silence_duration_ms: Number(elements.silenceDuration.value)});
+      requestSessionReconnect(`Silence timeout ${elements.silenceDuration.value} ms saved.`);
+    } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.pron.addEventListener('change', async () => {
+    render();
+    if (state.appMode === 'public') {
+      state.preferences.setPronunciationEnabled(elements.pron.checked);
+      return;
+    }
+    try { await persistSettings({pronunciation_enabled: elements.pron.checked}); } catch (error) { await recoverSettings(error); render(); }
+  });
+
+  elements.talk.addEventListener('click', async () => {
     try {
       if (state.reconnectNeeded || !state.setupReady || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
         await newLiveSession();
@@ -966,25 +768,27 @@ import {
       if (state.recording) stopConversation();
       else await startConversation();
     } catch (error) {
-      showReconnect(`Connection error: ${error.message}. Tap Reconnect.`);
+      showReconnect(`Connection error: ${error.message}.`);
     }
   });
 
   window.addEventListener('beforeunload', () => {
-    clearAiPlayback();
+    state.playback?.clear();
     cleanupMic();
     try { state.ws?.close(); } catch {}
   });
 
   async function bootstrap() {
-    updateSetupIndicator();
-    render();
     try {
-      await loadSettings();
-      setStatus('Settings loaded. Creating secure live session…');
+      const payload = await loadSettings();
+      state.ui.setSetupReady(false);
+      state.ui.setTalkState('connecting');
+      state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : 'Settings loaded. Creating secure live session…');
+      applySettingsPayload(payload);
       await newLiveSession();
     } catch (error) {
-      showReconnect(`Startup error: ${error.message}. Tap Reconnect.`);
+      if (!state.ui) initializeUi({app_mode: 'dev'});
+      showReconnect(`Startup error: ${error.message}.`);
     }
   }
 
