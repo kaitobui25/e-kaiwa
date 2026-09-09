@@ -29,9 +29,13 @@ function countScore(html, value) {
   return html.match(new RegExp(`>${value}<`, 'g'))?.length || 0;
 }
 
-test('push-to-talk keeps audio actions but uses one compact score entry', () => {
+test('push-to-talk puts replay icon then coach score inline after learner text', () => {
   const html = publicTurnHtml(sampleTurn(), t, true, CONVERSATION_MODES.PUSH_TO_TALK);
-  assert.match(html, /data-action="replay-user"/);
+  assert.match(html, /class="user-inline-actions"/);
+  assert.match(html, /class="inline-audio-button"[^>]*data-action="replay-user"[^>]*>🔊<\/button>/);
+  assert.match(html, /class="score-pill coach-toggle"[^>]*data-coach-toggle="1"/);
+  assert.ok(html.indexOf('data-action="replay-user"') < html.indexOf('data-coach-toggle="1"'));
+  assert.match(html, /data-coach-panel="1" hidden/);
   assert.match(html, /data-action="speak-correction"/);
   assert.match(html, /data-action="speak-problem"/);
   assert.equal(countScore(html, 82), 1);
@@ -39,11 +43,13 @@ test('push-to-talk keeps audio actions but uses one compact score entry', () => 
   assert.doesNotMatch(html, />coach</);
 });
 
-test('hands-free shows sentence plus one clickable score and no manual audio actions', () => {
+test('hands-free keeps inline coach score but hides every manual audio action', () => {
   const html = publicTurnHtml(sampleTurn(), t, true, CONVERSATION_MODES.HANDS_FREE);
   assert.doesNotMatch(html, /data-action="replay-user"/);
   assert.doesNotMatch(html, /data-action="speak-correction"/);
   assert.doesNotMatch(html, /data-action="speak-problem"/);
+  assert.match(html, /class="user-inline-actions"/);
+  assert.match(html, /data-coach-toggle="1"/);
   assert.match(html, /I like /);
   assert.match(html, /class="pron-problem severity-yellow">listening</);
   assert.match(html, / music\./);
