@@ -137,30 +137,32 @@ function highlightProblems(text, pronunciation) {
   return html;
 }
 
-function coachHtml(turn, t, {allowAudioActions = true} = {}) {
-  if (!turn.coach) return '';
-  const pronunciation = turn.coach.pronunciation;
-  const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
-  if (overall == null) return '';
+function coachData(turn) {
+  const pronunciation = turn.coach?.pronunciation;
+  if (!pronunciation) return null;
+  const overall = score(pronunciation.overall_score ?? pronunciation.pronunciation_score);
+  return {
+    overall,
+    pronunciation,
+    correction: turn.coach.correction || turn.userText || '',
+    explanation: turn.coach.explanation || '',
+    problems: Array.isArray(pronunciation.problems) ? pronunciation.problems.slice(0, 4) : []
+  };
+}
 
-  const correction = turn.coach.correction || turn.userText || '';
-  const explanation = turn.coach.explanation || '';
-  const problems = Array.isArray(pronunciation?.problems) ? pronunciation.problems.slice(0, 4) : [];
-
-  return `<details class="coach-card coach-compact">
-    <summary aria-label="${escapeHtml(t('score'))} ${overall}">
-      <span class="score-pill">${overall}</span>
-    </summary>
+function coachPanelHtml(turn, t, data, {allowAudioActions = true} = {}) {
+  if (!data) return '';
+  return `<div id="coach-${turn.no}" class="coach-card coach-panel" data-coach-panel="${turn.no}" hidden>
     <div class="coach-body">
       <div class="coach-section">
         <div class="coach-label">${escapeHtml(t('correction'))}</div>
         <div class="coach-correction-row">
-          <div class="coach-correction">${escapeHtml(correction)}</div>
+          <div class="coach-correction">${escapeHtml(data.correction)}</div>
           ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-correction" data-turn="${turn.no}" aria-label="${escapeHtml(t('playCorrect'))}">🔊</button>` : ''}
         </div>
-        ${explanation ? `<div class="coach-explanation">${escapeHtml(explanation)}</div>` : ''}
+        ${data.explanation ? `<div class="coach-explanation">${escapeHtml(data.explanation)}</div>` : ''}
       </div>
-      ${problems.map((problem, index) => `<div class="coach-problem ${severityClass(problem)}">
+      ${data.problems.map((problem, index) => `<div class="coach-problem ${severityClass(problem)}">
         <div class="coach-problem-head">
           <strong>${escapeHtml(problem.word || '')}</strong>
           ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-problem" data-turn="${turn.no}" data-problem="${index}" aria-label="${escapeHtml(t('problem'))}">🔊</button>` : ''}
@@ -169,7 +171,7 @@ function coachHtml(turn, t, {allowAudioActions = true} = {}) {
         ${problem.tip ? `<div>${escapeHtml(problem.tip)}</div>` : ''}
       </div>`).join('')}
     </div>
-  </details>`;
+  </div>`;
 }
 
 export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) {
@@ -178,12 +180,21 @@ export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) 
     ? highlightProblems(turn.userText || '…', pronunciation)
     : escapeHtml(turn.userText || '…');
   const allowAudioActions = !isHandsFreeMode(conversationMode);
+  const coach = pronunciationEnabled && turn.coachEligible ? coachData(turn) : null;
+  const replay = allowAudioActions && turn.replayPcm?.length
+    ? `<button class="inline-audio-button" type="button" data-action="replay-user" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}">🔊</button>`
+    : '';
+  const coachToggle = coach
+    ? `<button class="score-pill coach-toggle" type="button" data-coach-toggle="${turn.no}" aria-controls="coach-${turn.no}" aria-expanded="false" aria-label="${escapeHtml(t('score'))} ${coach.overall}">${coach.overall}</button>`
+    : '';
+  const inlineActions = replay || coachToggle
+    ? `<span class="user-inline-actions">${replay}${coachToggle}</span>`
+    : '';
 
   const userRow = `<div class="message-row user-row">
     <div class="message-stack user-stack">
-      <div class="bubble user-bubble"><div class="message-text">${userText}</div></div>
-      ${allowAudioActions && turn.replayPcm?.length ? `<button class="replay-button" type="button" data-action="replay-user" data-turn="${turn.no}">▶ ${escapeHtml(t('replayMine'))}</button>` : ''}
-      ${pronunciationEnabled && turn.coachEligible ? coachHtml(turn, t, {allowAudioActions}) : ''}
+      <div class="bubble user-bubble"><div class="message-text">${userText}${inlineActions}</div></div>
+      ${coachPanelHtml(turn, t, coach, {allowAudioActions})}
     </div>
     <div class="avatar user-avatar" aria-hidden="true">YOU</div>
   </div>`;
@@ -229,8 +240,36 @@ export class UiController {
     this.applyMode(this.mode);
   }
 
+  _closeCoachPanels(exceptTurn = null) {
+    const conversation = this.elements.conversation;
+    if (!conversation) return;
+    for (const panel of conversation.querySelectorAll?.('[data-coach-panel]:not([hidden])') || []) {
+      if (exceptTurn != null && String(panel.dataset.coachPanel) === String(exceptTurn)) continue;
+      panel.hidden = true;
+      const toggle = conversation.querySelector?.(`[data-coach-toggle="${panel.dataset.coachPanel}"]`);
+      toggle?.setAttribute?.('aria-expanded', 'false');
+    }
+  }
+
+  _toggleCoach(button) {
+    const conversation = this.elements.conversation;
+    const turn = button?.dataset?.coachToggle;
+    if (!conversation || !turn) return;
+    const panel = conversation.querySelector?.(`[data-coach-panel="${turn}"]`);
+    if (!panel) return;
+    const willOpen = panel.hidden;
+    this._closeCoachPanels(willOpen ? turn : null);
+    panel.hidden = !willOpen;
+    button.setAttribute?.('aria-expanded', String(willOpen));
+  }
+
   _bind() {
     this.elements.conversation?.addEventListener('click', event => {
+      const coachToggle = event.target.closest?.('[data-coach-toggle]');
+      if (coachToggle) {
+        this._toggleCoach(coachToggle);
+        return;
+      }
       const button = event.target.closest?.('[data-action]');
       if (!button) return;
       this.onAction(button.dataset.action, {
@@ -242,15 +281,21 @@ export class UiController {
     this.elements.settingsClose?.addEventListener('click', () => this.closeSettings());
 
     document.addEventListener('pointerdown', event => {
-      if (!document.body.classList.contains('settings-open')) return;
       const target = event.target;
+      const conversation = this.elements.conversation;
+      const insideCoach = target.closest?.('[data-coach-panel], [data-coach-toggle]');
+      if (!insideCoach) this._closeCoachPanels();
+
+      if (!document.body.classList.contains('settings-open')) return;
       if (this.elements.settingsPanel?.contains?.(target)) return;
       if (this.elements.settingsOpen?.contains?.(target)) return;
       this.closeSettings();
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && document.body.classList.contains('settings-open')) this.closeSettings();
+      if (event.key !== 'Escape') return;
+      this._closeCoachPanels();
+      if (document.body.classList.contains('settings-open')) this.closeSettings();
     });
   }
 
