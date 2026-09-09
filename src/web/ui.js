@@ -1,4 +1,10 @@
-import {normalizeAppLanguage, normalizeTheme} from './preferences.js';
+import {
+  CONVERSATION_MODES,
+  isHandsFreeMode,
+  normalizeAppLanguage,
+  normalizeConversationMode,
+  normalizeTheme
+} from './preferences.js';
 
 const COPY = Object.freeze({
   ja: {
@@ -9,10 +15,15 @@ const COPY = Object.freeze({
     theme: 'テーマ',
     light: 'ライト',
     dark: 'ダーク',
+    talkMode: 'Talk',
+    talkDescription: 'ON: 自動会話 / OFF: 長押しして話す',
     speed: 'AIの再生速度',
     pronunciation: '発音コーチ',
     start: '話し始める',
     stop: '会話を停止',
+    holdToTalk: '長押しして話す',
+    releaseToSend: '離して送信',
+    waiting: 'AIの返答を待っています…',
     reconnect: '再接続',
     connecting: '接続中…',
     loading: '設定を読み込み中…',
@@ -30,6 +41,7 @@ const COPY = Object.freeze({
     problem: '注目の単語',
     coachRunning: 'コーチが分析中…',
     score: '総合スコア',
+    playbackUnavailable: '音声を再生できませんでした。',
     appLanguageJa: '日本語',
     appLanguageVi: 'Tiếng Việt'
   },
@@ -41,10 +53,15 @@ const COPY = Object.freeze({
     theme: 'Giao diện',
     light: 'Sáng',
     dark: 'Tối',
+    talkMode: 'Talk',
+    talkDescription: 'Bật: hội thoại tự động / Tắt: giữ nút để nói',
     speed: 'Tốc độ giọng AI',
     pronunciation: 'Coach phát âm',
     start: 'Bắt đầu nói',
     stop: 'Dừng hội thoại',
+    holdToTalk: 'Giữ để nói',
+    releaseToSend: 'Thả để gửi',
+    waiting: 'Đang chờ AI trả lời…',
     reconnect: 'Kết nối lại',
     connecting: 'Đang kết nối…',
     loading: 'Đang tải cài đặt…',
@@ -62,6 +79,7 @@ const COPY = Object.freeze({
     problem: 'Từ cần chú ý',
     coachRunning: 'Coach đang phân tích…',
     score: 'Điểm tổng',
+    playbackUnavailable: 'Không thể phát âm thanh.',
     appLanguageJa: '日本語',
     appLanguageVi: 'Tiếng Việt'
   }
@@ -119,7 +137,7 @@ function highlightProblems(text, pronunciation) {
   return html;
 }
 
-function coachHtml(turn, t) {
+function coachHtml(turn, t, {allowAudioActions = true} = {}) {
   if (!turn.coach) return `<div class="coach-card coach-pending">${escapeHtml(t('coachRunning'))}</div>`;
   const pronunciation = turn.coach.pronunciation;
   const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
@@ -137,14 +155,14 @@ function coachHtml(turn, t) {
         <div class="coach-label">${escapeHtml(t('correction'))}</div>
         <div class="coach-correction-row">
           <div class="coach-correction">${escapeHtml(correction)}</div>
-          <button class="icon-button" type="button" data-action="speak-correction" data-turn="${turn.no}" aria-label="${escapeHtml(t('playCorrect'))}">🔊</button>
+          ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-correction" data-turn="${turn.no}" aria-label="${escapeHtml(t('playCorrect'))}">🔊</button>` : ''}
         </div>
         ${explanation ? `<div class="coach-explanation">${escapeHtml(explanation)}</div>` : ''}
       </div>
       ${problems.map((problem, index) => `<div class="coach-problem ${severityClass(problem)}">
         <div class="coach-problem-head">
           <strong>${escapeHtml(problem.word || '')}</strong>
-          <button class="icon-button" type="button" data-action="speak-problem" data-turn="${turn.no}" data-problem="${index}" aria-label="${escapeHtml(t('problem'))}">🔊</button>
+          ${allowAudioActions ? `<button class="icon-button" type="button" data-action="speak-problem" data-turn="${turn.no}" data-problem="${index}" aria-label="${escapeHtml(t('problem'))}">🔊</button>` : ''}
         </div>
         ${problem.sound ? `<div class="coach-sound">${escapeHtml(problem.sound)}</div>` : ''}
         ${problem.tip ? `<div>${escapeHtml(problem.tip)}</div>` : ''}
@@ -153,19 +171,20 @@ function coachHtml(turn, t) {
   </details>`;
 }
 
-function publicTurnHtml(turn, t, pronunciationEnabled) {
+export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) {
   const pronunciation = pronunciationEnabled ? turn.coach?.pronunciation : null;
   const userText = pronunciation
     ? highlightProblems(turn.userText || '…', pronunciation)
     : escapeHtml(turn.userText || '…');
   const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
+  const allowAudioActions = !isHandsFreeMode(conversationMode);
 
   const userRow = `<div class="message-row user-row">
     <div class="message-stack user-stack">
       <div class="message-meta"><span>${escapeHtml(t('you'))}</span>${overall == null ? '' : `<span class="score-inline">${overall}</span>`}</div>
       <div class="bubble user-bubble"><div class="message-text">${userText}</div></div>
-      ${turn.replayPcm?.length ? `<button class="replay-button" type="button" data-action="replay-user" data-turn="${turn.no}">▶ ${escapeHtml(t('replayMine'))}</button>` : ''}
-      ${turn.coachEligible ? coachHtml(turn, t) : ''}
+      ${allowAudioActions && turn.replayPcm?.length ? `<button class="replay-button" type="button" data-action="replay-user" data-turn="${turn.no}">▶ ${escapeHtml(t('replayMine'))}</button>` : ''}
+      ${turn.coachEligible ? coachHtml(turn, t, {allowAudioActions}) : ''}
     </div>
     <div class="avatar user-avatar" aria-hidden="true">YOU</div>
   </div>`;
@@ -202,6 +221,9 @@ export class UiController {
     this.onAction = onAction;
     this.language = 'ja';
     this.theme = 'light';
+    this.conversationMode = this.mode === 'public'
+      ? CONVERSATION_MODES.PUSH_TO_TALK
+      : CONVERSATION_MODES.HANDS_FREE;
     this.lastStatus = '';
     this.lastStatusError = false;
     this._bind();
@@ -230,6 +252,14 @@ export class UiController {
     document.body.dataset.appMode = this.mode;
     if (this.elements.settingsPanel) this.elements.settingsPanel.hidden = this.mode === 'public';
     if (this.elements.settingsOpen) this.elements.settingsOpen.hidden = this.mode !== 'public';
+  }
+
+  setConversationMode(mode) {
+    this.conversationMode = this.mode === 'public'
+      ? normalizeConversationMode(mode)
+      : CONVERSATION_MODES.HANDS_FREE;
+    document.body.dataset.conversationMode = this.conversationMode;
+    if (this.elements.talkMode) this.elements.talkMode.checked = isHandsFreeMode(this.conversationMode);
   }
 
   setLanguage(language) {
@@ -266,8 +296,8 @@ export class UiController {
     const button = this.elements.talk;
     if (!button) return;
     button.dataset.state = state;
-    button.className = state === 'recording' ? 'recording' : 'ready';
-    button.disabled = state === 'connecting';
+    button.className = ['recording', 'pressed'].includes(state) ? 'recording' : 'ready';
+    button.disabled = ['connecting', 'waiting', 'speaking'].includes(state);
 
     if (this.mode === 'dev') {
       const label = DEV_TALK_LABELS[state] || DEV_TALK_LABELS.ready;
@@ -276,13 +306,31 @@ export class UiController {
       return;
     }
 
-    const labels = {
-      connecting: this.t('connecting'),
-      ready: this.t('start'),
-      recording: this.t('stop'),
-      reconnect: this.t('reconnect')
-    };
-    button.textContent = state === 'recording' ? '■' : state === 'connecting' ? '…' : state === 'reconnect' ? '↻' : '🎙';
+    const handsFree = isHandsFreeMode(this.conversationMode);
+    const labels = handsFree
+      ? {
+          connecting: this.t('connecting'),
+          ready: this.t('start'),
+          recording: this.t('stop'),
+          waiting: this.t('waiting'),
+          speaking: this.t('aiSpeaking'),
+          reconnect: this.t('reconnect')
+        }
+      : {
+          connecting: this.t('connecting'),
+          ready: this.t('holdToTalk'),
+          pressed: this.t('releaseToSend'),
+          waiting: this.t('waiting'),
+          speaking: this.t('aiSpeaking'),
+          reconnect: this.t('reconnect')
+        };
+
+    if (state === 'pressed') button.textContent = '●';
+    else if (state === 'recording') button.textContent = '■';
+    else if (['connecting', 'waiting', 'speaking'].includes(state)) button.textContent = '…';
+    else if (state === 'reconnect') button.textContent = '↻';
+    else button.textContent = '🎙';
+
     if (this.elements.talkLabel) this.elements.talkLabel.textContent = labels[state] || labels.ready;
   }
 
@@ -298,7 +346,7 @@ export class UiController {
     document.body.classList.remove('settings-open');
   }
 
-  render(turns, {pronunciationEnabled = true} = {}) {
+  render(turns, {pronunciationEnabled = true, conversationMode = this.conversationMode} = {}) {
     const target = this.elements.conversation;
     if (!target) return;
     if (!turns.length) {
@@ -306,7 +354,7 @@ export class UiController {
       return;
     }
     target.innerHTML = this.mode === 'public'
-      ? turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled)).join('')
+      ? turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled, conversationMode)).join('')
       : turns.slice().reverse().map(turn => devTurnHtml(turn, pronunciationEnabled)).join('');
     if (this.mode === 'public') target.lastElementChild?.scrollIntoView?.({block: 'end', behavior: 'smooth'});
   }

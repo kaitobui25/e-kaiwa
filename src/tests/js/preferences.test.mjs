@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  CONVERSATION_MODES,
   PreferencesStore,
   TARGET_LANGUAGE,
   detectDefaultAppLanguage,
+  isHandsFreeMode,
   normalizeAppLanguage,
+  normalizeConversationMode,
   normalizePlaybackRate,
   normalizeTheme,
   targetSpeechLocale
@@ -40,6 +43,27 @@ test('theme and playback rate normalization fail closed to supported values', ()
   assert.equal(normalizePlaybackRate(3), 0.8);
 });
 
+test('push-to-talk is the default conversation mode', () => {
+  const store = new PreferencesStore({storage: memoryStorage(), browserLanguage: 'ja-JP'});
+  const value = store.load();
+  assert.equal(value.conversationMode, CONVERSATION_MODES.PUSH_TO_TALK);
+  assert.equal(normalizeConversationMode('unknown'), CONVERSATION_MODES.PUSH_TO_TALK);
+  assert.equal(isHandsFreeMode(CONVERSATION_MODES.PUSH_TO_TALK), false);
+});
+
+test('conversation mode persists locally and normalizes to supported values', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({storage});
+  first.load();
+  assert.equal(first.setConversationMode(CONVERSATION_MODES.HANDS_FREE), CONVERSATION_MODES.HANDS_FREE);
+
+  const second = new PreferencesStore({storage});
+  const value = second.load();
+  assert.equal(value.conversationMode, CONVERSATION_MODES.HANDS_FREE);
+  assert.equal(isHandsFreeMode(value.conversationMode), true);
+  assert.equal(normalizeConversationMode('bad', CONVERSATION_MODES.HANDS_FREE), CONVERSATION_MODES.HANDS_FREE);
+});
+
 test('preferences persist without coupling target language to app language', () => {
   const storage = memoryStorage();
   const first = new PreferencesStore({storage, browserLanguage: 'ja-JP'});
@@ -48,6 +72,7 @@ test('preferences persist without coupling target language to app language', () 
   first.setTheme('dark');
   first.setPlaybackRate(0.9);
   first.setPronunciationEnabled(false);
+  first.setConversationMode(CONVERSATION_MODES.HANDS_FREE);
 
   const second = new PreferencesStore({storage, browserLanguage: 'ja-JP'});
   const value = second.load();
@@ -55,6 +80,7 @@ test('preferences persist without coupling target language to app language', () 
   assert.equal(value.theme, 'dark');
   assert.equal(value.playbackRate, 0.9);
   assert.equal(value.pronunciationEnabled, false);
+  assert.equal(value.conversationMode, CONVERSATION_MODES.HANDS_FREE);
   assert.equal(value.targetLanguage, TARGET_LANGUAGE);
   assert.equal(TARGET_LANGUAGE, 'en');
   assert.equal(targetSpeechLocale(TARGET_LANGUAGE), 'en-US');

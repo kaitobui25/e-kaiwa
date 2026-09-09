@@ -131,3 +131,32 @@ test('live output taking over manual playback cannot be unblocked by stale manua
   coordinator.clear();
   assert.equal(coordinator.blocked, false);
 });
+
+test('new manual playback cannot be unblocked by stale cleanup from the replaced playback', async () => {
+  const context = fakeAudioContext();
+  const changes = [];
+  const coordinator = new PlaybackCoordinator({
+    audioContextFactory: () => context,
+    getEchoGuardMs: () => 0,
+    onBlockedChange: (blocked, reason) => changes.push([blocked, reason])
+  });
+  await coordinator.ensureContext();
+
+  const first = coordinator.playUserPcm(new Int16Array([1, 2]), 16000);
+  await Promise.resolve();
+  assert.equal(coordinator.blockReason, 'manual');
+  assert.equal(context.sources.length, 1);
+
+  const second = coordinator.playUserPcm(new Int16Array([3, 4]), 16000);
+  await Promise.resolve();
+  await first;
+
+  assert.equal(context.sources.length, 2);
+  assert.equal(coordinator.blockReason, 'manual');
+  assert.equal(coordinator.manualPlaying, true);
+
+  context.sources[1].onended?.();
+  assert.equal(await second, true);
+  assert.equal(coordinator.blocked, false);
+  assert.deepEqual(changes.at(-1), [false, 'manual']);
+});

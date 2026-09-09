@@ -1,13 +1,18 @@
 export const SUPPORTED_APP_LANGUAGES = Object.freeze(['ja', 'vi']);
 export const SUPPORTED_THEMES = Object.freeze(['light', 'dark']);
 export const SUPPORTED_TARGET_LANGUAGES = Object.freeze(['en']);
+export const CONVERSATION_MODES = Object.freeze({
+  PUSH_TO_TALK: 'push_to_talk',
+  HANDS_FREE: 'hands_free'
+});
 export const TARGET_LANGUAGE = 'en';
 
 const STORAGE_KEYS = Object.freeze({
   appLanguage: 'e-kaiwa.app-language',
   theme: 'e-kaiwa.theme',
   playbackRate: 'e-kaiwa.playback-rate',
-  pronunciationEnabled: 'e-kaiwa.pronunciation-enabled'
+  pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
+  conversationMode: 'e-kaiwa.conversation-mode'
 });
 
 const PLAYBACK_RATES = Object.freeze(
@@ -44,6 +49,18 @@ export function normalizePronunciationEnabled(value, fallback = true) {
   return Boolean(fallback);
 }
 
+export function normalizeConversationMode(value, fallback = CONVERSATION_MODES.PUSH_TO_TALK) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (Object.values(CONVERSATION_MODES).includes(normalized)) return normalized;
+  return Object.values(CONVERSATION_MODES).includes(fallback)
+    ? fallback
+    : CONVERSATION_MODES.PUSH_TO_TALK;
+}
+
+export function isHandsFreeMode(value) {
+  return normalizeConversationMode(value) === CONVERSATION_MODES.HANDS_FREE;
+}
+
 export function targetSpeechLocale(targetLanguage = TARGET_LANGUAGE) {
   const locales = {
     en: 'en-US'
@@ -61,6 +78,7 @@ export class PreferencesStore {
       theme: this.prefersDark ? 'dark' : 'light',
       playbackRate: 0.8,
       pronunciationEnabled: true,
+      conversationMode: CONVERSATION_MODES.PUSH_TO_TALK,
       targetLanguage: TARGET_LANGUAGE
     };
   }
@@ -80,12 +98,16 @@ export class PreferencesStore {
   }
 
   load(defaults = {}) {
-    // App language is a learner/browser preference, never a server-global setting.
-    // This keeps dev support_language from leaking into public UI defaults.
+    // App language and conversation mode are learner/browser preferences,
+    // never server-global settings.
     const defaultLanguage = detectDefaultAppLanguage(this.browserLanguage);
     const defaultTheme = normalizeTheme(defaults.theme, this.prefersDark ? 'dark' : 'light');
     const defaultRate = normalizePlaybackRate(defaults.playbackRate, 0.8);
     const defaultPronunciation = normalizePronunciationEnabled(defaults.pronunciationEnabled, true);
+    const defaultConversationMode = normalizeConversationMode(
+      defaults.conversationMode,
+      CONVERSATION_MODES.PUSH_TO_TALK
+    );
 
     this.value = {
       appLanguage: normalizeAppLanguage(this._read(STORAGE_KEYS.appLanguage), defaultLanguage),
@@ -94,6 +116,10 @@ export class PreferencesStore {
       pronunciationEnabled: normalizePronunciationEnabled(
         this._read(STORAGE_KEYS.pronunciationEnabled),
         defaultPronunciation
+      ),
+      conversationMode: normalizeConversationMode(
+        this._read(STORAGE_KEYS.conversationMode),
+        defaultConversationMode
       ),
       targetLanguage: TARGET_LANGUAGE
     };
@@ -125,5 +151,11 @@ export class PreferencesStore {
     );
     this._write(STORAGE_KEYS.pronunciationEnabled, this.value.pronunciationEnabled);
     return this.value.pronunciationEnabled;
+  }
+
+  setConversationMode(value) {
+    this.value.conversationMode = normalizeConversationMode(value, this.value.conversationMode);
+    this._write(STORAGE_KEYS.conversationMode, this.value.conversationMode);
+    return this.value.conversationMode;
   }
 }

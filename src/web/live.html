@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/live.css">
   <script type="module" src="/live.js"></script>
 </head>
-<body data-app-mode="loading" data-theme="light">
+<body data-app-mode="loading" data-theme="light" data-conversation-mode="push_to_talk">
 <main class="app-shell">
   <header class="app-header">
     <div>
@@ -57,6 +57,12 @@
       <option value="light" data-i18n="light">Light</option>
       <option value="dark" data-i18n="dark">Dark</option>
     </select>
+
+    <label class="switch-row public-only" for="talk-mode">
+      <span data-i18n="talkMode">Talk</span>
+      <input id="talk-mode" class="switch-control" type="checkbox" role="switch" aria-label="Talk">
+    </label>
+    <span class="muted setting-note public-only" data-i18n="talkDescription">ON: hands-free / OFF: hold to talk</span>
 
     <div class="dev-only">
       <label for="teacher">Teacher</label>

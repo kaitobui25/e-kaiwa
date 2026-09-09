@@ -77,10 +77,14 @@ h1 {
 
 .header-icon,
 .icon-button {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   border: 0;
   border-radius: 12px;
   background: transparent;
   cursor: pointer;
+  line-height: 1;
 }
 
 .header-icon {
@@ -94,7 +98,6 @@ h1 {
 .icon-button {
   min-width: 36px;
   min-height: 36px;
-  padding: 6px;
 }
 
 .conversation-card {
@@ -330,6 +333,9 @@ h1 {
 #talk {
   width: 70px;
   height: 70px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   border: 0;
   border-radius: 50%;
   background: var(--primary);
@@ -338,6 +344,10 @@ h1 {
   cursor: pointer;
   font-size: 28px;
   font-weight: 800;
+  line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #talk.recording { background: var(--danger); }
@@ -387,11 +397,54 @@ h1 {
   color: var(--text);
 }
 
-.checkbox-row {
+.checkbox-row,
+.switch-row {
   display: flex !important;
   align-items: center;
-  gap: 8px;
 }
+
+.checkbox-row { gap: 8px; }
+
+.switch-row {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.switch-control {
+  width: 46px;
+  height: 26px;
+  flex: 0 0 46px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.switch-control::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease;
+}
+
+.switch-control:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.switch-control:checked::after { transform: translateX(20px); }
+.switch-control:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .muted { color: var(--muted); font-size: 13px; }
 .setting-note { display: block; margin-top: 5px; line-height: 1.45; }
@@ -451,8 +504,12 @@ body[data-app-mode="dev"] #talk {
   width: 100%;
   height: auto;
   min-height: 88px;
+  display: block;
+  padding: 14px;
   border-radius: 18px;
   font-size: 22px;
+  line-height: normal;
+  touch-action: auto;
 }
 
 body[data-app-mode="dev"] .status { margin: 8px 0; text-align: left; font-size: 14px; }
