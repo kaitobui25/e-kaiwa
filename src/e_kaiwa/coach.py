@@ -11,6 +11,7 @@ from .config import (
     SUPPORTED_SAMPLE_RATES,
     TeacherMode,
     feedback_language_name,
+    normalize_feedback_language,
     resolve_teacher,
 )
 from .gemini import extract_text, parse_json_text, post_json
@@ -229,7 +230,13 @@ class CoachService:
         self.sessions = sessions
         self.settings = settings
 
-    def run_turn(self, payload: dict) -> dict:
+    def run_turn(
+        self,
+        payload: dict,
+        *,
+        allow_client_preferences: bool = False,
+        temporary_audio: bool = False,
+    ) -> dict:
         session_dir = self.sessions.get(payload.get("session_id"))
         if session_dir is None:
             raise ValueError("unknown session_id")
@@ -245,6 +252,12 @@ class CoachService:
         teacher = resolve_teacher(persisted["teacher"])
         feedback_language = persisted["support_language"]
         pronunciation_enabled = bool(persisted["pronunciation_enabled"])
+        if allow_client_preferences:
+            feedback_language = normalize_feedback_language(payload.get("feedback_language", feedback_language))
+            requested_pronunciation = payload.get("pronunciation_enabled")
+            if isinstance(requested_pronunciation, bool):
+                pronunciation_enabled = requested_pronunciation
+
         coach_mode, requested_model, fallback_models = self.settings.coach_policy()
 
         try:
@@ -265,95 +278,99 @@ class CoachService:
 
         user_wav = session_dir / f"turn_{turn_no:03d}_user.wav"
         save_pcm_wav(raw_pcm, user_wav, sample_rate)
-        started = time.perf_counter()
+        try:
+            started = time.perf_counter()
 
-        def correction_job() -> StructuredCallResult:
-            return correction(
-                self.keys,
-                transcript,
-                teacher,
-                feedback_language,
-                mode=coach_mode,
-                selected_model=requested_model,
-                fallback_models=fallback_models,
-                turn_no=turn_no,
+            def correction_job() -> StructuredCallResult:
+                return correction(
+                    self.keys,
+                    transcript,
+                    teacher,
+                    feedback_language,
+                    mode=coach_mode,
+                    selected_model=requested_model,
+                    fallback_models=fallback_models,
+                    turn_no=turn_no,
+                )
+
+            def pronunciation_job() -> StructuredCallResult:
+                if not pronunciation_enabled:
+                    return StructuredCallResult(None, 0.0, None, None, [], "")
+                return pronunciation(
+                    self.keys,
+                    user_wav,
+                    transcript,
+                    teacher,
+                    feedback_language,
+                    mode=coach_mode,
+                    selected_model=requested_model,
+                    fallback_models=fallback_models,
+                    turn_no=turn_no,
+                )
+
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="coach") as pool:
+                correction_future = pool.submit(correction_job)
+                pronunciation_future = pool.submit(pronunciation_job)
+                correction_result = correction_future.result()
+                pronunciation_result = pronunciation_future.result()
+
+            coach_wall = time.perf_counter() - started
+            correction_text = transcript
+            explanation = ""
+            normalized_language, _ = feedback_language_name(feedback_language)
+            if correction_result.value:
+                correction_text = correction_result.value.get("correction") or transcript
+                explanation = correction_result.value.get("explanation") or ""
+                normalized_language = correction_result.value.get("feedback_language") or normalized_language
+
+            pron_value = pronunciation_result.value if pronunciation_enabled else None
+
+            self.sessions.log(
+                session_dir,
+                "coach",
+                turn=turn_no,
+                user_audio=(None if temporary_audio else user_wav.name),
+                user_text=transcript,
+                teacher=teacher.name,
+                feedback_language=normalized_language,
+                coach_model_mode=coach_mode,
+                coach_requested_model=requested_model,
+                correction=correction_text,
+                explanation=explanation,
+                correction_effective_model=correction_result.model,
+                correction_key_slot=correction_result.key_slot,
+                correction_llm={
+                    "model": correction_result.model,
+                    "key_slot": correction_result.key_slot,
+                    "latency_s": round(correction_result.latency_s, 3),
+                    "attempts": correction_result.attempts,
+                    "error": correction_result.error,
+                },
+                pronunciation_effective_model=pronunciation_result.model,
+                pronunciation_key_slot=pronunciation_result.key_slot,
+                pronunciation={
+                    "enabled": pronunciation_enabled,
+                    "model": pronunciation_result.model,
+                    "key_slot": pronunciation_result.key_slot,
+                    "latency_s": round(pronunciation_result.latency_s, 3),
+                    "attempts": pronunciation_result.attempts,
+                    "error": pronunciation_result.error,
+                    "result": pron_value,
+                },
+                coach_wall_s=round(coach_wall, 3),
             )
 
-        def pronunciation_job() -> StructuredCallResult:
-            if not pronunciation_enabled:
-                return StructuredCallResult(None, 0.0, None, None, [], "")
-            return pronunciation(
-                self.keys,
-                user_wav,
-                transcript,
-                teacher,
-                feedback_language,
-                mode=coach_mode,
-                selected_model=requested_model,
-                fallback_models=fallback_models,
-                turn_no=turn_no,
-            )
-
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="coach") as pool:
-            correction_future = pool.submit(correction_job)
-            pronunciation_future = pool.submit(pronunciation_job)
-            correction_result = correction_future.result()
-            pronunciation_result = pronunciation_future.result()
-
-        coach_wall = time.perf_counter() - started
-        correction_text = transcript
-        explanation = ""
-        normalized_language, _ = feedback_language_name(feedback_language)
-        if correction_result.value:
-            correction_text = correction_result.value.get("correction") or transcript
-            explanation = correction_result.value.get("explanation") or ""
-            normalized_language = correction_result.value.get("feedback_language") or normalized_language
-
-        pron_value = pronunciation_result.value if pronunciation_enabled else None
-
-        self.sessions.log(
-            session_dir,
-            "coach",
-            turn=turn_no,
-            user_audio=user_wav.name,
-            user_text=transcript,
-            teacher=teacher.name,
-            feedback_language=normalized_language,
-            coach_model_mode=coach_mode,
-            coach_requested_model=requested_model,
-            correction=correction_text,
-            explanation=explanation,
-            correction_effective_model=correction_result.model,
-            correction_key_slot=correction_result.key_slot,
-            correction_llm={
-                "model": correction_result.model,
-                "key_slot": correction_result.key_slot,
-                "latency_s": round(correction_result.latency_s, 3),
-                "attempts": correction_result.attempts,
-                "error": correction_result.error,
-            },
-            pronunciation_effective_model=pronunciation_result.model,
-            pronunciation_key_slot=pronunciation_result.key_slot,
-            pronunciation={
-                "enabled": pronunciation_enabled,
-                "model": pronunciation_result.model,
-                "key_slot": pronunciation_result.key_slot,
-                "latency_s": round(pronunciation_result.latency_s, 3),
-                "attempts": pronunciation_result.attempts,
-                "error": pronunciation_result.error,
-                "result": pron_value,
-            },
-            coach_wall_s=round(coach_wall, 3),
-        )
-
-        return {
-            "correction": correction_text,
-            "explanation": explanation,
-            "feedback_language": normalized_language,
-            "pronunciation": pron_value,
-            "coach_wall_s": round(coach_wall, 3),
-            "coach_model_mode": coach_mode,
-            "coach_requested_model": requested_model,
-            "correction_effective_model": correction_result.model,
-            "pronunciation_effective_model": pronunciation_result.model,
-        }
+            return {
+                "correction": correction_text,
+                "explanation": explanation,
+                "feedback_language": normalized_language,
+                "pronunciation": pron_value,
+                "coach_wall_s": round(coach_wall, 3),
+                "coach_model_mode": coach_mode,
+                "coach_requested_model": requested_model,
+                "correction_effective_model": correction_result.model,
+                "pronunciation_effective_model": pronunciation_result.model,
+            }
+        finally:
+            if temporary_audio:
+                user_wav.unlink(missing_ok=True)

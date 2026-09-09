@@ -8,16 +8,16 @@ SRC = Path(__file__).resolve().parents[2]
 HTML = SRC / "web" / "live.html"
 JS = SRC / "web" / "live.js"
 POLICY = SRC / "web" / "language_policy.js"
+PREFERENCES = SRC / "web" / "preferences.js"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
 
 class LanguageRescueUiTests(unittest.TestCase):
-    def test_language_policy_is_a_separate_browser_module(self):
+    def test_language_policy_remains_a_separate_browser_module(self):
         html = HTML.read_text(encoding="utf-8")
         js = JS.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
         server = SERVER.read_text(encoding="utf-8")
-
         self.assertIn('<script type="module" src="/live.js"></script>', html)
         self.assertIn("from './language_policy.js';", js)
         self.assertIn("export const LANGUAGE_POLICY_VERSION", policy)
@@ -25,29 +25,29 @@ class LanguageRescueUiTests(unittest.TestCase):
 
     def test_live_collects_language_codes_and_gates_coach(self):
         js = JS.read_text(encoding="utf-8")
-
         self.assertIn("content.inputTranscription?.languageCode", js)
         self.assertIn("content.outputTranscription?.languageCode", js)
         self.assertIn("finalizeLanguageMode(turn);", js)
         self.assertIn("if (isCoachEligible(turn)) runCoach(turn);", js)
-        self.assertIn("if (isCoachEligible(turn)) {", js)
-        self.assertIn("${coachSection}", js)
 
-    def test_live_setup_uses_selected_support_language_policy(self):
+    def test_app_language_controls_live_rescue_and_coach_feedback(self):
         js = JS.read_text(encoding="utf-8")
-        html = HTML.read_text(encoding="utf-8")
-
-        self.assertIn("state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);", js)
+        prefs = PREFERENCES.read_text(encoding="utf-8")
+        self.assertIn("state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);", js)
         self.assertIn("buildLiveLanguageInstruction(state.supportLanguage)", js)
-        self.assertIn("systemInstruction", js)
-        self.assertIn("Support / correction language", html)
-        self.assertIn("It will apply after you stop this conversation", js)
-        self.assertIn("newLiveSession().catch", js)
+        self.assertIn("feedback_language: elements.feedbackLanguage.value", js)
+        self.assertIn("setAppLanguage", js)
+        self.assertIn("SUPPORTED_APP_LANGUAGES", prefs)
+
+    def test_target_language_is_separate_and_english_only_for_v1(self):
+        prefs = PREFERENCES.read_text(encoding="utf-8")
+        self.assertIn("SUPPORTED_TARGET_LANGUAGES = Object.freeze(['en'])", prefs)
+        self.assertIn("TARGET_LANGUAGE = 'en'", prefs)
+        self.assertIn("targetSpeechLocale", prefs)
 
     def test_turn_metrics_include_language_and_coach_debug_state(self):
         js = JS.read_text(encoding="utf-8")
         server = SERVER.read_text(encoding="utf-8")
-
         for field in (
             "input_language_codes",
             "output_language_codes",
@@ -60,10 +60,6 @@ class LanguageRescueUiTests(unittest.TestCase):
         ):
             self.assertIn(field, js)
             self.assertIn(field, server)
-
-        self.assertIn("pronunciation_enabled", js)
-        self.assertIn("silence_duration_ms", js)
-        self.assertIn("ai_playback_rate", js)
 
 
 if __name__ == "__main__":

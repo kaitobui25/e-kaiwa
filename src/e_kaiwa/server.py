@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Type
 from urllib.parse import parse_qs, urlparse
 
+from .access import AccessPolicy, normalize_app_mode
 from .coach import CoachService
 from .config import (
     API_FILE,
@@ -22,7 +24,7 @@ from .config import (
 )
 from .gemini import create_ephemeral_token
 from .sessions import SessionStore
-from .settings import SettingsStore
+from .settings import ALLOWED_SUPPORT_LANGUAGES, SettingsStore
 
 
 @dataclass
@@ -31,6 +33,7 @@ class Runtime:
     sessions: SessionStore
     settings: SettingsStore
     coach: CoachService
+    access: AccessPolicy
 
 
 def build_runtime(
@@ -38,15 +41,18 @@ def build_runtime(
     api_file: Path = API_FILE,
     log_root: Path = LOG_ROOT,
     config_file: Path = CONFIG_FILE,
+    app_mode: str = "dev",
 ) -> Runtime:
     keys = load_api_keys(api_file)
     sessions = SessionStore(log_root)
     settings = SettingsStore(config_file)
+    access = AccessPolicy.from_environment(app_mode)
     return Runtime(
         keys=keys,
         sessions=sessions,
         settings=settings,
         coach=CoachService(keys, sessions, settings),
+        access=access,
     )
 
 
@@ -100,9 +106,36 @@ def _mic_audio_settings(value: object) -> dict:
     }
 
 
+def _client_settings_payload(runtime: Runtime) -> dict:
+    if not runtime.access.is_public:
+        payload = runtime.settings.public_payload()
+        payload["app_mode"] = "dev"
+        payload["target_language"] = "en"
+        return payload
+
+    config = runtime.settings.snapshot()
+    settings = config["settings"]
+    return {
+        "version": config["version"],
+        "app_mode": "public",
+        "target_language": "en",
+        "settings": {
+            "support_language": settings["support_language"],
+            "pronunciation_enabled": settings["pronunciation_enabled"],
+            "silence_duration_ms": settings["silence_duration_ms"],
+            "ai_playback_rate": settings["ai_playback_rate"],
+            "echo_guard_ms": settings["echo_guard_ms"],
+        },
+        "choices": {
+            "app_language": list(ALLOWED_SUPPORT_LANGUAGES),
+            "theme": ["light", "dark"],
+        },
+    }
+
+
 def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
     class LiveRequestHandler(BaseHTTPRequestHandler):
-        server_version = "EKaiwaLive/0.3"
+        server_version = "EKaiwaLive/0.4"
 
         def log_message(self, fmt: str, *args: object) -> None:
             print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -113,6 +146,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(raw)
 
@@ -125,6 +159,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(raw)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(raw)
 
@@ -140,6 +175,21 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 raise ValueError("request JSON must be an object")
             return payload
 
+        def client_key(self) -> str:
+            socket_ip = self.client_address[0] if self.client_address else "unknown"
+            return runtime.access.client_ip(self.headers, socket_ip)
+
+        def allow_public_request(self, endpoint: str) -> bool:
+            if not runtime.access.is_public:
+                return True
+            if not runtime.access.origin_allowed(self.headers):
+                self.send_json(403, {"error": "origin not allowed"})
+                return False
+            if not runtime.access.allow(endpoint, self.client_key()):
+                self.send_json(429, {"error": "rate limit exceeded"})
+                return False
+            return True
+
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             path = parsed.path
@@ -150,6 +200,9 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/live.css": (WEB_DIR / "live.css", "text/css; charset=utf-8"),
                 "/live.js": (WEB_DIR / "live.js", "text/javascript; charset=utf-8"),
                 "/language_policy.js": (WEB_DIR / "language_policy.js", "text/javascript; charset=utf-8"),
+                "/preferences.js": (WEB_DIR / "preferences.js", "text/javascript; charset=utf-8"),
+                "/audio.js": (WEB_DIR / "audio.js", "text/javascript; charset=utf-8"),
+                "/ui.js": (WEB_DIR / "ui.js", "text/javascript; charset=utf-8"),
             }
             static = static_routes.get(path)
             if static:
@@ -157,25 +210,24 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 return
 
             if path == "/health":
-                self.send_json(200, {"ok": True, "model": runtime.settings.realtime_model})
+                self.send_json(200, {"ok": True, "mode": runtime.access.mode, "model": runtime.settings.realtime_model})
                 return
 
             if path == "/api/settings":
-                self.send_json(200, runtime.settings.public_payload())
+                self.send_json(200, _client_settings_payload(runtime))
                 return
 
             if path == "/api/session":
+                if not self.allow_public_request("session"):
+                    return
                 use_fallback = query.get("fallback", ["0"])[0] == "1"
                 requested_model = runtime.settings.realtime_model
                 fallback_model = runtime.settings.realtime_fallback
                 effective_model = fallback_model if use_fallback else requested_model
                 persisted = runtime.settings.snapshot()["settings"]
                 try:
-                    token = create_ephemeral_token(runtime.keys[0][1])
-                    session_id, session_dir = runtime.sessions.create(
-                        mode="live",
-                        model=effective_model,
-                    )
+                    token = create_ephemeral_token(runtime.keys[0][1], model=effective_model)
+                    session_id, session_dir = runtime.sessions.create(mode="live", model=effective_model)
                     runtime.sessions.log(
                         session_dir,
                         "realtime_model",
@@ -187,6 +239,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         support_language=persisted["support_language"],
                         silence_duration_ms=persisted["silence_duration_ms"],
                         echo_guard_ms=persisted["echo_guard_ms"],
+                        public_mode=runtime.access.is_public,
                     )
                     self.send_json(
                         200,
@@ -197,37 +250,43 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                             "requested_model": requested_model,
                             "fallback_model": fallback_model,
                             "fallback_used": use_fallback,
-                            "support_language": persisted["support_language"],
                             "silence_duration_ms": persisted["silence_duration_ms"],
                             "echo_guard_ms": persisted["echo_guard_ms"],
                         },
                     )
-                    print(
-                        f"LIVE : session={session_id} model={effective_model} "
-                        f"fallback={use_fallback} log={session_dir}"
-                    )
+                    print(f"LIVE : model={effective_model} fallback={use_fallback} log={session_dir}")
                 except Exception as exc:
                     print(f"[TOKEN ERROR] {exc}")
-                    self.send_json(502, {"error": str(exc)})
+                    self.send_json(502, {"error": "could not create live session" if runtime.access.is_public else str(exc)})
                 return
 
             self.send_error(404)
 
         def do_POST(self) -> None:
-            parsed = urlparse(self.path)
-            path = parsed.path
+            path = urlparse(self.path).path
 
             if path == "/api/settings":
+                if runtime.access.is_public:
+                    self.send_json(403, {"error": "public settings are read-only"})
+                    return
                 try:
                     result = runtime.settings.update(self.read_json())
+                    result["app_mode"] = "dev"
+                    result["target_language"] = "en"
                     self.send_json(200, result)
                 except Exception as exc:
                     self.send_json(400, {"error": str(exc)})
                 return
 
             if path == "/api/coach":
+                if not self.allow_public_request("coach"):
+                    return
                 try:
-                    result = runtime.coach.run_turn(self.read_json())
+                    result = runtime.coach.run_turn(
+                        self.read_json(),
+                        allow_client_preferences=runtime.access.is_public,
+                        temporary_audio=runtime.access.is_public,
+                    )
                     self.send_json(200, result)
                 except Exception as exc:
                     print(f"[COACH ERROR] {exc}")
@@ -235,25 +294,22 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 return
 
             if path == "/api/metric":
+                if not self.allow_public_request("metric"):
+                    return
                 try:
                     payload = self.read_json()
                     session_dir = runtime.sessions.get(payload.get("session_id"))
                     if session_dir is None:
                         raise ValueError("unknown session_id")
 
-                    frontend_state = payload.get("frontend_state")
-                    if not isinstance(frontend_state, dict):
-                        frontend_state = {}
-                    settings = payload.get("settings")
-                    if not isinstance(settings, dict):
-                        settings = {}
-
+                    frontend_state = payload.get("frontend_state") if isinstance(payload.get("frontend_state"), dict) else {}
+                    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
                     runtime.sessions.log(
                         session_dir,
                         "live_turn",
                         turn=_positive_turn(payload.get("turn")),
-                        user_text=str(payload.get("user_text", "")),
-                        ai_text=str(payload.get("ai_text", "")),
+                        user_text=str(payload.get("user_text", ""))[:4000],
+                        ai_text=str(payload.get("ai_text", ""))[:4000],
                         first_audio_ms=_optional_number(payload.get("first_audio_ms")),
                         input_language_codes=_short_string_list(payload.get("input_language_codes")),
                         output_language_codes=_short_string_list(payload.get("output_language_codes")),
@@ -290,15 +346,16 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
     return LiveRequestHandler
 
 
-def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
-    runtime = build_runtime()
+def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, app_mode: str = "dev") -> int:
+    runtime = build_runtime(app_mode=app_mode)
     handler = make_handler(runtime)
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
 
     print("=" * 72)
-    print("E-KAIWA LIVE - Gemini Live audio-to-audio + coach sidecar")
+    print("E-KAIWA LIVE - Gemini Live audio-to-audio + Coach sidecar")
     print("=" * 72)
+    print(f"Mode  : {runtime.access.mode}")
     print(f"Model : {runtime.settings.realtime_model}")
     print(f"Config: {runtime.settings.path}")
     print(f"Local : http://{host}:{port}")
@@ -318,13 +375,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="E-KAIWA realtime web server")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--mode",
+        choices=("dev", "public"),
+        default=normalize_app_mode(os.environ.get("E_KAIWA_MODE", "dev")),
+        help="dev keeps engineering controls; public enables mobile UI and endpoint hardening",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        return run_server(args.host, args.port)
+        return run_server(args.host, args.port, app_mode=args.mode)
     except RuntimeError as exc:
         print(f"[ERROR] {exc}")
         return 2
