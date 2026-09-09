@@ -164,6 +164,10 @@ h1 {
   box-shadow: 0 0 0 2px rgba(108, 182, 255, 0.45);
 }
 
+.pron-score.has-tooltip:focus-visible {
+  border-radius: 50%;
+}
+
 .tooltip {
   position: absolute;
   z-index: 30;
