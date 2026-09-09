@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Type
+from urllib.parse import parse_qs, urlparse
 
 from .coach import CoachService
 from .config import (
     API_FILE,
+    CONFIG_FILE,
     DEFAULT_HOST,
     DEFAULT_PORT,
-    LIVE_MODEL,
     LOG_ROOT,
     REQUEST_MAX_BYTES,
     WEB_DIR,
@@ -21,19 +22,32 @@ from .config import (
 )
 from .gemini import create_ephemeral_token
 from .sessions import SessionStore
+from .settings import SettingsStore
 
 
 @dataclass
 class Runtime:
     keys: list[tuple[int, str]]
     sessions: SessionStore
+    settings: SettingsStore
     coach: CoachService
 
 
-def build_runtime(*, api_file: Path = API_FILE, log_root: Path = LOG_ROOT) -> Runtime:
+def build_runtime(
+    *,
+    api_file: Path = API_FILE,
+    log_root: Path = LOG_ROOT,
+    config_file: Path = CONFIG_FILE,
+) -> Runtime:
     keys = load_api_keys(api_file)
     sessions = SessionStore(log_root)
-    return Runtime(keys=keys, sessions=sessions, coach=CoachService(keys, sessions))
+    settings = SettingsStore(config_file)
+    return Runtime(
+        keys=keys,
+        sessions=sessions,
+        settings=settings,
+        coach=CoachService(keys, sessions, settings),
+    )
 
 
 def _positive_turn(value: object) -> int:
@@ -79,7 +93,7 @@ def _language_mode(value: object) -> str:
 
 def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
     class LiveRequestHandler(BaseHTTPRequestHandler):
-        server_version = "EKaiwaLive/0.2"
+        server_version = "EKaiwaLive/0.3"
 
         def log_message(self, fmt: str, *args: object) -> None:
             print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -118,6 +132,9 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             return payload
 
         def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            path = parsed.path
+            query = parse_qs(parsed.query)
             static_routes = {
                 "/": (WEB_DIR / "live.html", "text/html; charset=utf-8"),
                 "/index.html": (WEB_DIR / "live.html", "text/html; charset=utf-8"),
@@ -125,27 +142,54 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/live.js": (WEB_DIR / "live.js", "text/javascript; charset=utf-8"),
                 "/language_policy.js": (WEB_DIR / "language_policy.js", "text/javascript; charset=utf-8"),
             }
-            static = static_routes.get(self.path)
+            static = static_routes.get(path)
             if static:
                 self.send_static(*static)
                 return
 
-            if self.path == "/health":
-                self.send_json(200, {"ok": True, "model": LIVE_MODEL})
+            if path == "/health":
+                self.send_json(200, {"ok": True, "model": runtime.settings.realtime_model})
                 return
 
-            if self.path == "/api/session":
+            if path == "/api/settings":
+                self.send_json(200, runtime.settings.public_payload())
+                return
+
+            if path == "/api/session":
+                use_fallback = query.get("fallback", ["0"])[0] == "1"
+                requested_model = runtime.settings.realtime_model
+                fallback_model = runtime.settings.realtime_fallback
+                effective_model = fallback_model if use_fallback else requested_model
                 try:
                     token = create_ephemeral_token(runtime.keys[0][1])
                     session_id, session_dir = runtime.sessions.create(
                         mode="live",
-                        model=LIVE_MODEL,
+                        model=effective_model,
+                    )
+                    runtime.sessions.log(
+                        session_dir,
+                        "realtime_model",
+                        requested_model=requested_model,
+                        effective_model=effective_model,
+                        fallback_model=fallback_model,
+                        fallback_used=use_fallback,
+                        fallback_reason=("client_setup_retry" if use_fallback else None),
                     )
                     self.send_json(
                         200,
-                        {"token": token, "session_id": session_id, "model": LIVE_MODEL},
+                        {
+                            "token": token,
+                            "session_id": session_id,
+                            "model": effective_model,
+                            "requested_model": requested_model,
+                            "fallback_model": fallback_model,
+                            "fallback_used": use_fallback,
+                        },
                     )
-                    print(f"LIVE : session={session_id} log={session_dir}")
+                    print(
+                        f"LIVE : session={session_id} model={effective_model} "
+                        f"fallback={use_fallback} log={session_dir}"
+                    )
                 except Exception as exc:
                     print(f"[TOKEN ERROR] {exc}")
                     self.send_json(502, {"error": str(exc)})
@@ -154,7 +198,18 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             self.send_error(404)
 
         def do_POST(self) -> None:
-            if self.path == "/api/coach":
+            parsed = urlparse(self.path)
+            path = parsed.path
+
+            if path == "/api/settings":
+                try:
+                    result = runtime.settings.update(self.read_json())
+                    self.send_json(200, result)
+                except Exception as exc:
+                    self.send_json(400, {"error": str(exc)})
+                return
+
+            if path == "/api/coach":
                 try:
                     result = runtime.coach.run_turn(self.read_json())
                     self.send_json(200, result)
@@ -163,7 +218,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                     self.send_json(400, {"error": str(exc)})
                 return
 
-            if self.path == "/api/metric":
+            if path == "/api/metric":
                 try:
                     payload = self.read_json()
                     session_dir = runtime.sessions.get(payload.get("session_id"))
@@ -197,6 +252,8 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                             "pronunciation_enabled": _optional_bool(settings.get("pronunciation_enabled")),
                             "silence_duration_ms": _optional_number(settings.get("silence_duration_ms")),
                             "ai_playback_rate": _optional_number(settings.get("ai_playback_rate")),
+                            "realtime_model": _short_text(settings.get("realtime_model"), 80),
+                            "coach_model": _short_text(settings.get("coach_model"), 80),
                         },
                         frontend_state={
                             "recording": frontend_state.get("recording"),
@@ -224,7 +281,8 @@ def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     print("=" * 72)
     print("E-KAIWA LIVE - Gemini Live audio-to-audio + coach sidecar")
     print("=" * 72)
-    print(f"Model : {LIVE_MODEL}")
+    print(f"Model : {runtime.settings.realtime_model}")
+    print(f"Config: {runtime.settings.path}")
     print(f"Local : http://{host}:{port}")
     print("Realtime audio path: browser <-> Gemini Live (direct WebSocket)")
     print("Coach path         : browser -> this server after each turn")
