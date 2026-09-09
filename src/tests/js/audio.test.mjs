@@ -30,6 +30,10 @@ function fakeAudioContext() {
   };
 }
 
+function pcmBase64() {
+  return Buffer.from(new Uint8Array([0, 0, 0, 0])).toString('base64');
+}
+
 test('manual speech blocks microphone forwarding only for playback lifetime', async () => {
   const changes = [];
   const speechService = {
@@ -61,9 +65,7 @@ test('live PCM queue owns playback timing and blocks input', async () => {
   });
   await coordinator.ensureContext();
 
-  const pcmBytes = new Uint8Array([0, 0, 0, 0]);
-  const base64 = Buffer.from(pcmBytes).toString('base64');
-  assert.equal(coordinator.queueLivePcm(base64, 0.8), true);
+  assert.equal(coordinator.queueLivePcm(pcmBase64(), 0.8), true);
   assert.equal(changes[0], true);
   assert.equal(context.sources.length, 1);
   assert.equal(context.sources[0].playbackRate.value, 0.8);
@@ -72,4 +74,60 @@ test('live PCM queue owns playback timing and blocks input', async () => {
   coordinator.clear();
   assert.equal(coordinator.liveSources.size, 0);
   assert.equal(changes.at(-1), false);
+});
+
+test('echo guard counts as live playback and rejects manual replay during guard', async () => {
+  const context = fakeAudioContext();
+  let speechCalls = 0;
+  const coordinator = new PlaybackCoordinator({
+    audioContextFactory: () => context,
+    speechService: {
+      cancel() {},
+      async speak() { speechCalls += 1; return true; }
+    },
+    getEchoGuardMs: () => 20
+  });
+  await coordinator.ensureContext();
+  coordinator.queueLivePcm(pcmBase64(), 1);
+  context.sources[0].onended?.();
+  context.currentTime = 1;
+
+  let armed = false;
+  coordinator.armAfterLive(() => { armed = true; });
+  assert.equal(coordinator.livePlaying, true);
+  assert.equal(await coordinator.speak('should not play'), false);
+  assert.equal(speechCalls, 0);
+
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(armed, true);
+  assert.equal(coordinator.blocked, false);
+});
+
+test('live output taking over manual playback cannot be unblocked by stale manual cleanup', async () => {
+  const context = fakeAudioContext();
+  let resolveSpeech = null;
+  const speechService = {
+    cancel() { resolveSpeech?.(false); },
+    speak() {
+      return new Promise(resolve => { resolveSpeech = resolve; });
+    }
+  };
+  const coordinator = new PlaybackCoordinator({
+    audioContextFactory: () => context,
+    speechService,
+    getEchoGuardMs: () => 0
+  });
+  await coordinator.ensureContext();
+
+  const manualPromise = coordinator.speak('manual');
+  await Promise.resolve();
+  assert.equal(coordinator.blockReason, 'manual');
+
+  coordinator.queueLivePcm(pcmBase64(), 1);
+  await manualPromise;
+  assert.equal(coordinator.blockReason, 'live');
+  assert.equal(coordinator.blocked, true);
+
+  coordinator.clear();
+  assert.equal(coordinator.blocked, false);
 });
