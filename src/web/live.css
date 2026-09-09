@@ -219,34 +219,56 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.user-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.inline-audio-button {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.inline-audio-button:hover,
+.inline-audio-button:focus-visible {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
 .score-inline,
 .score-pill {
   display: inline-grid;
   place-items: center;
   min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
+  height: 26px;
+  padding: 0 7px;
+  border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--good) 14%, transparent);
   color: var(--good);
   font-size: 13px;
   font-weight: 800;
+  line-height: 1;
 }
 
-.replay-button {
-  margin-top: 7px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-}
+.coach-toggle { cursor: pointer; }
 
 .coach-card {
   width: min(100%, 460px);
-  margin-top: 8px;
+  margin-top: 7px;
   border: 1px solid var(--border);
   border-radius: 15px;
   background: var(--surface);
@@ -255,63 +277,12 @@ h1 {
   text-align: left;
 }
 
-.coach-card > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 12px;
-  cursor: pointer;
-  list-style: none;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.coach-card > summary::-webkit-details-marker { display: none; }
-.coach-pending { padding: 11px 12px; color: var(--muted); font-size: 13px; }
-
-.coach-compact {
-  width: min(100%, 460px);
-  margin-top: 7px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-}
-
-.coach-compact > summary {
-  width: max-content;
-  margin-left: auto;
-  padding: 0;
-}
-
-.coach-compact > summary .score-pill {
-  cursor: pointer;
-}
-
-.coach-compact[open] {
-  border: 1px solid var(--border);
-  border-radius: 15px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.coach-compact[open] > summary {
-  margin-left: auto;
-  padding: 10px 12px 0;
-}
+.coach-panel[hidden] { display: none; }
 
 .coach-body {
   display: grid;
   gap: 10px;
-  padding: 0 12px 12px;
-}
-
-.coach-compact .coach-body {
-  padding-top: 8px;
+  padding: 12px;
 }
 
 .coach-section,
