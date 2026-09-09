@@ -26,6 +26,13 @@ test('public language defaults to Japanese except Vietnamese browser locale', ()
   assert.equal(normalizeAppLanguage('zh', 'ja'), 'ja');
 });
 
+test('server defaults cannot override browser-owned app language', () => {
+  const storage = memoryStorage();
+  const store = new PreferencesStore({storage, browserLanguage: 'ja-JP'});
+  const value = store.load({appLanguage: 'vi'});
+  assert.equal(value.appLanguage, 'ja');
+});
+
 test('theme and playback rate normalization fail closed to supported values', () => {
   assert.equal(normalizeTheme('dark'), 'dark');
   assert.equal(normalizeTheme('neon'), 'light');
