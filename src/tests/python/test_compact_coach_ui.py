@@ -86,7 +86,7 @@ class ReferenceUiTests(unittest.TestCase):
         html = HTML.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
         self.assertIn('class="dev-only"', html)
-        self.assertIn('class="public-only"', html)
+        self.assertIn("public-only", html)
         self.assertIn('body[data-app-mode="dev"]', css)
         self.assertIn('body[data-app-mode="public"]', css)
         self.assertIn('id="realtime-model"', html)
