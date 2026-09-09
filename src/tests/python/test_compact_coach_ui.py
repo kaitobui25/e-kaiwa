@@ -12,6 +12,7 @@ OVERLAY = WEB / "ui_overlay.js"
 ICONS = WEB / "ui_icons.js"
 CSS = WEB / "live.css"
 HTML = WEB / "live.html"
+SERVER = SRC / "e_kaiwa" / "server.py"
 
 
 class ReferenceUiTests(unittest.TestCase):
@@ -28,6 +29,12 @@ class ReferenceUiTests(unittest.TestCase):
         self.assertIn("export function icon", icons)
         self.assertNotIn("generativelanguage.googleapis.com", render)
         self.assertNotIn("generativelanguage.googleapis.com", overlay)
+
+    def test_server_serves_every_plan06_browser_module(self):
+        server = SERVER.read_text(encoding="utf-8")
+        for module in ("ui.js", "ui_icons.js", "ui_render.js", "ui_overlay.js"):
+            self.assertIn(f'"/{module}"', server)
+            self.assertIn(f'WEB_DIR / "{module}"', server)
 
     def test_conversation_keeps_ai_left_user_right_and_inline_actions(self):
         render = RENDER.read_text(encoding="utf-8")
