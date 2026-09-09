@@ -160,6 +160,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 requested_model = runtime.settings.realtime_model
                 fallback_model = runtime.settings.realtime_fallback
                 effective_model = fallback_model if use_fallback else requested_model
+                persisted = runtime.settings.snapshot()["settings"]
                 try:
                     token = create_ephemeral_token(runtime.keys[0][1])
                     session_id, session_dir = runtime.sessions.create(
@@ -174,6 +175,8 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         fallback_model=fallback_model,
                         fallback_used=use_fallback,
                         fallback_reason=("client_setup_retry" if use_fallback else None),
+                        support_language=persisted["support_language"],
+                        silence_duration_ms=persisted["silence_duration_ms"],
                     )
                     self.send_json(
                         200,
@@ -184,6 +187,8 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                             "requested_model": requested_model,
                             "fallback_model": fallback_model,
                             "fallback_used": use_fallback,
+                            "support_language": persisted["support_language"],
+                            "silence_duration_ms": persisted["silence_duration_ms"],
                         },
                     )
                     print(
