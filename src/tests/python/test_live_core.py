@@ -93,21 +93,18 @@ class GeminiHelperTests(unittest.TestCase):
         self.assertEqual(parse_json_text('```json\n{"ok": true}\n```'), {"ok": True})
 
     @patch("e_kaiwa.gemini.post_json")
-    def test_ephemeral_token_is_constrained_to_live_model_and_audio(self, post_json_mock):
+    def test_ephemeral_token_is_single_use_with_short_new_session_window(self, post_json_mock):
         post_json_mock.return_value = (200, {"name": "short-lived-token"}, 0.01, "")
-        token = create_ephemeral_token("master-key", model="gemini-3.1-flash-live-preview")
+        token = create_ephemeral_token("master-key")
         self.assertEqual(token, "short-lived-token")
 
         _url, body, api_key = post_json_mock.call_args.args
         self.assertEqual(api_key, "master-key")
         self.assertEqual(body["uses"], 1)
-        self.assertEqual(
-            body["liveConnectConstraints"],
-            {
-                "model": "models/gemini-3.1-flash-live-preview",
-                "config": {"responseModalities": ["AUDIO"]},
-            },
-        )
+        self.assertIn("expireTime", body)
+        self.assertIn("newSessionExpireTime", body)
+        self.assertNotIn("liveConnectConstraints", body)
+        self.assertNotIn("bidiGenerateContentSetup", body)
 
 
 if __name__ == "__main__":

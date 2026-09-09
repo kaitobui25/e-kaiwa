@@ -2,6 +2,8 @@
 
 Status: draft for review only. **No production code changes in this plan.**
 
+Implementation note (2026-09-09): for V1, Gemini ephemeral tokens use `uses=1` plus short expiry/new-session windows. Do **not** send `liveConnectConstraints` with the current `/v1beta/auth_tokens` flow because the deployed endpoint rejects that field with HTTP 400 `INVALID_ARGUMENT`. Model/config token constraints are deferred until the supported schema is verified for the exact Live model and endpoint in use.
+
 ## 1. Goal
 
 Prepare E-KAIWA for a first public mobile-web release while preserving the current lightweight developer experience.
@@ -278,7 +280,7 @@ Examples:
 - API credentials;
 - rate limits;
 - public session limits;
-- ephemeral token constraints;
+- ephemeral token lifetime/use policy;
 - maximum request/audio sizes;
 - default teacher policy if product-wide;
 - echo guard default/allowed range;
@@ -522,16 +524,26 @@ Do not rely on sequential/timestamp session names as authorization.
 
 Public `/api/session` creates Gemini ephemeral access and therefore deserves the strongest controls.
 
-Add in implementation phase:
+V1 controls:
 - same-origin validation for browser requests;
 - strict allowed Host/Origin configuration;
 - in-memory rate limiting by trusted client IP + anonymous browser/session identity where possible;
 - maximum active sessions per client/IP;
 - short cooldown for repeated token creation;
-- ephemeral token constrained to the intended Live model/config where supported;
+- Gemini ephemeral token uses `uses=1`;
+- keep a short `newSessionExpireTime` so a captured unused token has a narrow window to start a Live session;
+- retain the normal token expiry as a final upper bound;
+- **do not send `liveConnectConstraints` in V1**: the current `/v1beta/auth_tokens` endpoint used by this app rejects the field with HTTP 400 `INVALID_ARGUMENT`;
+- reconsider model/config token constraints only after the exact supported schema is verified for the selected Gemini Live model and endpoint;
 - server-controlled target language capability (`en` only in V1);
 - never return master Gemini credentials;
 - structured rejection logs without secrets.
+
+Security interpretation for V1:
+- a browser user can inspect an ephemeral token, because it must reach the browser to open the direct Live WebSocket;
+- that token is **not** the master API key;
+- abuse is bounded primarily by single use, the short new-session window, `/api/session` rate limiting/origin checks, and server-owned model policy;
+- avoid breaking the working realtime path for an extra constraint layer that the deployed token API does not support.
 
 Keep rate limiting in-process for V1.
 A single Tokyo VPS does not need Redis.
@@ -704,7 +716,8 @@ Acceptance:
 - `/api/session`, `/api/coach`, metrics protected by rate/ownership checks;
 - public clients cannot select arbitrary backend models or target languages;
 - master Gemini credentials never reach browser;
-- ephemeral Live tokens are constrained where supported;
+- Gemini ephemeral tokens are single-use and use short expiry/new-session windows;
+- unsupported `liveConnectConstraints` is absent from the V1 token request;
 - abuse produces bounded resource usage.
 
 ### Phase E — Public privacy lifecycle
@@ -764,9 +777,11 @@ Python tests:
 - Coach/metric session ownership;
 - request limits;
 - temporary WAV cleanup;
-- ephemeral token request constraints.
+- ephemeral token payload has `uses=1` and expiry fields;
+- ephemeral token payload does not regress to unsupported `liveConnectConstraints`.
 
 System smoke tests:
+- `/api/session` successfully creates a Gemini ephemeral token with the deployed auth-token endpoint;
 - current realtime conversation still works;
 - Coach English gating still works;
 - user replay and TTS do not feed back into Gemini;
@@ -809,7 +824,8 @@ Decide after public-user feedback:
 - Japanese as a target learning language;
 - Chinese as a target learning language;
 - target-language selector and target-specific lesson UX;
-- richer locale selection within a language (for example accent/region choices).
+- richer locale selection within a language (for example accent/region choices);
+- Gemini ephemeral-token model/config constraints, only after the exact supported auth-token schema is verified for the production Live model/endpoint.
 
 ## 20. Recommended V1 end state
 
@@ -822,7 +838,7 @@ PUBLIC USER
   -> Light / Dark appearance preference
   -> anonymous high-entropy session
   -> own local preferences
-  -> direct Gemini Live WebSocket via constrained ephemeral token
+  -> direct Gemini Live WebSocket via single-use ephemeral token with short new-session window
   -> Coach through hardened backend
   -> My Voice replay from browser memory
   -> corrected sentence / problem word through BrowserSpeechProvider
