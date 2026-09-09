@@ -67,6 +67,13 @@ const COPY = Object.freeze({
   }
 });
 
+const DEV_TALK_LABELS = Object.freeze({
+  connecting: 'Connecting…',
+  ready: '🎙 Start conversation',
+  recording: '■ Stop conversation',
+  reconnect: '↻ Reconnect'
+});
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -261,15 +268,21 @@ export class UiController {
     button.dataset.state = state;
     button.className = state === 'recording' ? 'recording' : 'ready';
     button.disabled = state === 'connecting';
+
+    if (this.mode === 'dev') {
+      const label = DEV_TALK_LABELS[state] || DEV_TALK_LABELS.ready;
+      button.textContent = label;
+      if (this.elements.talkLabel) this.elements.talkLabel.textContent = label;
+      return;
+    }
+
     const labels = {
       connecting: this.t('connecting'),
       ready: this.t('start'),
       recording: this.t('stop'),
       reconnect: this.t('reconnect')
     };
-    button.textContent = this.mode === 'public'
-      ? (state === 'recording' ? '■' : state === 'connecting' ? '…' : state === 'reconnect' ? '↻' : '🎙')
-      : labels[state] || labels.ready;
+    button.textContent = state === 'recording' ? '■' : state === 'connecting' ? '…' : state === 'reconnect' ? '↻' : '🎙';
     if (this.elements.talkLabel) this.elements.talkLabel.textContent = labels[state] || labels.ready;
   }
 
