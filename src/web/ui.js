@@ -138,17 +138,18 @@ function highlightProblems(text, pronunciation) {
 }
 
 function coachHtml(turn, t, {allowAudioActions = true} = {}) {
-  if (!turn.coach) return `<div class="coach-card coach-pending">${escapeHtml(t('coachRunning'))}</div>`;
+  if (!turn.coach) return '';
   const pronunciation = turn.coach.pronunciation;
   const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
+  if (overall == null) return '';
+
   const correction = turn.coach.correction || turn.userText || '';
   const explanation = turn.coach.explanation || '';
   const problems = Array.isArray(pronunciation?.problems) ? pronunciation.problems.slice(0, 4) : [];
 
-  return `<details class="coach-card">
-    <summary>
-      <span>${escapeHtml(t('coach'))}</span>
-      ${overall == null ? '' : `<span class="score-pill" aria-label="${escapeHtml(t('score'))} ${overall}">${overall}</span>`}
+  return `<details class="coach-card coach-compact">
+    <summary aria-label="${escapeHtml(t('score'))} ${overall}">
+      <span class="score-pill">${overall}</span>
     </summary>
     <div class="coach-body">
       <div class="coach-section">
@@ -176,15 +177,13 @@ export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) 
   const userText = pronunciation
     ? highlightProblems(turn.userText || '…', pronunciation)
     : escapeHtml(turn.userText || '…');
-  const overall = pronunciation ? score(pronunciation.overall_score ?? pronunciation.pronunciation_score) : null;
   const allowAudioActions = !isHandsFreeMode(conversationMode);
 
   const userRow = `<div class="message-row user-row">
     <div class="message-stack user-stack">
-      <div class="message-meta"><span>${escapeHtml(t('you'))}</span>${overall == null ? '' : `<span class="score-inline">${overall}</span>`}</div>
       <div class="bubble user-bubble"><div class="message-text">${userText}</div></div>
       ${allowAudioActions && turn.replayPcm?.length ? `<button class="replay-button" type="button" data-action="replay-user" data-turn="${turn.no}">▶ ${escapeHtml(t('replayMine'))}</button>` : ''}
-      ${turn.coachEligible ? coachHtml(turn, t, {allowAudioActions}) : ''}
+      ${pronunciationEnabled && turn.coachEligible ? coachHtml(turn, t, {allowAudioActions}) : ''}
     </div>
     <div class="avatar user-avatar" aria-hidden="true">YOU</div>
   </div>`;
@@ -241,6 +240,18 @@ export class UiController {
     });
     this.elements.settingsOpen?.addEventListener('click', () => this.openSettings());
     this.elements.settingsClose?.addEventListener('click', () => this.closeSettings());
+
+    document.addEventListener('pointerdown', event => {
+      if (!document.body.classList.contains('settings-open')) return;
+      const target = event.target;
+      if (this.elements.settingsPanel?.contains?.(target)) return;
+      if (this.elements.settingsOpen?.contains?.(target)) return;
+      this.closeSettings();
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && document.body.classList.contains('settings-open')) this.closeSettings();
+    });
   }
 
   t(key) {
@@ -337,12 +348,14 @@ export class UiController {
   openSettings() {
     if (this.mode !== 'public' || !this.elements.settingsPanel) return;
     this.elements.settingsPanel.hidden = false;
+    this.elements.settingsOpen?.setAttribute?.('aria-expanded', 'true');
     document.body.classList.add('settings-open');
   }
 
   closeSettings() {
     if (this.mode !== 'public' || !this.elements.settingsPanel) return;
     this.elements.settingsPanel.hidden = true;
+    this.elements.settingsOpen?.setAttribute?.('aria-expanded', 'false');
     document.body.classList.remove('settings-open');
   }
 
