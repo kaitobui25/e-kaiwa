@@ -21,14 +21,25 @@ class CompactCoachUiTests(unittest.TestCase):
         self.assertIn(".user-row { justify-content: flex-end; }", css)
         self.assertIn(".ai-row { justify-content: flex-start; }", css)
 
-    def test_public_coach_uses_compact_score_entry_and_mode_specific_audio_actions(self):
+    def test_public_coach_uses_inline_replay_score_and_mode_specific_audio_actions(self):
         ui = UI.read_text(encoding="utf-8")
-        self.assertIn('class="coach-card coach-compact"', ui)
+        css = CSS.read_text(encoding="utf-8")
+        self.assertIn('class="user-inline-actions"', ui)
+        self.assertIn('class="inline-audio-button"', ui)
         self.assertIn('data-action="replay-user"', ui)
+        self.assertIn('data-coach-toggle=', ui)
+        self.assertIn('class="score-pill coach-toggle"', ui)
         self.assertIn('data-action="speak-correction"', ui)
         self.assertIn('data-action="speak-problem"', ui)
-        self.assertIn('class="score-pill"', ui)
-        self.assertNotIn('<span>${escapeHtml(t(\'coach\'))}</span>', ui)
+        self.assertIn(".user-inline-actions", css)
+        self.assertIn("white-space: nowrap;", css)
+
+    def test_coach_panel_closes_when_pointer_moves_outside_coach(self):
+        ui = UI.read_text(encoding="utf-8")
+        self.assertIn("_closeCoachPanels", ui)
+        self.assertIn("target.closest?.('[data-coach-panel], [data-coach-toggle]')", ui)
+        self.assertIn("if (!insideCoach) this._closeCoachPanels();", ui)
+        self.assertIn("aria-expanded", ui)
 
     def test_problem_words_are_highlighted_inside_user_transcript(self):
         ui = UI.read_text(encoding="utf-8")
