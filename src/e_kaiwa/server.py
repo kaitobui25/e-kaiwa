@@ -203,6 +203,9 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/preferences.js": (WEB_DIR / "preferences.js", "text/javascript; charset=utf-8"),
                 "/audio.js": (WEB_DIR / "audio.js", "text/javascript; charset=utf-8"),
                 "/ui.js": (WEB_DIR / "ui.js", "text/javascript; charset=utf-8"),
+                "/ui_icons.js": (WEB_DIR / "ui_icons.js", "text/javascript; charset=utf-8"),
+                "/ui_render.js": (WEB_DIR / "ui_render.js", "text/javascript; charset=utf-8"),
+                "/ui_overlay.js": (WEB_DIR / "ui_overlay.js", "text/javascript; charset=utf-8"),
             }
             static = static_routes.get(path)
             if static:
