@@ -17,6 +17,7 @@ from .config import (
     REQUEST_MAX_BYTES,
     WEB_DIR,
     load_api_keys,
+    normalize_feedback_language,
 )
 from .gemini import create_ephemeral_token
 from .sessions import SessionStore
@@ -49,6 +50,31 @@ def _optional_number(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_bool(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _short_text(value: object, max_length: int = 80) -> str | None:
+    text = str(value or "").strip()
+    return text[:max_length] or None
+
+
+def _short_string_list(value: object, *, max_items: int = 8, max_length: int = 32) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:max_items]:
+        text = str(item or "").strip()
+        if text:
+            result.append(text[:max_length])
+    return result
+
+
+def _language_mode(value: object) -> str:
+    mode = str(value or "").strip()
+    return mode if mode in {"english", "non_english", "unknown"} else "unknown"
 
 
 def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
@@ -97,6 +123,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/index.html": (WEB_DIR / "live.html", "text/html; charset=utf-8"),
                 "/live.css": (WEB_DIR / "live.css", "text/css; charset=utf-8"),
                 "/live.js": (WEB_DIR / "live.js", "text/javascript; charset=utf-8"),
+                "/language_policy.js": (WEB_DIR / "language_policy.js", "text/javascript; charset=utf-8"),
             }
             static = static_routes.get(self.path)
             if static:
@@ -146,6 +173,9 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                     frontend_state = payload.get("frontend_state")
                     if not isinstance(frontend_state, dict):
                         frontend_state = {}
+                    settings = payload.get("settings")
+                    if not isinstance(settings, dict):
+                        settings = {}
 
                     runtime.sessions.log(
                         session_dir,
@@ -154,6 +184,20 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         user_text=str(payload.get("user_text", "")),
                         ai_text=str(payload.get("ai_text", "")),
                         first_audio_ms=_optional_number(payload.get("first_audio_ms")),
+                        input_language_codes=_short_string_list(payload.get("input_language_codes")),
+                        output_language_codes=_short_string_list(payload.get("output_language_codes")),
+                        language_mode=_language_mode(payload.get("language_mode")),
+                        support_language=normalize_feedback_language(payload.get("support_language")),
+                        language_policy_version=_short_text(payload.get("language_policy_version")),
+                        coach_eligible=_optional_bool(payload.get("coach_eligible")),
+                        coach_called=_optional_bool(payload.get("coach_called")),
+                        coach_skip_reason=_short_text(payload.get("coach_skip_reason")),
+                        settings={
+                            "teacher": _short_text(settings.get("teacher"), 16),
+                            "pronunciation_enabled": _optional_bool(settings.get("pronunciation_enabled")),
+                            "silence_duration_ms": _optional_number(settings.get("silence_duration_ms")),
+                            "ai_playback_rate": _optional_number(settings.get("ai_playback_rate")),
+                        },
                         frontend_state={
                             "recording": frontend_state.get("recording"),
                             "activeTurn": frontend_state.get("activeTurn"),
