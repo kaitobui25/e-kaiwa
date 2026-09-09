@@ -10,6 +10,7 @@ const ICONS = Object.freeze({
   sparkle: '<path d="M12 3c1 4 3 6 7 7-4 1-6 3-7 7-1-4-3-6-7-7 4-1 6-3 7-7Z"/>',
   star: '<path d="m12 3 2.7 5.5 6 .9-4.4 4.2 1.1 6-5.4-2.8-5.4 2.8 1.1-6-4.4-4.2 6-.9L12 3Z"/>',
   back: '<path d="m15 6-6 6 6 6"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
   down: '<path d="M12 4v14M6.5 12.5 12 18l5.5-5.5"/>',
   check: '<path d="m5 12 4 4L19 6"/>'
 });
