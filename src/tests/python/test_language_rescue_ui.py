@@ -41,7 +41,8 @@ class LanguageRescueUiTests(unittest.TestCase):
         self.assertIn("buildLiveLanguageInstruction(state.supportLanguage)", js)
         self.assertIn("systemInstruction", js)
         self.assertIn("Support / correction language", html)
-        self.assertIn("Reconnect to apply to AI rescue", js)
+        self.assertIn("It will apply after you stop this conversation", js)
+        self.assertIn("newLiveSession().catch", js)
 
     def test_turn_metrics_include_language_and_coach_debug_state(self):
         js = JS.read_text(encoding="utf-8")
