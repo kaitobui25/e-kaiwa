@@ -27,6 +27,7 @@ function wait(milliseconds) {
 export class BrowserSpeechService {
   constructor(speechSynthesisObject = globalThis.speechSynthesis) {
     this.engine = speechSynthesisObject || null;
+    this.pendingResolve = null;
   }
 
   get supported() {
@@ -35,6 +36,11 @@ export class BrowserSpeechService {
 
   cancel() {
     try { this.engine?.cancel?.(); } catch {}
+    if (this.pendingResolve) {
+      const resolve = this.pendingResolve;
+      this.pendingResolve = null;
+      resolve(false);
+    }
   }
 
   speak(text, {lang = 'en-US', rate = 0.9} = {}) {
@@ -43,15 +49,24 @@ export class BrowserSpeechService {
 
     this.cancel();
     return new Promise(resolve => {
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        if (this.pendingResolve === finish) this.pendingResolve = null;
+        resolve(result);
+      };
+      this.pendingResolve = finish;
+
       const utterance = new SpeechSynthesisUtterance(value);
       utterance.lang = lang;
       utterance.rate = Math.max(0.5, Math.min(1.5, Number(rate) || 0.9));
-      utterance.onend = () => resolve(true);
-      utterance.onerror = () => resolve(false);
+      utterance.onend = () => finish(true);
+      utterance.onerror = () => finish(false);
       try {
         this.engine.speak(utterance);
       } catch {
-        resolve(false);
+        finish(false);
       }
     });
   }
@@ -74,7 +89,7 @@ export class PlaybackCoordinator {
     this.liveSources = new Set();
     this.manualSource = null;
     this.resumeTimer = null;
-    this.blocked = false;
+    this.blockReason = null;
     this.manualPlaying = false;
   }
 
@@ -84,10 +99,27 @@ export class PlaybackCoordinator {
     return this.context;
   }
 
-  _setBlocked(blocked, reason = '') {
-    if (this.blocked === blocked) return;
-    this.blocked = blocked;
-    this.onBlockedChange(blocked, reason);
+  get blocked() {
+    return this.blockReason !== null;
+  }
+
+  _block(reason) {
+    const nextReason = String(reason || 'playback');
+    if (this.blockReason === nextReason) return;
+    this.blockReason = nextReason;
+    this.onBlockedChange(true, nextReason);
+  }
+
+  _unblock(reason) {
+    if (this.blockReason !== reason) return;
+    this.blockReason = null;
+    this.onBlockedChange(false, reason);
+  }
+
+  _forceUnblock(reason = 'clear') {
+    if (this.blockReason === null) return;
+    this.blockReason = null;
+    this.onBlockedChange(false, reason);
   }
 
   _disconnect(source) {
@@ -105,7 +137,7 @@ export class PlaybackCoordinator {
   }
 
   get livePlaying() {
-    return this.livePlaybackRemainingMs > 5 || this.liveSources.size > 0;
+    return this.livePlaybackRemainingMs > 5 || this.liveSources.size > 0 || this.resumeTimer !== null;
   }
 
   get busy() {
@@ -117,6 +149,12 @@ export class PlaybackCoordinator {
     const pcm = decodePcm16Base64(base64);
     if (!pcm.length) return false;
 
+    // Live output owns the speaker whenever it arrives. Switching the block
+    // reason before cancelling manual playback prevents a stale manual finally
+    // handler from reopening the microphone during AI speech.
+    this._block('live');
+    this.stopManual({releaseBlock: false});
+
     const rate = Math.max(0.5, Math.min(1.5, Number(playbackRate) || 1));
     const floats = pcm16ToFloat32(pcm);
     const buffer = this.context.createBuffer(1, floats.length, 24000);
@@ -127,7 +165,6 @@ export class PlaybackCoordinator {
     source.playbackRate.value = rate;
     source.connect(this.context.destination);
     this.liveSources.add(source);
-    this._setBlocked(true, 'live');
 
     source.onended = () => {
       this.liveSources.delete(source);
@@ -155,10 +192,23 @@ export class PlaybackCoordinator {
   armAfterLive(callback) {
     clearTimeout(this.resumeTimer);
     const delay = this.livePlaybackRemainingMs + this._guardMs();
-    this.resumeTimer = setTimeout(() => {
+
+    const finish = () => {
+      // A manual replay may have started before the server completed the turn.
+      // Never create/re-arm the next microphone turn while that playback exists.
+      if (this.manualPlaying) {
+        this.resumeTimer = setTimeout(finish, 50);
+        return;
+      }
       this.resumeTimer = null;
-      try { callback?.(); } finally { this._setBlocked(false, 'live'); }
-    }, delay);
+      try {
+        callback?.();
+      } finally {
+        this._unblock('live');
+      }
+    };
+
+    this.resumeTimer = setTimeout(finish, delay);
     return delay;
   }
 
@@ -180,22 +230,28 @@ export class PlaybackCoordinator {
         this._disconnect(source);
         resolve(true);
       };
-      try { source.start(); } catch { resolve(false); }
+      try {
+        source.start();
+      } catch {
+        this._disconnect(source);
+        if (this.manualSource === source) this.manualSource = null;
+        resolve(false);
+      }
     });
   }
 
   async _runManual(action) {
     if (this.livePlaying) return false;
-    this.stopManual();
+    this.stopManual({releaseBlock: false});
     this.manualPlaying = true;
-    this._setBlocked(true, 'manual');
+    this._block('manual');
     let result = false;
     try {
       result = Boolean(await action());
       await wait(this._guardMs());
     } finally {
       this.manualPlaying = false;
-      this._setBlocked(false, 'manual');
+      this._unblock('manual');
     }
     return result;
   }
@@ -208,7 +264,7 @@ export class PlaybackCoordinator {
     return this._runManual(() => this.speechService.speak(text, options));
   }
 
-  stopManual() {
+  stopManual({releaseBlock = true} = {}) {
     this.speechService.cancel();
     if (this.manualSource) {
       try { this.manualSource.stop(); } catch {}
@@ -216,13 +272,14 @@ export class PlaybackCoordinator {
       this.manualSource = null;
     }
     this.manualPlaying = false;
+    if (releaseBlock) this._unblock('manual');
   }
 
   clear() {
     clearTimeout(this.resumeTimer);
     this.resumeTimer = null;
     this.clearLive();
-    this.stopManual();
-    this._setBlocked(false, 'clear');
+    this.stopManual({releaseBlock: false});
+    this._forceUnblock('clear');
   }
 }
