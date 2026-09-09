@@ -1,3 +1,12 @@
+import {
+  LANGUAGE_POLICY_VERSION,
+  buildLiveLanguageInstruction,
+  finalizeLanguageMode,
+  isCoachEligible,
+  recordLanguageCode,
+  selectedSupportLanguage
+} from './language_policy.js';
+
 (() => {
   'use strict';
 
@@ -32,6 +41,7 @@
   const state = {
     ws: null,
     sessionId: null,
+    supportLanguage: selectedSupportLanguage(feedbackLanguageEl.value),
     setupReady: false,
     reconnectNeeded: false,
     connecting: false,
@@ -165,19 +175,23 @@
         ? highlightPronunciationProblems(turn.userText || '…', pronunciation)
         : escapeHtml(turn.userText || '…');
 
-      let coach = '<span class="muted">Coach running…</span>';
-      if (turn.coach) {
-        coach = `<b>Correction:</b> ${escapeHtml(turn.coach.correction || turn.userText || '')}`;
-        const explanation = turn.coach.explanation || turn.coach.explanation_ja || '';
-        if (explanation) coach += `<br>${escapeHtml(explanation)}`;
-        if (pronEl.checked) coach += `<br><br>${pronunciationHtml(turn.coach.pronunciation)}`;
-        coach += `<br><span class="muted">coach ${Number(turn.coach.coach_wall_s || 0).toFixed(2)}s</span>`;
+      let coachSection = '';
+      if (isCoachEligible(turn)) {
+        let coach = '<span class="muted">Coach running…</span>';
+        if (turn.coach) {
+          coach = `<b>Correction:</b> ${escapeHtml(turn.coach.correction || turn.userText || '')}`;
+          const explanation = turn.coach.explanation || turn.coach.explanation_ja || '';
+          if (explanation) coach += `<br>${escapeHtml(explanation)}`;
+          if (pronEl.checked) coach += `<br><br>${pronunciationHtml(turn.coach.pronunciation)}`;
+          coach += `<br><span class="muted">coach ${Number(turn.coach.coach_wall_s || 0).toFixed(2)}s</span>`;
+        }
+        coachSection = `<div class="who who-coach">Coach</div><div class="coach">${coach}</div>`;
       }
 
       return `<div class="turn">
         <div class="who who-you">You</div><div class="text">${userHtml}</div>
         <div class="who who-ai">AI ${latency}</div><div class="text">${escapeHtml(turn.aiText || '…')}</div>
-        <div class="who who-coach">Coach</div><div class="coach">${coach}</div>
+        ${coachSection}
       </div>`;
     }).join('');
   }
@@ -317,6 +331,13 @@
       pcmChunks: [],
       userText: '',
       aiText: '',
+      inputLanguageCodes: new Set(),
+      outputLanguageCodes: new Set(),
+      languageMode: 'unknown',
+      coachEligible: true,
+      coachSkipReason: null,
+      supportLanguage: state.supportLanguage,
+      languagePolicyVersion: LANGUAGE_POLICY_VERSION,
       firstAudioMs: null,
       coachSent: false,
       coach: null,
@@ -329,7 +350,7 @@
   }
 
   async function runCoach(turn) {
-    if (turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
+    if (!isCoachEligible(turn) || turn.coachSent || !turn.userText.trim() || !turn.pcmChunks.length) return;
     turn.coachSent = true;
     const pcm = joinPcm(turn.pcmChunks);
 
@@ -380,6 +401,20 @@
         user_text: turn.userText,
         ai_text: turn.aiText,
         first_audio_ms: turn.firstAudioMs,
+        input_language_codes: [...turn.inputLanguageCodes],
+        output_language_codes: [...turn.outputLanguageCodes],
+        language_mode: turn.languageMode,
+        support_language: turn.supportLanguage,
+        language_policy_version: turn.languagePolicyVersion,
+        coach_eligible: turn.coachEligible,
+        coach_called: turn.coachSent,
+        coach_skip_reason: turn.coachSkipReason,
+        settings: {
+          teacher: teacherEl.value,
+          pronunciation_enabled: pronEl.checked,
+          silence_duration_ms: Number(silenceDurationEl.value),
+          ai_playback_rate: aiPlaybackRate()
+        },
         frontend_state: frontendState
       })
     }).catch(() => {});
@@ -404,9 +439,10 @@
   function finishTurn(turn) {
     if (!turn || turn.finished || turn !== state.activeTurn) return;
     turn.finished = true;
+    finalizeLanguageMode(turn);
 
     // Coach is intentionally fire-and-forget relative to the spoken Live response.
-    runCoach(turn);
+    if (isCoachEligible(turn)) runCoach(turn);
     state.turnNo += 1;
     state.activeTurn = null;
     state.inputForwarding = false;
@@ -480,9 +516,15 @@
     const turn = state.activeTurn;
     if (!content || !turn) return;
 
+    if (content.inputTranscription?.languageCode) {
+      recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
+    }
     if (content.inputTranscription?.text) {
       turn.userText = concatTranscript(turn.userText, content.inputTranscription.text);
       render();
+    }
+    if (content.outputTranscription?.languageCode) {
+      recordLanguageCode(turn, content.outputTranscription.languageCode, 'output');
     }
     if (content.outputTranscription?.text) {
       turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text);
@@ -501,6 +543,7 @@
     state.connecting = true;
     state.reconnectNeeded = false;
     state.setupReady = false;
+    state.supportLanguage = selectedSupportLanguage(feedbackLanguageEl.value);
     updateSetupIndicator();
 
     talk.disabled = true;
@@ -531,6 +574,9 @@
         setup: {
           model: `models/${MODEL}`,
           generationConfig: {responseModalities: ['AUDIO']},
+          systemInstruction: {
+            parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]
+          },
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
@@ -634,6 +680,10 @@
     aiSpeedEl.value = value;
     localStorage.setItem('aiPlaybackRate', value);
     setStatus(`AI response speed ${value}× saved.`);
+  });
+
+  feedbackLanguageEl.addEventListener('change', () => {
+    setStatus('Support / correction language changed. Reconnect to apply to AI rescue.');
   });
 
   silenceDurationEl.addEventListener('change', () => {
