@@ -7,6 +7,8 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[2]
 HTML = SRC / "web" / "live.html"
 JS = SRC / "web" / "live.js"
+AUDIO = SRC / "web" / "audio.js"
+PREFERENCES = SRC / "web" / "preferences.js"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
 
@@ -18,36 +20,37 @@ class FrontendSettingsTests(unittest.TestCase):
             self.assertIn(f'value="{value}"', html)
         self.assertIn('<option value="0.8" selected>0.8×</option>', html)
 
-    def test_settings_are_loaded_and_persisted_through_server_api(self):
+    def test_dev_settings_use_server_while_public_preferences_are_local(self):
         js = JS.read_text(encoding="utf-8")
+        prefs = PREFERENCES.read_text(encoding="utf-8")
         self.assertIn("fetch('/api/settings', {cache: 'no-store'})", js)
-        self.assertIn("fetch('/api/settings', {", js)
         self.assertIn("method: 'POST'", js)
-        self.assertNotIn("localStorage.getItem", js)
-        self.assertNotIn("localStorage.setItem", js)
+        self.assertIn("window.localStorage", js)
+        self.assertIn("e-kaiwa.app-language", prefs)
+        self.assertIn("e-kaiwa.theme", prefs)
+        self.assertIn("if (state.appMode === 'public')", js)
 
-    def test_ai_speed_is_applied_to_playback_queue(self):
+    def test_playback_is_owned_by_coordinator(self):
         js = JS.read_text(encoding="utf-8")
-        self.assertIn("const DEFAULT_AI_SPEED = '0.8';", js)
-        self.assertIn("source.playbackRate.value = rate;", js)
-        self.assertIn("state.playAt += buffer.duration / rate;", js)
+        audio = AUDIO.read_text(encoding="utf-8")
+        self.assertIn("new PlaybackCoordinator", js)
+        self.assertIn("queueLivePcm", audio)
+        self.assertIn("playUserPcm", audio)
+        self.assertIn("speak(text", audio)
+        self.assertIn("this._setBlocked(true, 'live')", audio)
+        self.assertIn("this.livePlaybackRemainingMs + this._guardMs()", audio)
 
-    def test_echo_guard_is_loaded_from_runtime_config_and_used_after_playback(self):
-        js = JS.read_text(encoding="utf-8")
-        self.assertIn("settings.echo_guard_ms", js)
-        self.assertIn("state.echoGuardMs", js)
-        self.assertIn("const remainingMs = playbackMs + state.echoGuardMs;", js)
-        self.assertNotIn("* 1000 + 100", js)
+    def test_public_language_and_theme_controls_exist(self):
+        html = HTML.read_text(encoding="utf-8")
+        prefs = PREFERENCES.read_text(encoding="utf-8")
+        self.assertIn('id="feedback-language"', html)
+        self.assertIn('id="theme"', html)
+        self.assertIn("SUPPORTED_APP_LANGUAGES", prefs)
+        self.assertIn("SUPPORTED_THEMES", prefs)
+        self.assertIn("SUPPORTED_TARGET_LANGUAGES", prefs)
+        self.assertIn("TARGET_LANGUAGE = 'en'", prefs)
 
-    def test_ai_playback_pauses_mic_forwarding_and_supports_interruption(self):
-        js = JS.read_text(encoding="utf-8")
-        self.assertIn("function pauseInputForAiPlayback()", js)
-        self.assertIn("state.inputForwarding = false;", js)
-        self.assertIn("state.playbackSources.add(source);", js)
-        self.assertIn("if (content.interrupted) clearAiPlayback();", js)
-        self.assertIn("mic_audio_settings", js)
-
-    def test_realtime_and_coach_model_selectors_exist(self):
+    def test_dev_model_selectors_still_exist(self):
         html = HTML.read_text(encoding="utf-8")
         js = JS.read_text(encoding="utf-8")
         self.assertIn('id="realtime-model"', html)
@@ -57,20 +60,13 @@ class FrontendSettingsTests(unittest.TestCase):
         self.assertIn("realtime_conversation_model", js)
         self.assertIn("coach_model", js)
 
-    def test_live_setup_uses_model_returned_by_server(self):
-        js = JS.read_text(encoding="utf-8")
-        self.assertNotIn("const MODEL =", js)
-        self.assertIn("model: `models/${data.model}`", js)
-        self.assertIn("data.requested_model", js)
-        self.assertIn("data.fallback_model", js)
-
-    def test_server_exposes_settings_api(self):
+    def test_public_server_settings_are_read_only_and_sanitized(self):
         server = SERVER.read_text(encoding="utf-8")
-        self.assertIn('path == "/api/settings"', server)
-        self.assertIn("runtime.settings.public_payload()", server)
-        self.assertIn("runtime.settings.update(self.read_json())", server)
-        self.assertIn('"echo_guard_ms"', server)
-        self.assertIn("_mic_audio_settings", server)
+        self.assertIn("_client_settings_payload", server)
+        self.assertIn('"app_mode": "public"', server)
+        self.assertIn('"target_language": "en"', server)
+        self.assertIn('"public settings are read-only"', server)
+        self.assertIn("runtime.access.is_public", server)
 
 
 if __name__ == "__main__":
