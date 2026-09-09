@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>E-KAIWA Live</title>
   <link rel="stylesheet" href="/live.css">
-  <script src="/live.js" defer></script>
+  <script type="module" src="/live.js"></script>
 </head>
 <body>
 <main>
@@ -36,11 +36,12 @@
       <option>Strict</option>
     </select>
 
-    <label for="feedback-language">Correction language</label>
+    <label for="feedback-language">Support / correction language</label>
     <select id="feedback-language">
       <option value="vi" selected>Tiếng Việt</option>
       <option value="ja">日本語</option>
     </select>
+    <span class="muted setting-note">Used for Coach feedback and short non-English rescue. AI rescue applies on next reconnect.</span>
 
     <label for="ai-speed">AI response speed</label>
     <select id="ai-speed">
