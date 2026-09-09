@@ -14,3 +14,4 @@ tests/stt_samples/*.wav
 tts_test_output.wav
 full_loop_reply.wav
 runtime_logs/
+.gradio/
