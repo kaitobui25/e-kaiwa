@@ -29,16 +29,6 @@ class StructuredCallResult:
     error: str
 
 
-def _as_bool(value: object, default: bool = True) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, (int, float)):
-        return value != 0
-    return str(value).strip().lower() not in {"0", "false", "no", "off", "n"}
-
-
 def _positive_turn(value: object) -> int:
     try:
         return max(1, int(value))
@@ -251,9 +241,10 @@ class CoachService:
         if len(transcript) > 4000:
             raise ValueError("transcript too long")
 
-        teacher = resolve_teacher(payload.get("teacher"))
-        feedback_language = payload.get("feedback_language", "vi")
-        pronunciation_enabled = _as_bool(payload.get("pronunciation_enabled"), True)
+        persisted = self.settings.snapshot()["settings"]
+        teacher = resolve_teacher(persisted["teacher"])
+        feedback_language = persisted["support_language"]
+        pronunciation_enabled = bool(persisted["pronunciation_enabled"])
         coach_mode, requested_model, fallback_models = self.settings.coach_policy()
 
         try:
