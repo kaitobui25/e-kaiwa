@@ -424,38 +424,67 @@ body[data-app-mode="public"] .replay-note {
   background: transparent;
 }
 
-/* Settings: familiar rows with subtle functional boundaries. */
-body[data-app-mode="public"] .settings-release {
-  border-bottom: 1px solid var(--border);
+/* Settings: one mobile list, fixed header, independently scrollable content. */
+body[data-app-mode="public"] .settings-panel {
+  display: flex;
+  flex-direction: column;
+  height: min(82dvh, 720px);
+  max-height: calc(100dvh - max(18px, env(safe-area-inset-top)));
+}
+
+body[data-app-mode="public"] .settings-head {
+  flex: 0 0 auto;
+}
+
+body[data-app-mode="public"] .settings-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0 calc(14px + env(safe-area-inset-bottom));
+  touch-action: pan-y;
 }
 
 body[data-app-mode="public"] .setting-section {
   margin: 0 16px;
   padding: 0;
+  border: 0;
 }
 
 body[data-app-mode="public"] .setting-section + .setting-section {
-  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-top: 0;
 }
 
 body[data-app-mode="public"] .setting-control-row,
 body[data-app-mode="public"] .switch-row {
-  min-height: 56px;
+  min-height: 58px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   border-top: 0;
   border-bottom: 1px solid var(--border);
   color: var(--text);
 }
 
-body[data-app-mode="public"] .setting-section:last-of-type .switch-row:last-child,
-body[data-app-mode="public"] .setting-section:last-of-type .setting-control-row:last-child {
-  border-bottom: 0;
-}
-
 body[data-app-mode="public"] .setting-control-row > label,
 body[data-app-mode="public"] .switch-row strong {
+  min-width: 0;
   color: var(--text);
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-app-mode="public"] .setting-control-row-primary {
+  min-height: 64px;
+}
+
+body[data-app-mode="public"] .setting-control-row-primary > label {
+  font-size: 16px;
+  font-weight: 700;
 }
 
 body[data-app-mode="public"] .switch-row small,
@@ -465,9 +494,11 @@ body[data-app-mode="public"] .setting-note {
 }
 
 body[data-app-mode="public"] .setting-control-row select {
+  width: auto;
   min-width: 96px;
   min-height: 44px;
-  max-width: 52%;
+  max-width: 55%;
+  flex: 0 1 auto;
   padding: 6px 26px 6px 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -482,13 +513,47 @@ body[data-app-mode="public"] .setting-control-row select:focus-visible {
 }
 
 body[data-app-mode="public"] .switch-control {
-  flex-basis: 46px;
+  flex: 0 0 46px;
+}
+
+body[data-app-mode="public"] .settings-release {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 16px 0;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+body[data-app-mode="public"] .settings-release .app-version {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+body[data-app-mode="public"] .settings-release .update-button {
+  min-height: 44px;
 }
 
 @media (min-width: 600px) {
   body[data-app-mode="public"] .overlay-surface,
   body[data-app-mode="public"] .settings-panel {
     border-radius: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  body[data-app-mode="public"] .setting-control-row,
+  body[data-app-mode="public"] .switch-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  body[data-app-mode="public"] .setting-control-row select {
+    width: auto;
+    flex-basis: auto;
   }
 }
 
@@ -519,6 +584,10 @@ body[data-app-mode="public"] .switch-control {
   body[data-app-mode="public"] .setting-control-row,
   body[data-app-mode="public"] .switch-row {
     gap: 10px;
+  }
+
+  body[data-app-mode="public"] .setting-control-row select {
+    max-width: 54%;
   }
 }
 
