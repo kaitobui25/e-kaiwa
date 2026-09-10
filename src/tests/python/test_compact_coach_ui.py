@@ -10,10 +10,13 @@ UI = WEB / "ui.js"
 RENDER = WEB / "ui_render.js"
 OVERLAY = WEB / "ui_overlay.js"
 ICONS = WEB / "ui_icons.js"
+LIVE = WEB / "live.js"
+RECOVERY = WEB / "live_recovery.js"
 CSS = WEB / "live.css"
 PUBLIC_CSS = WEB / "public.css"
 HTML = WEB / "live.html"
 SERVER = SRC / "e_kaiwa" / "server.py"
+MAINTENANCE_SERVER = SRC / "e_kaiwa" / "maintenance_server.py"
 
 
 class ReferenceUiTests(unittest.TestCase):
@@ -36,6 +39,18 @@ class ReferenceUiTests(unittest.TestCase):
         for module in ("ui.js", "ui_icons.js", "ui_render.js", "ui_overlay.js"):
             self.assertIn(f'"/{module}"', server)
             self.assertIn(f'WEB_DIR / "{module}"', server)
+
+    def test_live_recovery_module_is_wired_through_production_server(self):
+        live = LIVE.read_text(encoding="utf-8")
+        recovery = RECOVERY.read_text(encoding="utf-8")
+        maintenance_server = MAINTENANCE_SERVER.read_text(encoding="utf-8")
+        self.assertIn("from './live_recovery.js'", live)
+        self.assertIn("export class LiveRecoveryCoordinator", recovery)
+        self.assertIn('"/live_recovery.js"', maintenance_server)
+        self.assertIn('WEB_DIR / "live_recovery.js"', maintenance_server)
+        self.assertIn("sessionResumption: resumptionConfig", live)
+        self.assertIn("contextWindowCompression: {slidingWindow: {}}", live)
+        self.assertIn("socket.__ekaiwaSetupComplete = true", live)
 
     def test_public_visual_layer_is_linked_and_served(self):
         html = HTML.read_text(encoding="utf-8")
