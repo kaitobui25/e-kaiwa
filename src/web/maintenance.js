@@ -111,19 +111,28 @@ export class LongPressController {
     this.input = input;
     this.button.dataset.holding = 'true';
     this._emit('update_press_start', {input});
-    this.timer = this.setTimeoutFn(() => {
-      const elapsedMs = this._elapsedMs();
-      this._debug('timer_fired', {input: this.input, elapsed_ms: elapsedMs});
-      this.timer = null;
-      this.button.dataset.holding = 'false';
-      this.button.disabled = true;
-      this._emit('update_press_complete', {input: this.input, elapsed_ms: elapsedMs});
-      this.startedAt = null;
-      this.input = '';
-      this.pointerId = null;
-      this.onComplete();
-    }, this.durationMs);
-    this._debug('timer_scheduled', {input, elapsed_ms: 0});
+    try {
+      this.timer = this.setTimeoutFn(() => {
+        const elapsedMs = this._elapsedMs();
+        this._debug('timer_fired', {input: this.input, elapsed_ms: elapsedMs});
+        this.timer = null;
+        this.button.dataset.holding = 'false';
+        this.button.disabled = true;
+        this._emit('update_press_complete', {input: this.input, elapsed_ms: elapsedMs});
+        this.startedAt = null;
+        this.input = '';
+        this.pointerId = null;
+        this.onComplete();
+      }, this.durationMs);
+      this._debug('timer_scheduled', {input, elapsed_ms: 0});
+    } catch (error) {
+      this._debug('timer_schedule_failed', {
+        input,
+        elapsed_ms: this._elapsedMs(),
+        reason: String(error?.message || error || 'timer_schedule_failed').slice(0, 120),
+      });
+      throw error;
+    }
   }
 
   cancel(reason = 'cancel') {
