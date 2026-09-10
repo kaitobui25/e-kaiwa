@@ -176,6 +176,12 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     elements.targetLanguage.value = selectedValue;
   }
 
+  function aiSpeedValue(value, fallback = DEFAULT_AI_SPEED) {
+    const normalized = normalizePlaybackRate(value, Number(fallback));
+    const canonical = Number(normalized).toFixed(1);
+    return AI_SPEED_VALUES.includes(canonical) ? canonical : fallback;
+  }
+
   function publicOrDev(publicKey, devText) {
     return state.appMode === 'public' ? state.ui?.t(publicKey) || publicKey : devText;
   }
@@ -256,8 +262,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   }
 
   function aiPlaybackRate() {
-    const value = elements.aiSpeed.value;
-    return AI_SPEED_VALUES.includes(value) ? Number(value) : Number(DEFAULT_AI_SPEED);
+    return Number(aiSpeedValue(elements.aiSpeed.value));
   }
 
   function initializeUi(payload) {
@@ -329,7 +334,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       elements.feedbackLanguage.value = preferences.appLanguage;
       elements.targetLanguage.value = preferences.targetLanguage;
       state.selectedTargetLanguage = preferences.targetLanguage;
-      elements.aiSpeed.value = String(preferences.playbackRate);
+      elements.aiSpeed.value = aiSpeedValue(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
       state.conversationMode = preferences.conversationMode;
       state.ui.setLanguage(preferences.appLanguage);
@@ -343,9 +348,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
         elements.targetLanguage.value || state.selectedTargetLanguage
       );
       state.selectedTargetLanguage = elements.targetLanguage.value;
-      elements.aiSpeed.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
-        ? String(settings.ai_playback_rate)
-        : DEFAULT_AI_SPEED;
+      elements.aiSpeed.value = aiSpeedValue(settings.ai_playback_rate);
       elements.pron.checked = settings.pronunciation_enabled !== false;
       state.conversationMode = CONVERSATION_MODES.HANDS_FREE;
       state.ui.setConversationMode(state.conversationMode);
@@ -1203,7 +1206,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   });
 
   elements.aiSpeed.addEventListener('change', async () => {
-    const value = String(normalizePlaybackRate(elements.aiSpeed.value, 0.8));
+    const value = aiSpeedValue(elements.aiSpeed.value);
     elements.aiSpeed.value = value;
     if (state.appMode === 'public') {
       state.preferences.setPlaybackRate(value);
