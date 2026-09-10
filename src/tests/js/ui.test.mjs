@@ -43,12 +43,16 @@ function sampleTurn() {
   };
 }
 
-test('push-to-talk keeps learner replay and score inline inside the speech bubble', () => {
+test('push-to-talk keeps learner actions in a stable row below speech text', () => {
   const html = publicTurnHtml(sampleTurn(), t, true, CONVERSATION_MODES.PUSH_TO_TALK);
-  assert.match(html, /class="message-text user-message-text"/);
+  assert.match(html, /class="turn public-turn" data-turn="1"/);
+  assert.match(html, /class="message-text user-message-text" data-turn-text="user"/);
+  assert.match(html, /data-turn-text="ai"/);
+  assert.match(html, /class="message-actions"/);
   assert.match(html, /data-ui-action="open-replay"/);
   assert.match(html, /data-ui-action="open-coach"/);
   assert.ok(html.indexOf('data-ui-action="open-replay"') < html.indexOf('data-ui-action="open-coach"'));
+  assert.ok(html.indexOf('class="message-actions"') > html.indexOf('data-turn-text="user"'));
   assert.match(html, /class="score-pill score-button"/);
   assert.match(html, /<svg class="ui-svg"/);
   assert.doesNotMatch(html, />YOU</);
