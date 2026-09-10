@@ -26,10 +26,14 @@ cat > "${STATUS_DIR}/status.json" <<'JSON'
 {"schema":1,"update_id":"","state":"idle","progress":0,"message":"","from_version":"","to_version":"","from_revision":"","to_revision":"","failures":[],"updated_at":""}
 JSON
 chmod 0644 "${STATUS_DIR}/status.json"
+touch "${STATUS_DIR}/updater.jsonl"
+chmod 0644 "${STATUS_DIR}/updater.jsonl"
 
 systemctl daemon-reload
 systemctl enable --now ekaiwa-update.path
 systemctl restart ekaiwa.service
 
 echo "Updater installed."
+echo "UI diagnostics: ${REPO_ROOT}/runtime_logs/YYYY-MM-DD/ui_events.jsonl"
+echo "Updater diagnostics: ${STATUS_DIR}/updater.jsonl and journalctl -u ekaiwa-update.service"
 echo "Next: merge deploy/caddy/maintenance.caddy into /etc/caddy/Caddyfile, validate, then reload Caddy."
