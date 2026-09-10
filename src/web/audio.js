@@ -25,13 +25,11 @@ export async function resumeMicrophoneCapture({stream, context, processor} = {})
   return context.state !== 'closed';
 }
 
-export function pauseMicrophoneCapture({stream, context} = {}) {
+export function pauseMicrophoneCapture({stream} = {}) {
+  // Keep the granted MediaStream alive for this page session so reconnects do
+  // not need another getUserMedia() call. Muting the track stops usable audio
+  // from flowing without racing a later AudioContext.resume() on mobile Safari.
   setAudioTracksEnabled(stream, false);
-  if (context?.state !== 'running') return;
-  try {
-    const pending = context.suspend?.();
-    pending?.catch?.(() => {});
-  } catch {}
 }
 
 export function releaseMicrophoneCapture({stream, source, processor, context} = {}) {
