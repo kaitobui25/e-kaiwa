@@ -67,12 +67,14 @@ test('microphone pause keeps granted capture reusable without stopping tracks', 
   assert.equal(microphoneCaptureReusable(capture), true);
 
   pauseMicrophoneCapture(capture);
-  await Promise.resolve();
   assert.equal(capture.track.enabled, false);
-  assert.equal(capture.calls.suspend, 1);
+  assert.equal(capture.calls.suspend, 0);
   assert.equal(capture.calls.stop, 0);
   assert.equal(microphoneCaptureReusable(capture), true);
 
+  // If iOS suspends the context independently, reuse resumes that same
+  // capture instead of requesting a new MediaStream permission.
+  capture.context.state = 'suspended';
   assert.equal(await resumeMicrophoneCapture(capture), true);
   assert.equal(capture.track.enabled, true);
   assert.equal(capture.calls.resume, 1);
