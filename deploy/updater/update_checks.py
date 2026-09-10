@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -19,18 +20,38 @@ def _tail(text: str, limit: int = 240) -> str:
     return compact[-limit:] if compact else ""
 
 
+def _check_environment(cwd: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    src = str(cwd / "src")
+    existing = env.get("PYTHONPATH", "").strip()
+    env["PYTHONPATH"] = src if not existing else f"{src}{os.pathsep}{existing}"
+    return env
+
+
+def _as_app_user(args: Sequence[str], as_user: bool) -> list[str]:
+    command = list(args)
+    if as_user and os.geteuid() == 0:
+        app_user = os.environ.get("E_KAIWA_USER", "ubuntu")
+        return ["runuser", "-u", app_user, "--", *command]
+    return command
+
+
 def run_command(
     name: str,
     args: Sequence[str],
     *,
     cwd: Path,
     timeout: int = 180,
+    as_user: bool = False,
+    input_text: str | None = None,
 ) -> CheckResult:
     try:
         result = subprocess.run(
-            list(args),
+            _as_app_user(args, as_user),
             cwd=cwd,
+            env=_check_environment(cwd),
             text=True,
+            input=input_text,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,
@@ -53,7 +74,14 @@ def run_js_syntax(repo_root: Path, *, node: str = "node") -> CheckResult:
     web_dir = repo_root / "src" / "web"
     failures: list[str] = []
     for path in sorted(web_dir.glob("*.js")):
-        result = run_command(f"JS syntax {path.name}", [node, "--check", str(path)], cwd=repo_root, timeout=30)
+        result = run_command(
+            f"JS syntax {path.name}",
+            [node, "--input-type=module", "--check"],
+            cwd=repo_root,
+            timeout=30,
+            as_user=True,
+            input_text=path.read_text(encoding="utf-8"),
+        )
         if not result.ok:
             failures.append(path.name)
     if failures:
@@ -75,6 +103,7 @@ def run_all_checks(
                 [str(python_bin), "-m", "unittest", "discover", "-s", "src/tests/python", "-p", "test_*.py"],
                 cwd=repo_root,
                 timeout=240,
+                as_user=True,
             ),
         ),
         (
@@ -84,6 +113,7 @@ def run_all_checks(
                 ["node", "--test", *[str(path) for path in sorted((repo_root / "src" / "tests" / "js").glob("*.test.mjs"))]],
                 cwd=repo_root,
                 timeout=240,
+                as_user=True,
             ) if shutil.which("node") else CheckResult("Browser tests", False, "node unavailable"),
         ),
         (
@@ -93,6 +123,7 @@ def run_all_checks(
                 [str(python_bin), "-m", "compileall", "-q", "src/e_kaiwa", "src/app.py"],
                 cwd=repo_root,
                 timeout=120,
+                as_user=True,
             ),
         ),
         (
