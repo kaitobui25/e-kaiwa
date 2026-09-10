@@ -128,31 +128,33 @@
         </label>
       </section>
 
-      <section class="setting-section dev-only">
-        <label for="teacher">Teacher</label>
-        <select id="teacher">
-          <option>Easy</option>
-          <option selected>Normal</option>
-          <option>Strict</option>
-        </select>
+      <div class="dev-only">
+        <section class="setting-section">
+          <label for="teacher">Teacher</label>
+          <select id="teacher">
+            <option>Easy</option>
+            <option selected>Normal</option>
+            <option>Strict</option>
+          </select>
 
-        <label for="realtime-model">Realtime model</label>
-        <select id="realtime-model"></select>
-        <span class="muted setting-note">Session-level change reconnects when safe.</span>
+          <label for="realtime-model">Realtime model</label>
+          <select id="realtime-model"></select>
+          <span class="muted setting-note">Session-level change reconnects when safe.</span>
 
-        <label for="coach-model">Coach model</label>
-        <select id="coach-model"></select>
-        <span class="muted setting-note">Auto rotates keys first, then models.</span>
+          <label for="coach-model">Coach model</label>
+          <select id="coach-model"></select>
+          <span class="muted setting-note">Auto rotates keys first, then models.</span>
 
-        <label for="silence-duration">Silence timeout</label>
-        <select id="silence-duration">
-          <option value="700">0.7 s</option>
-          <option value="1000" selected>1.0 s</option>
-          <option value="1200">1.2 s</option>
-          <option value="1500">1.5 s</option>
-        </select>
-        <span class="muted setting-note">Session-level change reconnects when safe.</span>
-      </section>
+          <label for="silence-duration">Silence timeout</label>
+          <select id="silence-duration">
+            <option value="700">0.7 s</option>
+            <option value="1000" selected>1.0 s</option>
+            <option value="1200">1.2 s</option>
+            <option value="1500">1.5 s</option>
+          </select>
+          <span class="muted setting-note">Session-level change reconnects when safe.</span>
+        </section>
+      </div>
 
       <div class="settings-release public-only">
         <span id="app-version" class="app-version">E-KAIWA</span>
