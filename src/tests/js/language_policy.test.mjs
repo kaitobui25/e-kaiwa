@@ -74,11 +74,20 @@ test('unknown metadata uses deterministic target-looking text fallback', () => {
   assert.equal(policy.finalizeLanguageMode(turn('zh-Hans', [], 'こんにちは')), 'non_target');
 });
 
-test('transcript concatenation preserves English spacing and CJK adjacency', () => {
+test('transcript concatenation uses fragment content rather than session target for spacing', () => {
   assert.equal(policy.concatTargetTranscript('Hello', 'world', 'en'), 'Hello world');
+  assert.equal(policy.concatTargetTranscript('Hello', 'world', 'ja'), 'Hello world');
+  assert.equal(policy.concatTargetTranscript('Hello', 'world', 'zh-Hans'), 'Hello world');
   assert.equal(policy.concatTargetTranscript('今日は', '天気です', 'ja'), '今日は天気です');
   assert.equal(policy.concatTargetTranscript('你好', '世界', 'zh-Hans'), '你好世界');
+  assert.equal(policy.concatTargetTranscript('Hello', '世界', 'ja'), 'Hello世界');
   assert.equal(policy.concatTargetTranscript('今日は天気です', '天気です', 'ja'), '今日は天気です');
+});
+
+test('transcript concatenation keeps common punctuation and contraction boundaries natural', () => {
+  assert.equal(policy.concatTargetTranscript('Hello', '!', 'ja'), 'Hello!');
+  assert.equal(policy.concatTargetTranscript('Hello,', 'world', 'ja'), 'Hello, world');
+  assert.equal(policy.concatTargetTranscript('don', "'t", 'ja'), "don't");
 });
 
 test('support language remains independent and live instruction is target-specific', () => {

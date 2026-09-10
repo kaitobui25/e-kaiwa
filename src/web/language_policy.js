@@ -8,6 +8,11 @@ const SUPPORT_LANGUAGES = {
 const UNKNOWN_LANGUAGE_CODES = new Set(['und', 'zxx']);
 const ASCII_ENGLISH_TEXT = /^[\x00-\x7F]+$/;
 const ENGLISH_LETTER = /[A-Za-z]/;
+const CJK_TRANSCRIPT_BOUNDARY = /[\u3040-\u30ff\u3400-\u9fff]/;
+const LATIN_ALNUM_TRANSCRIPT_BOUNDARY = /[A-Za-z0-9]/;
+const NO_SPACE_BEFORE_TRANSCRIPT_BOUNDARY = /[.,!?;:%)\]}>，。！？；：、）」』】》〉]/;
+const NO_SPACE_AFTER_TRANSCRIPT_BOUNDARY = /[(\[{<（「『【《〈]/;
+const ENGLISH_APOSTROPHE_SUFFIX = /^['’](?:s|t|re|ve|ll|d|m)\b/i;
 export const TARGET_LANGUAGE_ALIASES = Object.freeze({
   en: 'en', 'en-us': 'en', 'en-gb': 'en', english: 'en',
   ja: 'ja', 'ja-jp': 'ja', japanese: 'ja',
@@ -66,16 +71,30 @@ export function textLooksLikeTarget(text, targetLanguage) {
   return Boolean(value) && ENGLISH_LETTER.test(value) && ASCII_ENGLISH_TEXT.test(value);
 }
 
-export function concatTargetTranscript(previous, incoming, targetLanguage = 'en') {
+function transcriptSeparator(oldText, newText) {
+  const left = oldText.at(-1) || '';
+  const right = newText.at(0) || '';
+
+  // CJK scripts normally have no inter-word spaces, even when Gemini streams
+  // a sentence in multiple transcription fragments.
+  if (CJK_TRANSCRIPT_BOUNDARY.test(left) || CJK_TRANSCRIPT_BOUNDARY.test(right)) return '';
+
+  // Latin/alphanumeric words do need a space regardless of the session target.
+  // This is important for rescue turns such as English spoken in a ja/zh session.
+  if (LATIN_ALNUM_TRANSCRIPT_BOUNDARY.test(left) && LATIN_ALNUM_TRANSCRIPT_BOUNDARY.test(right)) return ' ';
+
+  if (LATIN_ALNUM_TRANSCRIPT_BOUNDARY.test(left) && ENGLISH_APOSTROPHE_SUFFIX.test(newText)) return '';
+  if (NO_SPACE_BEFORE_TRANSCRIPT_BOUNDARY.test(right) || NO_SPACE_AFTER_TRANSCRIPT_BOUNDARY.test(left)) return '';
+  return ' ';
+}
+
+export function concatTargetTranscript(previous, incoming, _targetLanguage = 'en') {
   const oldText = String(previous || '').trim();
   const newText = String(incoming || '').trim();
   if (!oldText) return newText;
   if (!newText || oldText.endsWith(newText)) return oldText;
   if (newText.startsWith(oldText)) return newText;
-
-  const target = normalizeTargetLanguage(targetLanguage);
-  if (target !== 'en') return oldText + newText;
-  return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
+  return oldText + transcriptSeparator(oldText, newText) + newText;
 }
 
 export function finalizeLanguageMode(turn) {
