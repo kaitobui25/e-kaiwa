@@ -8,6 +8,7 @@ from .access import SlidingWindowLimiter
 from .config import DEFAULT_HOST, DEFAULT_PORT, WEB_DIR
 from .server import Runtime, _client_settings_payload, build_runtime, parse_args
 from .server import make_handler as make_base_handler
+from .ui_events import UiEventLog
 from .update_request import create_update_request, updates_enabled
 from .version import app_version, git_revision
 
@@ -19,9 +20,24 @@ def make_handler(runtime: Runtime) -> Type:
     revision = git_revision()
     version = app_version()
     update_enabled = updates_enabled()
+    ui_events = UiEventLog()
 
     class MaintenanceRequestHandler(base_handler):
         server_version = f"EKaiwaLive/{version}"
+
+        def _allow_ui_event(self) -> bool:
+            if not runtime.access.is_public:
+                return True
+            if not runtime.access.origin_allowed(self.headers):
+                self.send_json(403, {"error": "origin not allowed"})
+                return False
+            if not runtime.access.allow("ui_event", self.client_key()):
+                self.send_json(429, {"error": "UI event rate limit exceeded"})
+                return False
+            return True
+
+        def _write_ui_event(self, payload: object) -> None:
+            ui_events.write(payload, app_version=version, revision=revision)
 
         def do_GET(self) -> None:
             path = urlparse(self.path).path
@@ -62,6 +78,17 @@ def make_handler(runtime: Runtime) -> Type:
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
+
+            if path == "/api/ui-event":
+                if not self._allow_ui_event():
+                    return
+                try:
+                    self._write_ui_event(self.read_json())
+                    self.send_json(200, {"ok": True})
+                except Exception as exc:
+                    self.send_json(400, {"error": str(exc)[:160]})
+                return
+
             if path != "/api/update":
                 super().do_POST()
                 return
