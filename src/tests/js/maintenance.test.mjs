@@ -91,6 +91,25 @@ test('pointer cancellation records the browser event that cleared the timer', ()
   assert.ok(events.some(event => event.event === 'update_press_cancel' && event.reason === 'pointercancel' && event.elapsed_ms === 1600));
 });
 
+test('timer scheduling exception is logged before it propagates', () => {
+  const button = new FakeTarget();
+  const events = [];
+  let now = 1000;
+  new LongPressController(button, {
+    durationMs: 5000,
+    onEvent: event => events.push(event),
+    nowFn: () => now,
+    setTimeoutFn: () => { throw new TypeError('timer boom'); },
+  });
+
+  assert.throws(() => button.dispatch('pointerdown', {pointerId: 4}), /timer boom/);
+  assert.ok(events.some(event => event.event === 'update_press_start'));
+  const failure = events.find(event => event.event === 'update_press_debug' && event.phase === 'timer_schedule_failed');
+  assert.equal(failure.reason, 'timer boom');
+  assert.equal(failure.elapsed_ms, 0);
+  assert.equal(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_scheduled'), false);
+});
+
 test('maintenance controller pauses on active update and reloads on complete', async () => {
   const statuses = [
     {update_id: 'old', state: 'complete', progress: 100},
