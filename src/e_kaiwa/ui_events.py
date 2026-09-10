@@ -12,6 +12,7 @@ UI_EVENT_NAMES = frozenset(
         "settings_open",
         "settings_close",
         "update_press_start",
+        "update_press_debug",
         "update_press_cancel",
         "update_press_complete",
         "update_request_sent",
@@ -27,11 +28,12 @@ _TEXT_FIELDS = {
     "client_id": 80,
     "target": 48,
     "input": 24,
+    "phase": 64,
     "reason": 120,
     "state": 48,
     "update_id": 80,
 }
-_NUMBER_FIELDS = frozenset({"elapsed_ms", "http_status", "progress"})
+_NUMBER_FIELDS = frozenset({"elapsed_ms", "http_status", "progress", "pointer_id", "expected_pointer_id"})
 
 
 def _now() -> datetime:
