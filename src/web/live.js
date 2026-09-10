@@ -17,7 +17,13 @@ import {
   normalizeTargetLanguage,
   targetSpeechLocale
 } from './preferences.js';
-import {PlaybackCoordinator} from './audio.js';
+import {
+  PlaybackCoordinator,
+  microphoneCaptureReusable,
+  pauseMicrophoneCapture,
+  releaseMicrophoneCapture,
+  resumeMicrophoneCapture
+} from './audio.js';
 import {UiController} from './ui.js';
 import {LiveRecoveryCoordinator} from './live_recovery.js';
 
@@ -398,13 +404,25 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     newLiveSession({reason: 'settings_change'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
   }
 
-  function cleanupMic({clearSettings = true} = {}) {
+  function micCaptureState() {
+    return {
+      stream: state.micStream,
+      context: state.inputCtx,
+      source: state.micSource,
+      processor: state.processor
+    };
+  }
+
+  function pauseMicCapture({clearSettings = false} = {}) {
+    state.inputForwarding = false;
+    pauseMicrophoneCapture(micCaptureState());
+    if (clearSettings) state.micAudioSettings = {};
+  }
+
+  function releaseMicCapture({clearSettings = true} = {}) {
     state.inputForwarding = false;
     state.micAcquireGeneration += 1;
-    try { state.processor?.disconnect(); } catch {}
-    try { state.micSource?.disconnect(); } catch {}
-    state.micStream?.getTracks().forEach(track => track.stop());
-    try { state.inputCtx?.close(); } catch {}
+    releaseMicrophoneCapture(micCaptureState());
     state.processor = null;
     state.micSource = null;
     state.micStream = null;
@@ -413,8 +431,16 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   }
 
   async function ensureMicReady() {
-    if (state.processor && state.micStream && state.inputCtx) return true;
     if (state.micReadyPromise) return state.micReadyPromise;
+
+    if (microphoneCaptureReusable(micCaptureState())) {
+      try {
+        if (await resumeMicrophoneCapture(micCaptureState())) return true;
+      } catch {}
+      releaseMicCapture({clearSettings: false});
+    } else if (state.processor || state.micSource || state.micStream || state.inputCtx) {
+      releaseMicCapture({clearSettings: false});
+    }
 
     const generation = state.micAcquireGeneration;
     state.micReadyPromise = (async () => {
@@ -429,33 +455,39 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
         return false;
       }
 
-      state.micStream = stream;
-      const audioTrack = stream.getAudioTracks()[0];
-      const actualSettings = audioTrack?.getSettings?.() || {};
-      state.micAudioSettings = {
-        echoCancellation: actualSettings.echoCancellation ?? null,
-        noiseSuppression: actualSettings.noiseSuppression ?? null,
-        autoGainControl: actualSettings.autoGainControl ?? null
-      };
-      console.log('[MIC SETTINGS]', state.micAudioSettings);
+      try {
+        state.micStream = stream;
+        const audioTrack = stream.getAudioTracks()[0];
+        const actualSettings = audioTrack?.getSettings?.() || {};
+        state.micAudioSettings = {
+          echoCancellation: actualSettings.echoCancellation ?? null,
+          noiseSuppression: actualSettings.noiseSuppression ?? null,
+          autoGainControl: actualSettings.autoGainControl ?? null
+        };
+        console.log('[MIC SETTINGS]', state.micAudioSettings);
 
-      state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
-      state.micSource = state.inputCtx.createMediaStreamSource(stream);
-      state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
-      state.processor.onaudioprocess = event => {
-        if (!state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN || !state.activeTurn) return;
-        const mono = event.inputBuffer.getChannelData(0);
-        const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
-        state.activeTurn.pcmChunks.push(new Int16Array(pcm));
-        state.ws.send(JSON.stringify({
-          realtimeInput: {audio: {data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000'}}
-        }));
-      };
+        state.inputCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (state.inputCtx.state === 'suspended') await state.inputCtx.resume();
+        state.micSource = state.inputCtx.createMediaStreamSource(stream);
+        state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
+        state.processor.onaudioprocess = event => {
+          if (!state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN || !state.activeTurn) return;
+          const mono = event.inputBuffer.getChannelData(0);
+          const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
+          state.activeTurn.pcmChunks.push(new Int16Array(pcm));
+          state.ws.send(JSON.stringify({
+            realtimeInput: {audio: {data: pcmToBase64(pcm), mimeType: 'audio/pcm;rate=16000'}}
+          }));
+        };
 
-      state.micSource.connect(state.processor);
-      state.processor.connect(state.inputCtx.destination);
-      return true;
+        state.micSource.connect(state.processor);
+        state.processor.connect(state.inputCtx.destination);
+        if (!await resumeMicrophoneCapture(micCaptureState())) throw new Error('Microphone capture is not reusable');
+        return true;
+      } catch (error) {
+        releaseMicCapture({clearSettings: false});
+        throw error;
+      }
     })();
 
     try {
@@ -675,7 +707,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     state.recovery.clearTimers();
     resetInputState();
     state.playback?.clear();
-    cleanupMic();
+    pauseMicCapture();
     state.setupReady = false;
     state.reconnectNeeded = true;
     state.connecting = false;
@@ -698,7 +730,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     state.pushToTalkPressed = false;
     state.pushActivityOpen = false;
     state.playback?.clear();
-    cleanupMic({clearSettings: false});
+    pauseMicCapture();
     emitUiEvent({event: 'reconnect_attempt', reason, resume_requested: Boolean(resume && state.recovery.hasHandle())});
 
     try {
@@ -870,7 +902,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     setStatus('connecting', fallback ? 'Connecting fallback realtime model…' : 'Creating secure live session…');
     state.playback.clear();
     resetInputState();
-    cleanupMic();
+    pauseMicCapture();
 
     const oldSocket = state.ws;
     state.ws = null;
@@ -972,7 +1004,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     state.activeTurn = null;
     state.recovery.clearTimers();
     state.playback.clear();
-    cleanupMic();
+    pauseMicCapture();
     if (state.ws?.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify({realtimeInput: {audioStreamEnd: true}}));
     }
@@ -1014,7 +1046,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       state.ws?.readyState !== WebSocket.OPEN
     ) {
       state.inputForwarding = false;
-      if (!state.pushToTalkPressed) cleanupMic({clearSettings: false});
+      if (!state.pushToTalkPressed) pauseMicCapture();
       return false;
     }
 
@@ -1022,6 +1054,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     if (!turn) {
       state.pushToTalkPressed = false;
       state.ui.setTalkState('ready');
+      pauseMicCapture();
       return false;
     }
 
@@ -1043,7 +1076,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       const turnNo = state.activeTurn?.no || null;
       state.ws.send(JSON.stringify({realtimeInput: {activityEnd: {}}}));
       state.pushActivityOpen = false;
-      cleanupMic({clearSettings: false});
+      pauseMicCapture();
       state.ui.setTalkState('waiting');
       state.ui.setStatus(state.ui.t('waiting'));
       if (turnNo) state.recovery.armResponseWatchdog(turnNo);
@@ -1051,7 +1084,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       return;
     }
 
-    if (!state.micReadyPromise) cleanupMic({clearSettings: false});
+    if (!state.micReadyPromise) pauseMicCapture();
     emitUiEvent({event: 'ptt_end', turn: state.activeTurn?.no || null, socket_ready: false});
     recoverLiveSession('ptt_end_socket_unavailable', {resume: true, force: true});
   }
@@ -1069,7 +1102,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     state.recovery.clearTimers();
     resetInputState();
     state.playback.clear();
-    cleanupMic();
+    pauseMicCapture();
   }
 
   async function handleUiAction(action, detail) {
@@ -1279,7 +1312,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     state.inputForwarding = false;
     state.recovery.clearTimers();
     state.playback?.clear();
-    cleanupMic();
+    releaseMicCapture();
     try { state.ws?.close(); } catch {}
   });
 
