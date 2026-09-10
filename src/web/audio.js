@@ -1,3 +1,52 @@
+function audioTracks(stream) {
+  try {
+    return stream?.getAudioTracks?.() || [];
+  } catch {
+    return [];
+  }
+}
+
+function setAudioTracksEnabled(stream, enabled) {
+  for (const track of audioTracks(stream)) {
+    if (track?.readyState === 'ended') continue;
+    try { track.enabled = Boolean(enabled); } catch {}
+  }
+}
+
+export function microphoneCaptureReusable({stream, context, processor} = {}) {
+  if (!stream || !context || !processor || context.state === 'closed') return false;
+  return audioTracks(stream).some(track => track?.readyState !== 'ended');
+}
+
+export async function resumeMicrophoneCapture({stream, context, processor} = {}) {
+  if (!microphoneCaptureReusable({stream, context, processor})) return false;
+  setAudioTracksEnabled(stream, true);
+  if (context.state === 'suspended') await context.resume();
+  return context.state !== 'closed';
+}
+
+export function pauseMicrophoneCapture({stream, context} = {}) {
+  setAudioTracksEnabled(stream, false);
+  if (context?.state !== 'running') return;
+  try {
+    const pending = context.suspend?.();
+    pending?.catch?.(() => {});
+  } catch {}
+}
+
+export function releaseMicrophoneCapture({stream, source, processor, context} = {}) {
+  setAudioTracksEnabled(stream, false);
+  try { processor?.disconnect?.(); } catch {}
+  try { source?.disconnect?.(); } catch {}
+  for (const track of stream?.getTracks?.() || []) {
+    try { track.stop?.(); } catch {}
+  }
+  try {
+    const pending = context?.state === 'closed' ? null : context?.close?.();
+    pending?.catch?.(() => {});
+  } catch {}
+}
+
 function b64ToBytes(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
