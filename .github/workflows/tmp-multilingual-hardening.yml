@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -217,11 +216,6 @@ test('replay overlay uses local PCM for waveform and duration without extra data
           )
 
           path = 'src/tests/python/test_languages.py'
-          replace_once(
-              path,
-              "from e_kaiwa.languages import (\n",
-              "from e_kaiwa.languages import (\n",
-          )
           text = read(path)
           import_marker = ")\n\n\nROOT = Path(__file__).resolve().parents[3]"
           if text.count(import_marker) != 1:
