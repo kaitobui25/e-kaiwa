@@ -16,10 +16,14 @@ const overlay = new MaintenanceOverlay({
 async function loadReleaseInfo() {
   try {
     const response = await fetch('/health', {cache: 'no-store'});
-    if (!response.ok) return;
+    if (!response.ok) return null;
     const health = await response.json();
     if (versionNode && health.version) versionNode.textContent = `E-KAIWA v${health.version}`;
-  } catch {}
+    if (updateButton) updateButton.hidden = !health.update_enabled;
+    return health;
+  } catch {
+    return null;
+  }
 }
 
 function pauseRealtimeForMaintenance() {
@@ -34,6 +38,9 @@ const controller = new MaintenanceController({
   pauseForMaintenance: pauseRealtimeForMaintenance,
 });
 
-loadReleaseInfo();
-controller.start();
-window.addEventListener('beforeunload', () => controller.stop());
+async function bootstrapMaintenance() {
+  const health = await loadReleaseInfo();
+  if (health?.update_enabled) await controller.start();
+}
+
+bootstrapMaintenance();
