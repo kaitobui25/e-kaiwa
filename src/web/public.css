@@ -434,6 +434,26 @@ body[data-app-mode="public"] .settings-panel {
 
 body[data-app-mode="public"] .settings-head {
   flex: 0 0 auto;
+  min-height: 54px;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  padding: 7px 6px 7px 16px;
+}
+
+body[data-app-mode="public"] .settings-head strong {
+  padding-left: 0;
+}
+
+body[data-app-mode="public"] .settings-head .overlay-icon {
+  width: 36px;
+  height: 36px;
+  justify-self: end;
+  border-radius: 50%;
+}
+
+body[data-app-mode="public"] .settings-head .overlay-icon svg {
+  width: 19px;
+  height: 19px;
+  transform: translateY(1px);
 }
 
 body[data-app-mode="public"] .settings-scroll {
@@ -458,7 +478,7 @@ body[data-app-mode="public"] .setting-section + .setting-section {
 
 body[data-app-mode="public"] .setting-control-row,
 body[data-app-mode="public"] .switch-row {
-  min-height: 58px;
+  min-height: 64px;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -479,7 +499,7 @@ body[data-app-mode="public"] .switch-row strong {
 }
 
 body[data-app-mode="public"] .setting-control-row-primary {
-  min-height: 64px;
+  min-height: 70px;
 }
 
 body[data-app-mode="public"] .setting-control-row-primary > label {
@@ -495,16 +515,29 @@ body[data-app-mode="public"] .setting-note {
 
 body[data-app-mode="public"] .setting-control-row select {
   width: auto;
-  min-width: 96px;
-  min-height: 44px;
-  max-width: 55%;
+  min-width: 104px;
+  min-height: 48px;
+  max-width: 58%;
   flex: 0 1 auto;
-  padding: 6px 26px 6px 10px;
+  padding: 9px 30px 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
   text-align: right;
+}
+
+body[data-app-mode="public"] .setting-control-row-primary select {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .setting-control-row select option {
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 body[data-app-mode="public"] .setting-control-row select:focus-visible {
@@ -587,7 +620,7 @@ body[data-app-mode="public"] .settings-release .update-button {
   }
 
   body[data-app-mode="public"] .setting-control-row select {
-    max-width: 54%;
+    max-width: 56%;
   }
 }
 
