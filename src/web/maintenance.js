@@ -33,6 +33,10 @@ export class LongPressController {
     try { this.onEvent({event, target: 'update_button', ...data}); } catch {}
   }
 
+  _debug(phase, data = {}) {
+    this._emit('update_press_debug', {phase, ...data});
+  }
+
   _elapsedMs() {
     if (this.startedAt == null) return 0;
     return Math.max(0, Math.round(this.nowFn() - this.startedAt));
@@ -41,39 +45,75 @@ export class LongPressController {
   _bind() {
     if (!this.button) return;
     this.button.addEventListener('pointerdown', event => {
-      if (this.button.disabled) return;
+      this._debug('pointerdown_received', {pointer_id: event.pointerId});
+      if (this.button.disabled) {
+        this._debug('pointerdown_ignored', {pointer_id: event.pointerId, reason: 'button_disabled'});
+        return;
+      }
       event.preventDefault();
       this.pointerId = event.pointerId;
-      try { this.button.setPointerCapture?.(event.pointerId); } catch {}
+      try {
+        this.button.setPointerCapture?.(event.pointerId);
+        this._debug('pointer_capture_set', {pointer_id: event.pointerId});
+      } catch (error) {
+        this._debug('pointer_capture_failed', {
+          pointer_id: event.pointerId,
+          reason: String(error?.message || error || 'capture_failed').slice(0, 120),
+        });
+      }
       this.start('pointer');
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       this.button.addEventListener(type, event => {
-        if (event?.pointerId != null && this.pointerId != null && event.pointerId !== this.pointerId) return;
+        this._debug(`${type}_received`, {
+          pointer_id: event?.pointerId,
+          expected_pointer_id: this.pointerId,
+          elapsed_ms: this._elapsedMs(),
+        });
+        if (event?.pointerId != null && this.pointerId != null && event.pointerId !== this.pointerId) {
+          this._debug(`${type}_ignored`, {
+            pointer_id: event.pointerId,
+            expected_pointer_id: this.pointerId,
+            reason: 'pointer_id_mismatch',
+          });
+          return;
+        }
         this.cancel(type);
       });
     }
     this.button.addEventListener('keydown', event => {
       if (event.repeat || ![' ', 'Enter'].includes(event.key) || this.button.disabled) return;
+      this._debug('keydown_received', {input: 'keyboard'});
       event.preventDefault();
       this.start('keyboard');
     });
     this.button.addEventListener('keyup', event => {
       if (![' ', 'Enter'].includes(event.key)) return;
+      this._debug('keyup_received', {input: 'keyboard', elapsed_ms: this._elapsedMs()});
       event.preventDefault();
       this.cancel('keyup');
     });
-    this.button.addEventListener('blur', () => this.cancel('blur'));
+    this.button.addEventListener('blur', () => {
+      this._debug('blur_received', {input: this.input || 'unknown', elapsed_ms: this._elapsedMs()});
+      this.cancel('blur');
+    });
   }
 
   start(input = 'unknown') {
-    if (this.timer != null || !this.button || this.button.disabled) return;
+    if (this.timer != null || !this.button || this.button.disabled) {
+      this._debug('start_ignored', {
+        input,
+        reason: this.timer != null ? 'timer_active' : (!this.button ? 'button_missing' : 'button_disabled'),
+      });
+      return;
+    }
     this.startedAt = this.nowFn();
     this.input = input;
     this.button.dataset.holding = 'true';
     this._emit('update_press_start', {input});
     this.timer = this.setTimeoutFn(() => {
       const elapsedMs = this._elapsedMs();
+      this._debug('timer_fired', {input: this.input, elapsed_ms: elapsedMs});
       this.timer = null;
       this.button.dataset.holding = 'false';
       this.button.disabled = true;
@@ -83,13 +123,23 @@ export class LongPressController {
       this.pointerId = null;
       this.onComplete();
     }, this.durationMs);
+    this._debug('timer_scheduled', {input, elapsed_ms: 0});
   }
 
   cancel(reason = 'cancel') {
     const active = this.timer != null && this.startedAt != null;
-    const elapsedMs = active ? this._elapsedMs() : 0;
+    const elapsedMs = this.startedAt != null ? this._elapsedMs() : 0;
     const input = this.input;
-    if (this.timer != null) this.clearTimeoutFn(this.timer);
+    this._debug('cancel_enter', {
+      input: input || 'unknown',
+      reason,
+      elapsed_ms: elapsedMs,
+      state: active ? 'active' : 'inactive',
+    });
+    if (this.timer != null) {
+      this.clearTimeoutFn(this.timer);
+      this._debug('timer_cleared', {input: input || 'unknown', reason, elapsed_ms: elapsedMs});
+    }
     this.timer = null;
     this.pointerId = null;
     this.startedAt = null;
