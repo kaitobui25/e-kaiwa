@@ -7,15 +7,35 @@ function defaultDelay(status, hidden) {
 }
 
 export class LongPressController {
-  constructor(button, {durationMs = 5000, onComplete = () => {}, setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout} = {}) {
+  constructor(button, {
+    durationMs = 5000,
+    onComplete = () => {},
+    onEvent = () => {},
+    nowFn = () => Date.now(),
+    setTimeoutFn = setTimeout,
+    clearTimeoutFn = clearTimeout,
+  } = {}) {
     this.button = button;
     this.durationMs = durationMs;
     this.onComplete = onComplete;
+    this.onEvent = onEvent;
+    this.nowFn = nowFn;
     this.setTimeoutFn = setTimeoutFn;
     this.clearTimeoutFn = clearTimeoutFn;
     this.timer = null;
     this.pointerId = null;
+    this.startedAt = null;
+    this.input = '';
     this._bind();
+  }
+
+  _emit(event, data = {}) {
+    try { this.onEvent({event, target: 'update_button', ...data}); } catch {}
+  }
+
+  _elapsedMs() {
+    if (this.startedAt == null) return 0;
+    return Math.max(0, Math.round(this.nowFn() - this.startedAt));
   }
 
   _bind() {
@@ -25,43 +45,57 @@ export class LongPressController {
       event.preventDefault();
       this.pointerId = event.pointerId;
       try { this.button.setPointerCapture?.(event.pointerId); } catch {}
-      this.start();
+      this.start('pointer');
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       this.button.addEventListener(type, event => {
         if (event?.pointerId != null && this.pointerId != null && event.pointerId !== this.pointerId) return;
-        this.cancel();
+        this.cancel(type);
       });
     }
     this.button.addEventListener('keydown', event => {
       if (event.repeat || ![' ', 'Enter'].includes(event.key) || this.button.disabled) return;
       event.preventDefault();
-      this.start();
+      this.start('keyboard');
     });
     this.button.addEventListener('keyup', event => {
       if (![' ', 'Enter'].includes(event.key)) return;
       event.preventDefault();
-      this.cancel();
+      this.cancel('keyup');
     });
-    this.button.addEventListener('blur', () => this.cancel());
+    this.button.addEventListener('blur', () => this.cancel('blur'));
   }
 
-  start() {
+  start(input = 'unknown') {
     if (this.timer != null || !this.button || this.button.disabled) return;
+    this.startedAt = this.nowFn();
+    this.input = input;
     this.button.dataset.holding = 'true';
+    this._emit('update_press_start', {input});
     this.timer = this.setTimeoutFn(() => {
+      const elapsedMs = this._elapsedMs();
       this.timer = null;
       this.button.dataset.holding = 'false';
       this.button.disabled = true;
+      this._emit('update_press_complete', {input: this.input, elapsed_ms: elapsedMs});
+      this.startedAt = null;
+      this.input = '';
+      this.pointerId = null;
       this.onComplete();
     }, this.durationMs);
   }
 
-  cancel() {
+  cancel(reason = 'cancel') {
+    const active = this.timer != null && this.startedAt != null;
+    const elapsedMs = active ? this._elapsedMs() : 0;
+    const input = this.input;
     if (this.timer != null) this.clearTimeoutFn(this.timer);
     this.timer = null;
     this.pointerId = null;
+    this.startedAt = null;
+    this.input = '';
     if (this.button) this.button.dataset.holding = 'false';
+    if (active) this._emit('update_press_cancel', {input, reason, elapsed_ms: elapsedMs});
   }
 }
 
@@ -72,6 +106,7 @@ export class MaintenanceController {
     statusUrl = '/maintenance/status.json',
     triggerUrl = '/api/update',
     pauseForMaintenance = () => {},
+    logEvent = () => {},
     reload = () => window.location.reload(),
     fetchFn = (...args) => fetch(...args),
     documentRef = document,
@@ -83,6 +118,7 @@ export class MaintenanceController {
     this.statusUrl = statusUrl;
     this.triggerUrl = triggerUrl;
     this.pauseForMaintenance = pauseForMaintenance;
+    this.logEvent = logEvent;
     this.reload = reload;
     this.fetchFn = fetchFn;
     this.documentRef = documentRef;
@@ -95,14 +131,20 @@ export class MaintenanceController {
     this.activeUpdateId = '';
     this.paused = false;
     this.lastStatus = null;
+    this.lastLoggedStatusKey = '';
     this.longPress = null;
     this._onVisibility = () => this.checkNow();
+  }
+
+  _log(payload) {
+    try { this.logEvent(payload); } catch {}
   }
 
   bindLongPress() {
     if (!this.updateButton || this.longPress) return;
     this.longPress = new LongPressController(this.updateButton, {
       durationMs: 5000,
+      onEvent: payload => this._log(payload),
       onComplete: () => this.triggerUpdate(),
     });
   }
@@ -119,7 +161,7 @@ export class MaintenanceController {
     this.running = false;
     if (this.timer != null) this.clearTimeoutFn(this.timer);
     this.timer = null;
-    this.longPress?.cancel();
+    this.longPress?.cancel('controller_stop');
     this.documentRef?.removeEventListener?.('visibilitychange', this._onVisibility);
   }
 
@@ -152,16 +194,23 @@ export class MaintenanceController {
 
   async triggerUpdate() {
     if (!this.updateButton) return;
+    this._log({event: 'update_request_sent', target: 'update_button'});
     try {
       const response = await this.fetchFn(this.triggerUrl, {method: 'POST'});
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
+      const data = await response.json().catch(() => ({}));
+      this._log({
+        event: 'update_request_response',
+        target: 'update_button',
+        http_status: response.status,
+        state: data.state || '',
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       await this.checkNow();
     } catch (error) {
+      const reason = String(error.message || error).slice(0, 120);
+      this._log({event: 'update_request_failed', target: 'update_button', reason});
       this.updateButton.disabled = false;
-      this.overlay?.showResult({state: 'failed', progress: 100, message: 'Update request failed', failures: [String(error.message || error)]}, {blocking: false});
+      this.overlay?.showResult({state: 'failed', progress: 100, message: 'Update request failed', failures: [reason]}, {blocking: false});
       this.setTimeoutFn(() => this.overlay?.hide(), 1800);
     }
   }
@@ -170,11 +219,23 @@ export class MaintenanceController {
     if (this.paused) return;
     this.paused = true;
     this.activeUpdateId = updateId || this.activeUpdateId;
+    this._log({event: 'maintenance_pause', update_id: updateId || ''});
     this.pauseForMaintenance();
+  }
+
+  _logStatusChange(status) {
+    const updateId = String(status.update_id || '');
+    const state = String(status.state || '');
+    const progress = Math.max(0, Math.min(100, Math.round(Number(status.progress) || 0)));
+    const key = `${updateId}|${state}|${progress}`;
+    if (key === this.lastLoggedStatusKey) return;
+    this.lastLoggedStatusKey = key;
+    this._log({event: 'maintenance_status_seen', update_id: updateId, state, progress});
   }
 
   _handleStatus(status) {
     this.lastStatus = status;
+    this._logStatusChange(status);
     const updateId = String(status.update_id || '');
     const newCycle = this.initialized && Boolean(updateId) && updateId !== this.knownUpdateId;
 
@@ -196,6 +257,8 @@ export class MaintenanceController {
 
     const belongsToActiveCycle = Boolean(updateId && updateId === this.activeUpdateId);
     if (!belongsToActiveCycle && !newCycle) return;
+
+    this._log({event: 'maintenance_result', update_id: updateId, state: status.state, progress: status.progress});
 
     if (status.state === 'complete') {
       this._pauseOnce(updateId);
