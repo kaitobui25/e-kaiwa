@@ -110,7 +110,7 @@ test('timer scheduling exception is logged before it propagates', () => {
   assert.equal(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_scheduled'), false);
 });
 
-test('maintenance controller pauses on active update and reloads on complete', async () => {
+test('maintenance controller pauses on active update and reloads on clean complete', async () => {
   const statuses = [
     {update_id: 'old', state: 'complete', progress: 100},
     {update_id: 'new', state: 'testing', progress: 60, message: 'Testing'},
@@ -148,6 +148,40 @@ test('maintenance controller pauses on active update and reloads on complete', a
   assert.ok(events.some(event => event.event === 'maintenance_result' && event.state === 'complete'));
   const ids = timers.ids();
   for (const id of ids) timers.run(id);
+  assert.equal(reloaded, 1);
+  controller.stop();
+});
+
+test('complete with test failures waits for explicit close before reload', async () => {
+  const statuses = [
+    {update_id: 'old', state: 'complete', progress: 100},
+    {update_id: 'warning', state: 'testing', progress: 60},
+    {update_id: 'warning', state: 'complete', progress: 100, failures: ['Browser tests: 1 failed']},
+  ];
+  let resultOptions = null;
+  let reloaded = 0;
+  const timers = fakeTimers();
+  const controller = new MaintenanceController({
+    overlay: {
+      showProgress() {},
+      showResult: (_value, options) => { resultOptions = options; },
+      hide() {},
+    },
+    pauseForMaintenance() {},
+    reload: () => reloaded++,
+    fetchFn: async () => ({ok: true, status: 200, json: async () => statuses.shift()}),
+    documentRef: {hidden: false, addEventListener() {}, removeEventListener() {}},
+    setTimeoutFn: fn => timers.set(fn),
+    clearTimeoutFn: id => timers.clear(id),
+  });
+
+  await controller.start();
+  await controller.checkNow();
+  await controller.checkNow();
+  assert.equal(reloaded, 0);
+  assert.equal(resultOptions?.blocking, true);
+  assert.equal(typeof resultOptions?.onClose, 'function');
+  resultOptions.onClose();
   assert.equal(reloaded, 1);
   controller.stop();
 });

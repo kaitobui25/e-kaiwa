@@ -42,6 +42,7 @@ def make_handler(runtime: Runtime) -> Type:
         def do_GET(self) -> None:
             path = urlparse(self.path).path
             static_routes = {
+                "/live_recovery.js": (WEB_DIR / "live_recovery.js", "text/javascript; charset=utf-8"),
                 "/maintenance.js": (WEB_DIR / "maintenance.js", "text/javascript; charset=utf-8"),
                 "/ui_maintenance.js": (WEB_DIR / "ui_maintenance.js", "text/javascript; charset=utf-8"),
                 "/maintenance_bootstrap.js": (WEB_DIR / "maintenance_bootstrap.js", "text/javascript; charset=utf-8"),

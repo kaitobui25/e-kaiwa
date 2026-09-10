@@ -13,6 +13,7 @@ const overlay = new MaintenanceOverlay({
   percent: document.getElementById('maintenance-percent'),
   message: document.getElementById('maintenance-message'),
   detail: document.getElementById('maintenance-detail'),
+  closeButton: document.getElementById('maintenance-close'),
 });
 
 function createClientId() {

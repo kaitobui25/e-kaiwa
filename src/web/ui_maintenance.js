@@ -1,11 +1,23 @@
 export class MaintenanceOverlay {
-  constructor({root, appShell, percent, message, detail, ring} = {}) {
+  constructor({root, appShell, percent, message, detail, ring, closeButton} = {}) {
     this.root = root || null;
     this.appShell = appShell || null;
     this.percent = percent || null;
     this.message = message || null;
     this.detail = detail || null;
     this.ring = ring || null;
+    this.closeButton = closeButton || null;
+    this.closeAction = null;
+
+    this.closeButton?.addEventListener('click', () => {
+      const action = this.closeAction;
+      if (typeof action === 'function') action();
+    });
+  }
+
+  _setCloseAction(action = null) {
+    this.closeAction = typeof action === 'function' ? action : null;
+    if (this.closeButton) this.closeButton.hidden = !this.closeAction;
   }
 
   _open({blocking = true} = {}) {
@@ -18,6 +30,7 @@ export class MaintenanceOverlay {
   }
 
   showProgress(status = {}) {
+    this._setCloseAction(null);
     this._open({blocking: true});
     const value = Math.max(0, Math.min(100, Number(status.progress) || 0));
     if (this.percent) this.percent.textContent = `${Math.round(value)}%`;
@@ -27,7 +40,8 @@ export class MaintenanceOverlay {
     this.root?.setAttribute('aria-label', `${status.message || 'Updating E-KAIWA'} ${Math.round(value)}%`);
   }
 
-  showResult(status = {}, {blocking = false} = {}) {
+  showResult(status = {}, {blocking = false, onClose = null} = {}) {
+    this._setCloseAction(onClose);
     this._open({blocking});
     const failures = Array.isArray(status.failures) ? status.failures.filter(Boolean) : [];
     const version = status.to_version ? `v${status.to_version}` : '';
@@ -37,7 +51,7 @@ export class MaintenanceOverlay {
     if (this.percent) this.percent.textContent = failed ? '!' : '100%';
     if (this.ring) this.ring.style.setProperty('--maintenance-progress', '360deg');
     if (this.message) {
-      const label = status.state === 'already_latest' ? 'Already latest' : failed ? 'Update incomplete' : 'Update complete';
+      const label = status.state === 'already_latest' ? 'Already latest' : failed ? 'Update incomplete' : warning ? 'Update completed with warnings' : 'Update complete';
       this.message.textContent = `${prefix} ${label}${version ? ` · ${version}` : ''}`;
     }
     if (this.detail) this.detail.textContent = failures.length ? `Failed: ${failures.slice(0, 2).join(' · ')}` : '';
@@ -45,6 +59,7 @@ export class MaintenanceOverlay {
 
   hide() {
     if (!this.root) return;
+    this._setCloseAction(null);
     this.root.hidden = true;
     this.root.setAttribute('aria-hidden', 'true');
     this.root.dataset.blocking = 'false';

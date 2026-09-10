@@ -19,6 +19,7 @@ import {
 } from './preferences.js';
 import {PlaybackCoordinator} from './audio.js';
 import {UiController} from './ui.js';
+import {LiveRecoveryCoordinator} from './live_recovery.js';
 
 (() => {
   'use strict';
@@ -27,6 +28,7 @@ import {UiController} from './ui.js';
   const AI_SPEED_VALUES = ['0.5', '0.6', '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5'];
   const DEFAULT_AI_SPEED = '0.8';
   const REPLAY_TURN_LIMIT = 8;
+  const RESPONSE_TIMEOUT_MS = 25000;
 
   const elements = {
     talk: document.getElementById('talk'),
@@ -75,7 +77,10 @@ import {UiController} from './ui.js';
     setupReady: false,
     reconnectNeeded: false,
     reconnectAfterConnect: false,
+    reconnectPending: false,
+    resumeHandsFreeAfterReconnect: false,
     connecting: false,
+    browserOnline: navigator.onLine !== false,
     inputForwarding: false,
     inputCtx: null,
     micReadyPromise: null,
@@ -89,8 +94,30 @@ import {UiController} from './ui.js';
     turns: [],
     ui: null,
     playback: null,
-    preferences: null
+    preferences: null,
+    recovery: null
   };
+
+  state.recovery = new LiveRecoveryCoordinator({
+    responseTimeoutMs: RESPONSE_TIMEOUT_MS,
+    onResponseTimeout: turnNo => handleResponseTimeout(turnNo),
+    onReconnectDue: () => handleScheduledReconnect()
+  });
+
+  function emitUiEvent(payload) {
+    try {
+      fetch('/api/ui-event', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          session_id: state.sessionId || '',
+          active_turn: state.activeTurn?.no || null,
+          ...payload
+        }),
+        keepalive: true
+      }).catch(() => {});
+    } catch {}
+  }
 
   function readJsonResponse(response) {
     return response.text().then(text => {
@@ -164,6 +191,10 @@ import {UiController} from './ui.js';
       pronunciationEnabled: elements.pron.checked,
       conversationMode: state.conversationMode
     });
+  }
+
+  function updateStreamingTurn(turn) {
+    if (!state.ui?.updateStreamingTurn(turn)) render();
   }
 
   function concatTranscript(previous, incoming, targetLanguage = state.targetLanguage) {
@@ -352,9 +383,9 @@ import {UiController} from './ui.js';
   }
 
   function requestSessionReconnect(message) {
-    // In push-to-talk, release clears inputBusy before Gemini completes the
-    // turn. Preserve that turn and reconnect only after finishTurn().
+    // Settings changes require a fresh setup because instruction/model/VAD may differ.
     if (inputBusy() || state.activeTurn) {
+      state.reconnectPending = true;
       state.ui.setStatus(message);
       return;
     }
@@ -363,7 +394,8 @@ import {UiController} from './ui.js';
       state.ui.setStatus(message);
       return;
     }
-    newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
+    state.recovery.clearHandle();
+    newLiveSession({reason: 'settings_change'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
   }
 
   function cleanupMic({clearSettings = true} = {}) {
@@ -459,6 +491,25 @@ import {UiController} from './ui.js';
     state.turns.push(turn);
     render();
     return turn;
+  }
+
+  function abortActiveTurn(reason = 'connection_recovery') {
+    const turn = state.activeTurn;
+    if (!turn) return;
+    state.recovery.finishResponse(turn.no);
+    turn.finished = true;
+    turn.coachEligible = false;
+    turn.coachSkipReason = reason;
+    turn.pcmChunks = [];
+    turn.replayPcm = null;
+    if (!turn.userText.trim() && !turn.aiText.trim()) {
+      state.turns = state.turns.filter(item => item !== turn);
+    }
+    state.turnNo += 1;
+    state.activeTurn = null;
+    state.pushActivityOpen = false;
+    state.inputForwarding = false;
+    render();
   }
 
   function boundReplayHistory() {
@@ -566,6 +617,7 @@ import {UiController} from './ui.js';
 
   function finishTurn(turn) {
     if (!turn || turn.finished || turn !== state.activeTurn) return;
+    state.recovery.finishResponse(turn.no);
     turn.finished = true;
     finalizeLanguageMode(turn);
     turn.replayPcm = joinPcm(turn.pcmChunks);
@@ -581,12 +633,21 @@ import {UiController} from './ui.js';
     render();
 
     if (sessionSettingsChanged()) {
-      newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
+      state.reconnectPending = false;
+      state.recovery.clearHandle();
+      newLiveSession({reason: 'settings_change_after_turn'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+      return;
+    }
+
+    if (state.reconnectPending) {
+      state.reconnectPending = false;
+      if (handsFree() && state.conversationActive) state.resumeHandsFreeAfterReconnect = true;
+      newLiveSession({resume: true, reason: 'deferred_recovery'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
       return;
     }
 
     if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
-      showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
+      recoverLiveSession('turn_complete_socket_unavailable', {resume: true, force: true});
       return;
     }
 
@@ -611,6 +672,7 @@ import {UiController} from './ui.js';
   }
 
   function showReconnect(message) {
+    state.recovery.clearTimers();
     resetInputState();
     state.playback?.clear();
     cleanupMic();
@@ -622,15 +684,69 @@ import {UiController} from './ui.js';
     state.ui?.setStatus(message || publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
   }
 
+  async function recoverLiveSession(reason, {resume = true, force = true} = {}) {
+    if (!state.browserOnline) return;
+    if (state.connecting) return;
+    if ((inputBusy() || state.activeTurn) && !force) {
+      state.reconnectPending = true;
+      return;
+    }
+
+    if (handsFree() && state.conversationActive) state.resumeHandsFreeAfterReconnect = true;
+    if (force) abortActiveTurn(reason);
+    state.inputForwarding = false;
+    state.pushToTalkPressed = false;
+    state.pushActivityOpen = false;
+    state.playback?.clear();
+    cleanupMic({clearSettings: false});
+    emitUiEvent({event: 'reconnect_attempt', reason, resume_requested: Boolean(resume && state.recovery.hasHandle())});
+
+    try {
+      await newLiveSession({resume, reason});
+    } catch (error) {
+      emitUiEvent({event: 'reconnect_result', reason, ok: false, error: String(error.message || error).slice(0, 120)});
+      showReconnect(`Connection error: ${error.message}.`);
+    }
+  }
+
+  function handleScheduledReconnect() {
+    emitUiEvent({event: 'go_away_reconnect_due'});
+    if (!handsFree() && (inputBusy() || state.activeTurn)) {
+      state.reconnectPending = true;
+      return;
+    }
+    recoverLiveSession('go_away', {resume: true, force: true});
+  }
+
+  function handleResponseTimeout(turnNo) {
+    if (!state.activeTurn || state.activeTurn.no !== turnNo) return;
+    emitUiEvent({event: 'response_timeout', turn: turnNo, timeout_ms: RESPONSE_TIMEOUT_MS});
+    recoverLiveSession('response_timeout', {resume: true, force: true});
+  }
+
   async function retryWithRealtimeFallback(reason) {
     if (state.setupReady || state.sessionFallbackTried || !state.realtimeFallbackModel || state.realtimeFallbackModel === state.effectiveRealtimeModel) return false;
     state.sessionFallbackTried = true;
     state.connecting = false;
+    state.recovery.clearHandle();
     state.ui.setStatus(`Primary realtime model failed (${reason}). Trying fallback…`);
     try {
-      await newLiveSession({fallback: true});
+      await newLiveSession({fallback: true, reason: 'model_fallback'});
     } catch (error) {
       showReconnect(`Fallback connection error: ${error.message}.`);
+    }
+    return true;
+  }
+
+  async function retryFreshAfterResume(socket, reason) {
+    if (!socket?.__ekaiwaResumeAttempted || socket.__ekaiwaSetupComplete) return false;
+    state.connecting = false;
+    state.recovery.clearHandle();
+    emitUiEvent({event: 'reconnect_result', reason: socket.__ekaiwaReason || 'resume', ok: false, resumed: false, error: String(reason).slice(0, 120)});
+    try {
+      await newLiveSession({reason: 'resume_fallback_fresh'});
+    } catch (error) {
+      showReconnect(`Connection error: ${error.message}.`);
     }
     return true;
   }
@@ -645,10 +761,25 @@ import {UiController} from './ui.js';
       return;
     }
 
+    if (message.sessionResumptionUpdate) {
+      const stored = state.recovery.updateResumption(message.sessionResumptionUpdate);
+      emitUiEvent({
+        event: 'session_resumption_update',
+        resumable: message.sessionResumptionUpdate.resumable === true,
+        handle_stored: stored
+      });
+    }
+
+    if (message.goAway) {
+      const schedule = state.recovery.scheduleGoAway(message.goAway.timeLeft);
+      emitUiEvent({event: 'go_away', time_left_ms: Math.round(schedule.remainingMs), reconnect_delay_ms: Math.round(schedule.delayMs)});
+    }
+
     if (message.error) {
       const detail = message.error.message || JSON.stringify(message.error);
       if (!state.setupReady) {
         state.connecting = false;
+        if (await retryFreshAfterResume(socket, detail)) return;
         if (await retryWithRealtimeFallback(detail)) return;
         showReconnect(`Gemini setup error: ${detail}.`);
         return;
@@ -658,11 +789,20 @@ import {UiController} from './ui.js';
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'setupComplete')) {
+      socket.__ekaiwaSetupComplete = true;
       state.connecting = false;
       state.reconnectNeeded = false;
       state.setupReady = true;
       state.ui.setSetupReady(true);
       state.ui.setTalkState('ready');
+      emitUiEvent({
+        event: 'ws_setup_complete',
+        resumed: Boolean(socket.__ekaiwaResumeAttempted),
+        reason: socket.__ekaiwaReason || 'initial'
+      });
+      if (socket.__ekaiwaReason && socket.__ekaiwaReason !== 'initial') {
+        emitUiEvent({event: 'reconnect_result', reason: socket.__ekaiwaReason, ok: true, resumed: Boolean(socket.__ekaiwaResumeAttempted)});
+      }
       state.ui.setStatus(
         state.appMode === 'public'
           ? (handsFree() ? state.ui.t('ready') : state.ui.t('holdToTalk'))
@@ -670,7 +810,13 @@ import {UiController} from './ui.js';
       );
       if (state.reconnectAfterConnect && !inputBusy()) {
         state.reconnectAfterConnect = false;
-        newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
+        state.recovery.clearHandle();
+        newLiveSession({reason: 'settings_change_after_connect'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+        return;
+      }
+      if (state.resumeHandsFreeAfterReconnect && handsFree()) {
+        state.resumeHandsFreeAfterReconnect = false;
+        startHandsFreeConversation().catch(error => showReconnect(`Microphone error: ${error.message}.`));
       }
       return;
     }
@@ -681,15 +827,16 @@ import {UiController} from './ui.js';
 
     const turn = state.activeTurn;
     if (!turn) return;
+    state.recovery.touchResponse(turn.no);
     if (content.inputTranscription?.languageCode) recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
     if (content.inputTranscription?.text) {
       turn.userText = concatTranscript(turn.userText, content.inputTranscription.text, turn.targetLanguage);
-      render();
+      updateStreamingTurn(turn);
     }
     if (content.outputTranscription?.languageCode) recordLanguageCode(turn, content.outputTranscription.languageCode, 'output');
     if (content.outputTranscription?.text) {
       turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text, turn.targetLanguage);
-      render();
+      updateStreamingTurn(turn);
     }
 
     for (const part of (content.modelTurn?.parts || [])) {
@@ -708,11 +855,15 @@ import {UiController} from './ui.js';
     };
   }
 
-  async function newLiveSession({fallback = false} = {}) {
+  async function newLiveSession({fallback = false, resume = false, reason = 'initial'} = {}) {
     if (state.connecting) return;
+    if (!state.browserOnline) throw new Error('Browser is offline');
     state.connecting = true;
     state.reconnectNeeded = false;
+    state.reconnectPending = false;
     state.setupReady = false;
+    state.recovery.clearTimers();
+    if (!resume) state.recovery.clearHandle();
     if (!fallback) state.sessionFallbackTried = false;
     state.ui.setSetupReady(false);
     state.ui.setTalkState('connecting');
@@ -742,11 +893,17 @@ import {UiController} from './ui.js';
     state.echoGuardMs = Number(data.echo_guard_ms ?? state.echoGuardMs);
     if (data.fallback_used) state.sessionFallbackTried = true;
 
+    const resumptionConfig = state.recovery.setupConfig({resume});
+    const resumeAttempted = Boolean(resumptionConfig.handle);
     const socket = new WebSocket(`${WS_BASE}?access_token=${encodeURIComponent(data.token)}`);
+    socket.__ekaiwaResumeAttempted = resumeAttempted;
+    socket.__ekaiwaSetupComplete = false;
+    socket.__ekaiwaReason = reason;
     state.ws = socket;
     socket.binaryType = 'arraybuffer';
     socket.onopen = () => {
       if (state.ws !== socket) return;
+      emitUiEvent({event: 'ws_open', reason, resume_attempted: resumeAttempted});
       state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
       state.selectedTargetLanguage = normalizeTargetLanguage(elements.targetLanguage.value);
       state.targetLanguage = state.selectedTargetLanguage;
@@ -760,21 +917,30 @@ import {UiController} from './ui.js';
             automaticActivityDetection: liveVadConfig()
           },
           inputAudioTranscription: {},
-          outputAudioTranscription: {}
+          outputAudioTranscription: {},
+          sessionResumption: resumptionConfig,
+          contextWindowCompression: {slidingWindow: {}}
         }
       }));
     };
     socket.onmessage = event => onLiveMessage(event, socket);
     socket.onerror = () => {
-      if (state.ws === socket && state.setupReady) state.ui.setStatus('Gemini Live WebSocket error.', {error: true});
+      if (state.ws !== socket) return;
+      emitUiEvent({event: 'ws_error', reason, setup_ready: state.setupReady});
+      if (state.setupReady) state.ui.setStatus('Gemini Live WebSocket error.', {error: true});
     };
     socket.onclose = async event => {
       if (state.ws !== socket) return;
+      const wasReady = state.setupReady;
       state.ws = null;
       state.connecting = false;
-      const reason = event.reason ? `: ${event.reason}` : '';
-      if (!state.setupReady && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${reason}`)) return;
-      showReconnect(event.code === 1008 ? publicOrDev('reconnect', 'Live session paused after being idle. Tap Reconnect.') : `Live session closed (${event.code})${reason}.`);
+      state.setupReady = false;
+      const detail = event.reason ? `: ${event.reason}` : '';
+      emitUiEvent({event: 'ws_close', code: event.code, reason: String(event.reason || '').slice(0, 120), was_ready: wasReady});
+      if (!state.browserOnline) return;
+      if (await retryFreshAfterResume(socket, `WebSocket closed ${event.code}${detail}`)) return;
+      if (!wasReady && !socket.__ekaiwaResumeAttempted && !state.reconnectNeeded && !state.sessionFallbackTried && !state.recovery.hasHandle() && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${detail}`)) return;
+      recoverLiveSession(`ws_close_${event.code}`, {resume: true, force: true});
     };
   }
 
@@ -800,9 +966,11 @@ import {UiController} from './ui.js';
 
   function stopHandsFreeConversation() {
     if (!state.conversationActive) return;
+    state.resumeHandsFreeAfterReconnect = false;
     state.conversationActive = false;
     state.inputForwarding = false;
     state.activeTurn = null;
+    state.recovery.clearTimers();
     state.playback.clear();
     cleanupMic();
     if (state.ws?.readyState === WebSocket.OPEN) {
@@ -810,7 +978,8 @@ import {UiController} from './ui.js';
     }
     if (sessionSettingsChanged()) {
       state.ui.setTalkState('connecting');
-      newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
+      state.recovery.clearHandle();
+      newLiveSession({reason: 'settings_change'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
     } else {
       state.ui.setTalkState('ready');
       setStatus('stopped', 'Conversation stopped.');
@@ -859,6 +1028,7 @@ import {UiController} from './ui.js';
     state.ws.send(JSON.stringify({realtimeInput: {activityStart: {}}}));
     state.pushActivityOpen = true;
     state.inputForwarding = true;
+    emitUiEvent({event: 'ptt_start', turn: turn.no});
     setStatus('listening', 'Listening…');
     return true;
   }
@@ -870,20 +1040,24 @@ import {UiController} from './ui.js';
     state.inputForwarding = false;
 
     if (state.pushActivityOpen && state.ws?.readyState === WebSocket.OPEN) {
+      const turnNo = state.activeTurn?.no || null;
       state.ws.send(JSON.stringify({realtimeInput: {activityEnd: {}}}));
       state.pushActivityOpen = false;
       cleanupMic({clearSettings: false});
       state.ui.setTalkState('waiting');
       state.ui.setStatus(state.ui.t('waiting'));
+      if (turnNo) state.recovery.armResponseWatchdog(turnNo);
+      emitUiEvent({event: 'ptt_end', turn: turnNo});
       return;
     }
 
     if (!state.micReadyPromise) cleanupMic({clearSettings: false});
-    state.ui.setTalkState('ready');
-    state.ui.setStatus(state.ui.t('holdToTalk'));
+    emitUiEvent({event: 'ptt_end', turn: state.activeTurn?.no || null, socket_ready: false});
+    recoverLiveSession('ptt_end_socket_unavailable', {resume: true, force: true});
   }
 
   function endInputBeforeModeChange() {
+    state.resumeHandsFreeAfterReconnect = false;
     state.inputForwarding = false;
     if (state.ws?.readyState === WebSocket.OPEN) {
       if (handsFree() && state.conversationActive) {
@@ -892,15 +1066,22 @@ import {UiController} from './ui.js';
         state.ws.send(JSON.stringify({realtimeInput: {activityEnd: {}}}));
       }
     }
+    state.recovery.clearTimers();
     resetInputState();
     state.playback.clear();
     cleanupMic();
   }
 
   async function handleUiAction(action, detail) {
-    if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) return;
+    if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) {
+      state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
+      return;
+    }
     const turn = state.turns.find(item => item.no === detail.turn);
-    if (!turn || !state.playback || state.playback.livePlaying) return;
+    if (!turn || !state.playback || state.playback.livePlaying) {
+      state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
+      return;
+    }
 
     let played = true;
     if (action === 'replay-user' && turn.replayPcm?.length) {
@@ -963,7 +1144,8 @@ import {UiController} from './ui.js';
         state.reconnectAfterConnect = true;
         return;
       }
-      await newLiveSession();
+      state.recovery.clearHandle();
+      await newLiveSession({reason: 'conversation_mode_change'});
     } catch (error) {
       showReconnect(`Connection error: ${error.message}.`);
     }
@@ -1054,12 +1236,12 @@ import {UiController} from './ui.js';
     try {
       if (state.appMode === 'public' && !handsFree()) {
         if (state.reconnectNeeded || !state.setupReady || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
-          await newLiveSession();
+          await newLiveSession({resume: state.recovery.hasHandle(), reason: 'manual_reconnect'});
         }
         return;
       }
       if (state.reconnectNeeded || !state.setupReady || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
-        await newLiveSession();
+        await newLiveSession({resume: state.recovery.hasHandle(), reason: 'manual_reconnect'});
         return;
       }
       if (state.conversationActive) stopHandsFreeConversation();
@@ -1069,8 +1251,33 @@ import {UiController} from './ui.js';
     }
   });
 
+  function handleBrowserOffline() {
+    if (!state.browserOnline) return;
+    state.browserOnline = false;
+    emitUiEvent({event: 'browser_offline'});
+    state.recovery.clearTimers();
+    abortActiveTurn('browser_offline');
+    state.resumeHandsFreeAfterReconnect = handsFree() && state.conversationActive;
+    const socket = state.ws;
+    state.ws = null;
+    state.connecting = false;
+    try { socket?.close(); } catch {}
+    showReconnect(state.appMode === 'public' ? 'Network offline. Reconnecting when connection returns…' : 'Browser offline.');
+  }
+
+  function handleBrowserOnline() {
+    if (state.browserOnline && state.setupReady && state.ws?.readyState === WebSocket.OPEN) return;
+    state.browserOnline = true;
+    emitUiEvent({event: 'browser_online'});
+    recoverLiveSession('browser_online', {resume: true, force: true});
+  }
+
+  window.addEventListener('offline', handleBrowserOffline);
+  window.addEventListener('online', handleBrowserOnline);
+
   window.addEventListener('beforeunload', () => {
     state.inputForwarding = false;
+    state.recovery.clearTimers();
     state.playback?.clear();
     cleanupMic();
     try { state.ws?.close(); } catch {}
@@ -1083,7 +1290,7 @@ import {UiController} from './ui.js';
       state.ui.setTalkState('connecting');
       state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : 'Settings loaded. Creating secure live session…');
       applySettingsPayload(payload);
-      await newLiveSession();
+      await newLiveSession({reason: 'initial'});
     } catch (error) {
       if (!state.ui) initializeUi({app_mode: 'dev'});
       showReconnect(`Startup error: ${error.message}.`);

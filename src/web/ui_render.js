@@ -90,10 +90,14 @@ export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) 
     : escapeHtml(turn.userText || '…');
   const allowAudioActions = !isHandsFreeMode(conversationMode);
   const userActions = `${inlineReplay(turn, t, allowAudioActions)}${inlineScore(turn, t, pronunciationEnabled)}`;
+  const actionRow = userActions ? `<div class="message-actions">${userActions}</div>` : '';
 
   const userRow = `<div class="message-row user-row">
     <div class="message-stack user-stack">
-      <div class="bubble user-bubble"><div class="message-text user-message-text">${userText}${userActions}</div></div>
+      <div class="bubble user-bubble">
+        <div class="message-text user-message-text" data-turn-text="user">${userText}</div>
+        ${actionRow}
+      </div>
     </div>
     <div class="avatar user-avatar" aria-hidden="true">${icon('user')}</div>
   </div>`;
@@ -102,11 +106,11 @@ export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) 
     <div class="avatar ai-avatar" aria-hidden="true">${icon('sparkle')}</div>
     <div class="message-stack ai-stack">
       <div class="message-meta">${escapeHtml(t('ai'))}</div>
-      <div class="bubble ai-bubble"><div class="message-text">${escapeHtml(turn.aiText || '…')}</div></div>
+      <div class="bubble ai-bubble"><div class="message-text" data-turn-text="ai">${escapeHtml(turn.aiText || '…')}</div></div>
     </div>
   </div>`;
 
-  return `<article class="turn public-turn">${userRow}${aiRow}</article>`;
+  return `<article class="turn public-turn" data-turn="${turn.no}">${userRow}${aiRow}</article>`;
 }
 
 export function devTurnHtml(turn, pronunciationEnabled) {
