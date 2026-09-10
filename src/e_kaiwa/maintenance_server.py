@@ -18,6 +18,7 @@ def make_handler(runtime: Runtime) -> Type:
     base_handler = make_base_handler(runtime)
     revision = git_revision()
     version = app_version()
+    update_enabled = updates_enabled()
 
     class MaintenanceRequestHandler(base_handler):
         server_version = f"EKaiwaLive/{version}"
@@ -44,6 +45,7 @@ def make_handler(runtime: Runtime) -> Type:
                         "model": runtime.settings.realtime_model,
                         "version": version,
                         "revision": revision,
+                        "update_enabled": update_enabled,
                     },
                 )
                 return
@@ -52,7 +54,7 @@ def make_handler(runtime: Runtime) -> Type:
                 payload = _client_settings_payload(runtime)
                 payload["app_version"] = version
                 payload["revision"] = revision
-                payload["update_enabled"] = updates_enabled()
+                payload["update_enabled"] = update_enabled
                 self.send_json(200, payload)
                 return
 
@@ -64,7 +66,7 @@ def make_handler(runtime: Runtime) -> Type:
                 super().do_POST()
                 return
 
-            if not updates_enabled():
+            if not update_enabled:
                 self.send_json(503, {"error": "self-update is not enabled on this host"})
                 return
             if runtime.access.is_public:
