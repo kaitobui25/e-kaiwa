@@ -205,6 +205,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/": (WEB_DIR / "live.html", "text/html; charset=utf-8"),
                 "/index.html": (WEB_DIR / "live.html", "text/html; charset=utf-8"),
                 "/live.css": (WEB_DIR / "live.css", "text/css; charset=utf-8"),
+                "/public.css": (WEB_DIR / "public.css", "text/css; charset=utf-8"),
                 "/live.js": (WEB_DIR / "live.js", "text/javascript; charset=utf-8"),
                 "/language_policy.js": (WEB_DIR / "language_policy.js", "text/javascript; charset=utf-8"),
                 "/preferences.js": (WEB_DIR / "preferences.js", "text/javascript; charset=utf-8"),
