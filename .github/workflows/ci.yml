@@ -30,7 +30,7 @@ jobs:
         run: node --test src/tests/js/*.test.mjs
 
       - name: Python syntax check
-        run: python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py
+        run: python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py deploy/updater
 
       - name: Browser JavaScript syntax check
         run: |
