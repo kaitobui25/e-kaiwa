@@ -21,19 +21,65 @@ UI_EVENT_NAMES = frozenset(
         "maintenance_status_seen",
         "maintenance_pause",
         "maintenance_result",
+        "ws_open",
+        "ws_setup_complete",
+        "ws_error",
+        "ws_close",
+        "gemini_error",
+        "session_resumption_update",
+        "go_away",
+        "go_away_reconnect_due",
+        "reconnect_attempt",
+        "reconnect_result",
+        "response_timeout",
+        "browser_offline",
+        "browser_online",
+        "ptt_start",
+        "ptt_end",
+        "session_request_failed",
+        "startup_error",
     }
 )
 
 _TEXT_FIELDS = {
     "client_id": 80,
+    "session_id": 80,
     "target": 48,
     "input": 24,
     "phase": 64,
-    "reason": 120,
+    "reason": 160,
+    "error": 240,
     "state": 48,
     "update_id": 80,
 }
-_NUMBER_FIELDS = frozenset({"elapsed_ms", "http_status", "progress", "pointer_id", "expected_pointer_id"})
+_NUMBER_FIELDS = frozenset(
+    {
+        "elapsed_ms",
+        "http_status",
+        "progress",
+        "pointer_id",
+        "expected_pointer_id",
+        "active_turn",
+        "turn",
+        "code",
+        "timeout_ms",
+        "time_left_ms",
+        "reconnect_delay_ms",
+    }
+)
+_BOOL_FIELDS = frozenset(
+    {
+        "resume_attempted",
+        "resume_requested",
+        "resumed",
+        "resumable",
+        "handle_stored",
+        "setup_ready",
+        "was_ready",
+        "socket_ready",
+        "ok",
+    }
+)
 
 
 def _now() -> datetime:
@@ -67,6 +113,10 @@ def normalize_ui_event(payload: object) -> dict:
     for field in _NUMBER_FIELDS:
         value = _bounded_number(data.get(field))
         if value is not None:
+            result[field] = value
+    for field in _BOOL_FIELDS:
+        value = data.get(field)
+        if isinstance(value, bool):
             result[field] = value
     return result
 
