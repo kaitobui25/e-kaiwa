@@ -433,10 +433,12 @@ body[data-app-mode="public"] .settings-panel {
 }
 
 body[data-app-mode="public"] .settings-head {
+  position: relative;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
   min-height: 54px;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  padding: 7px 6px 7px 16px;
+  padding: 7px 36px 7px 16px;
 }
 
 body[data-app-mode="public"] .settings-head strong {
@@ -444,16 +446,19 @@ body[data-app-mode="public"] .settings-head strong {
 }
 
 body[data-app-mode="public"] .settings-head .overlay-icon {
+  position: absolute;
+  top: 50%;
+  right: 0;
   width: 36px;
   height: 36px;
-  justify-self: end;
+  transform: translateY(-50%);
   border-radius: 50%;
 }
 
 body[data-app-mode="public"] .settings-head .overlay-icon svg {
   width: 19px;
   height: 19px;
-  transform: translateY(1px);
+  transform: translateY(2px);
 }
 
 body[data-app-mode="public"] .settings-scroll {
