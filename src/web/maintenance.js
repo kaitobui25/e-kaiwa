@@ -1,5 +1,7 @@
 const ACTIVE_STATES = new Set(['preparing', 'stopping', 'updating', 'dependencies', 'testing', 'checks_complete', 'starting', 'health']);
 const TERMINAL_STATES = new Set(['complete', 'already_latest', 'failed', 'start_failed']);
+const defaultSetTimeout = (fn, ms) => globalThis.setTimeout(fn, ms);
+const defaultClearTimeout = id => globalThis.clearTimeout(id);
 
 function defaultDelay(status, hidden) {
   if (status && ACTIVE_STATES.has(status.state)) return 750;
@@ -12,8 +14,8 @@ export class LongPressController {
     onComplete = () => {},
     onEvent = () => {},
     nowFn = () => Date.now(),
-    setTimeoutFn = setTimeout,
-    clearTimeoutFn = clearTimeout,
+    setTimeoutFn = defaultSetTimeout,
+    clearTimeoutFn = defaultClearTimeout,
   } = {}) {
     this.button = button;
     this.durationMs = durationMs;
@@ -169,8 +171,8 @@ export class MaintenanceController {
     reload = () => window.location.reload(),
     fetchFn = (...args) => fetch(...args),
     documentRef = document,
-    setTimeoutFn = setTimeout,
-    clearTimeoutFn = clearTimeout,
+    setTimeoutFn = defaultSetTimeout,
+    clearTimeoutFn = defaultClearTimeout,
   } = {}) {
     this.overlay = overlay;
     this.updateButton = updateButton;
