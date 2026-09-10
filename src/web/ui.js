@@ -9,6 +9,8 @@ import {icon} from './ui_icons.js';
 import {devTurnHtml, escapeHtml, publicTurnHtml} from './ui_render.js';
 import {UiOverlayController} from './ui_overlay.js';
 
+const AUTO_SCROLL_THRESHOLD_PX = 180;
+
 const COPY = Object.freeze({
   ja: {
     conversationHistory: '会話履歴',
@@ -169,6 +171,7 @@ export class UiController {
       : CONVERSATION_MODES.HANDS_FREE;
     this.lastStatus = '';
     this.lastStatusError = false;
+    this.replayEnabled = true;
 
     this.overlay = new UiOverlayController({
       mode: this.mode,
@@ -192,13 +195,42 @@ export class UiController {
   _bindConversation() {
     this.elements.conversation?.addEventListener('click', event => {
       const trigger = event.target.closest?.('[data-ui-action]');
-      if (!trigger) return;
+      if (!trigger || trigger.disabled) return;
       const turnNo = Number(trigger.dataset.turn || 0);
       const turn = this.turns.find(item => item.no === turnNo);
       if (!turn) return;
       if (trigger.dataset.uiAction === 'open-coach') this.overlay.openCoach(turn);
       else if (trigger.dataset.uiAction === 'open-replay') this.overlay.openReplay(turn);
     });
+  }
+
+  _isNearBottom() {
+    const win = globalThis.window;
+    const doc = globalThis.document?.documentElement;
+    if (!win || !doc) return true;
+    const scrollY = Number(win.scrollY ?? win.pageYOffset ?? 0);
+    const innerHeight = Number(win.innerHeight ?? 0);
+    const scrollHeight = Number(doc.scrollHeight ?? 0);
+    if (!innerHeight || !scrollHeight) return true;
+    return scrollY + innerHeight >= scrollHeight - AUTO_SCROLL_THRESHOLD_PX;
+  }
+
+  _scrollLatest({smooth = false, shouldScroll = true} = {}) {
+    if (!shouldScroll || this.mode !== 'public') return;
+    const latest = this.elements.conversation?.lastElementChild;
+    if (!latest?.scrollIntoView) return;
+    const run = () => latest.scrollIntoView({block: 'end', behavior: smooth ? 'smooth' : 'auto'});
+    if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(run);
+    else run();
+  }
+
+  _applyReplayAvailability() {
+    const target = this.elements.conversation;
+    if (!target?.querySelectorAll) return;
+    for (const button of target.querySelectorAll('[data-ui-action="open-replay"]')) {
+      button.disabled = !this.replayEnabled;
+      button.setAttribute?.('aria-disabled', String(!this.replayEnabled));
+    }
   }
 
   t(key) {
@@ -270,6 +302,8 @@ export class UiController {
     button.dataset.state = state;
     button.className = `talk-button talk-${state}`;
     button.disabled = ['connecting', 'waiting', 'speaking'].includes(state);
+    this.replayEnabled = !['connecting', 'pressed', 'recording', 'waiting', 'speaking'].includes(state);
+    this._applyReplayAvailability();
 
     if (this.mode === 'dev') {
       const label = DEV_TALK_LABELS[state] || DEV_TALK_LABELS.ready;
@@ -311,11 +345,28 @@ export class UiController {
     this.overlay.close();
   }
 
+  updateStreamingTurn(turn) {
+    if (!turn || this.mode !== 'public') return false;
+    const target = this.elements.conversation;
+    if (!target?.querySelector) return false;
+    const article = target.querySelector(`[data-turn="${Number(turn.no)}"]`);
+    if (!article) return false;
+
+    const shouldScroll = this._isNearBottom();
+    const userText = article.querySelector?.('[data-turn-text="user"]');
+    const aiText = article.querySelector?.('[data-turn-text="ai"]');
+    if (userText) userText.textContent = turn.userText || '…';
+    if (aiText) aiText.textContent = turn.aiText || '…';
+    this._scrollLatest({shouldScroll});
+    return true;
+  }
+
   render(turns, {pronunciationEnabled = true, conversationMode = this.conversationMode} = {}) {
     const target = this.elements.conversation;
     this.turns = Array.isArray(turns) ? turns : [];
     this.setPlaybackRate(this.elements.aiSpeed?.value ?? this.playbackRate);
     if (!target) return;
+    const shouldScroll = this._isNearBottom();
     if (!this.turns.length) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(this.mode === 'public' ? this.t('noConversation') : 'No conversation yet.')}</div>`;
       this.overlay.refresh(this.turns);
@@ -324,7 +375,8 @@ export class UiController {
     target.innerHTML = this.mode === 'public'
       ? this.turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled, conversationMode)).join('')
       : this.turns.slice().reverse().map(turn => devTurnHtml(turn, pronunciationEnabled)).join('');
+    this._applyReplayAvailability();
     this.overlay.refresh(this.turns);
-    if (this.mode === 'public') target.lastElementChild?.scrollIntoView?.({block: 'end', behavior: 'smooth'});
+    this._scrollLatest({shouldScroll});
   }
 }
