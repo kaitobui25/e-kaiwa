@@ -7,6 +7,7 @@ WEB = ROOT / "web"
 HTML = WEB / "live.html"
 CSS = WEB / "public.css"
 UI = WEB / "ui.js"
+LIVE = WEB / "live.js"
 
 
 class MobileSettingsUiTests(unittest.TestCase):
@@ -42,7 +43,33 @@ class MobileSettingsUiTests(unittest.TestCase):
         css = CSS.read_text(encoding="utf-8")
         self.assertIn('setting-control-row-primary', html)
         self.assertIn('.setting-control-row-primary > label', css)
+        self.assertIn('.setting-control-row-primary select', css)
+        self.assertIn('min-height: 52px;', css)
         self.assertIn('font-size: 16px;', css)
+
+    def test_settings_close_control_is_compact_and_right_aligned(self):
+        css = CSS.read_text(encoding="utf-8")
+        self.assertIn('grid-template-columns: minmax(0, 1fr) 36px;', css)
+        self.assertIn('.settings-head .overlay-icon {', css)
+        self.assertIn('width: 36px;', css)
+        self.assertIn('justify-self: end;', css)
+        self.assertIn('transform: translateY(1px);', css)
+
+    def test_setting_selects_have_comfortable_mobile_height(self):
+        css = CSS.read_text(encoding="utf-8")
+        self.assertIn('min-height: 48px;', css)
+        self.assertIn('padding: 9px 30px 9px 12px;', css)
+        self.assertIn('.setting-control-row select option', css)
+
+    def test_ai_speed_keeps_one_decimal_select_values(self):
+        html = HTML.read_text(encoding="utf-8")
+        live = LIVE.read_text(encoding="utf-8")
+        self.assertIn('<option value="1.0">1.0×</option>', html)
+        self.assertIn('function aiSpeedValue(value, fallback = DEFAULT_AI_SPEED)', live)
+        self.assertIn('Number(normalized).toFixed(1)', live)
+        self.assertIn('elements.aiSpeed.value = aiSpeedValue(preferences.playbackRate);', live)
+        self.assertIn('const value = aiSpeedValue(elements.aiSpeed.value);', live)
+        self.assertNotIn('String(normalizePlaybackRate(elements.aiSpeed.value', live)
 
     def test_vietnamese_settings_copy_is_compact(self):
         ui = UI.read_text(encoding="utf-8")
