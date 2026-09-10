@@ -6,10 +6,12 @@
   <meta name="theme-color" content="#f7f9fc">
   <title>E-KAIWA</title>
   <link rel="stylesheet" href="/live.css">
+  <link rel="stylesheet" href="/maintenance.css">
   <script type="module" src="/live.js"></script>
+  <script type="module" src="/maintenance_bootstrap.js"></script>
 </head>
 <body data-app-mode="loading" data-theme="light" data-conversation-mode="push_to_talk">
-<main class="app-shell">
+<main id="app-shell" class="app-shell">
   <header class="app-header">
     <div class="brand-block">
       <h1>E-KAIWA</h1>
@@ -69,6 +71,13 @@
       <strong data-i18n="settings">Settings</strong>
       <button id="settings-close" class="overlay-icon" type="button" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+      </button>
+    </div>
+
+    <div class="settings-release public-only">
+      <span id="app-version" class="app-version">E-KAIWA</span>
+      <button id="update-button" class="update-button" type="button" data-holding="false" aria-label="Hold for 5 seconds to update E-KAIWA">
+        <span>Hold 5s to Update</span>
       </button>
     </div>
 
@@ -144,5 +153,15 @@
     </div>
   </aside>
 </main>
+
+<div id="maintenance-root" class="maintenance-root" role="status" aria-live="polite" aria-hidden="true" hidden>
+  <section class="maintenance-card">
+    <div id="maintenance-ring" class="maintenance-ring" aria-hidden="true">
+      <span id="maintenance-percent" class="maintenance-percent">0%</span>
+    </div>
+    <div id="maintenance-message" class="maintenance-message">Updating E-KAIWA</div>
+    <div id="maintenance-detail" class="maintenance-detail">Please wait…</div>
+  </section>
+</div>
 </body>
 </html>
