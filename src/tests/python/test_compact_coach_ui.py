@@ -11,6 +11,7 @@ RENDER = WEB / "ui_render.js"
 OVERLAY = WEB / "ui_overlay.js"
 ICONS = WEB / "ui_icons.js"
 CSS = WEB / "live.css"
+PUBLIC_CSS = WEB / "public.css"
 HTML = WEB / "live.html"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
@@ -35,6 +36,15 @@ class ReferenceUiTests(unittest.TestCase):
         for module in ("ui.js", "ui_icons.js", "ui_render.js", "ui_overlay.js"):
             self.assertIn(f'"/{module}"', server)
             self.assertIn(f'WEB_DIR / "{module}"', server)
+
+    def test_public_visual_layer_is_linked_and_served(self):
+        html = HTML.read_text(encoding="utf-8")
+        server = SERVER.read_text(encoding="utf-8")
+        public_css = PUBLIC_CSS.read_text(encoding="utf-8")
+        self.assertIn('href="/public.css"', html)
+        self.assertIn('"/public.css"', server)
+        self.assertIn('WEB_DIR / "public.css"', server)
+        self.assertIn('body[data-app-mode="public"]', public_css)
 
     def test_conversation_keeps_ai_left_user_right_and_inline_actions(self):
         render = RENDER.read_text(encoding="utf-8")

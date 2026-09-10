@@ -1,0 +1,488 @@
+/* Public-mode visual layer.
+   Keep realtime/dev behavior in live.css; this file owns the calmer mobile product presentation. */
+
+body[data-app-mode="public"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-soft: #f0f2f5;
+  --text: #18212f;
+  --text-muted: #5c6878;
+  --border: #dfe3e8;
+  --primary: #2f6fed;
+  --primary-strong: #245ecf;
+  --primary-soft: #eaf1ff;
+  --ai-surface: transparent;
+  --user-surface: #eaf1ff;
+  --success: #13733a;
+  --success-soft: #edf7f0;
+  --warning: #805b00;
+  --warning-soft: #fff6d9;
+  --danger: #b73535;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-sm: 0 4px 14px rgba(24, 33, 47, 0.06);
+  --shadow-md: 0 18px 44px rgba(24, 33, 47, 0.16);
+}
+
+body[data-app-mode="public"][data-theme="dark"] {
+  --bg: #0f141b;
+  --surface: #161d26;
+  --surface-soft: #1e2732;
+  --text: #f4f7fb;
+  --text-muted: #a9b3c1;
+  --border: #2a3440;
+  --primary: #75a4ff;
+  --primary-strong: #8bb2ff;
+  --primary-soft: #1d3154;
+  --ai-surface: transparent;
+  --user-surface: #1d3154;
+  --success: #6bd28e;
+  --success-soft: #193629;
+  --warning: #efc65a;
+  --warning-soft: #3b3119;
+  --danger: #ff8585;
+}
+
+body[data-app-mode="public"] .app-shell {
+  width: min(100%, 720px);
+  padding: 0 12px calc(150px + env(safe-area-inset-bottom));
+}
+
+body[data-app-mode="public"] .app-header {
+  margin: 0 -12px 6px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 8px;
+  border-bottom: 0;
+  background: var(--bg);
+  backdrop-filter: none;
+}
+
+body[data-app-mode="public"] h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+}
+
+body[data-app-mode="public"] .header-icon {
+  border-radius: 10px;
+}
+
+body[data-app-mode="public"] .conversation-card {
+  min-height: 58dvh;
+  padding-bottom: 12px;
+}
+
+body[data-app-mode="public"] .conversation {
+  gap: 2px;
+}
+
+body[data-app-mode="public"] .empty-state {
+  padding: 96px 28px 72px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+body[data-app-mode="public"] .turn {
+  scroll-margin-bottom: 148px;
+}
+
+body[data-app-mode="public"] .message-row {
+  gap: 8px;
+  margin: 12px 0;
+}
+
+body[data-app-mode="public"] .message-stack {
+  max-width: min(86%, 580px);
+}
+
+body[data-app-mode="public"] .avatar {
+  flex-basis: 30px;
+  width: 30px;
+  height: 30px;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .avatar .ui-svg {
+  width: 17px;
+  height: 17px;
+}
+
+body[data-app-mode="public"] .ai-avatar {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--primary);
+}
+
+body[data-app-mode="public"] .user-avatar {
+  display: none;
+}
+
+body[data-app-mode="public"] .message-meta {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .bubble {
+  border: 0;
+  border-radius: 14px;
+  padding: 11px 13px;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .ai-bubble {
+  padding: 2px 0 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .user-bubble {
+  border-top-right-radius: 5px;
+  background: var(--user-surface);
+}
+
+body[data-app-mode="public"] .message-text,
+body[data-app-mode="public"] .text {
+  line-height: 1.58;
+}
+
+body[data-app-mode="public"] .inline-action {
+  background: transparent;
+  color: var(--primary);
+}
+
+body[data-app-mode="public"] .score-pill {
+  border: 1px solid color-mix(in srgb, var(--success) 26%, var(--border));
+  border-radius: 10px;
+  background: transparent;
+}
+
+/* Talk dock: one primary action, quiet status/meta, no decorative pseudo-waveform. */
+body[data-app-mode="public"] .control-dock {
+  width: min(100%, 720px);
+  padding: 7px 12px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body[data-app-mode="public"] .status {
+  min-height: 16px;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+body[data-app-mode="public"] .voice-waves {
+  display: none;
+}
+
+body[data-app-mode="public"] .voice-control-row {
+  gap: 0;
+}
+
+body[data-app-mode="public"] .talk-button {
+  width: 68px;
+  height: 68px;
+  border: 0;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .talk-pressed,
+body[data-app-mode="public"] .talk-recording {
+  background: var(--primary-strong);
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .talk-waiting,
+body[data-app-mode="public"] .talk-speaking,
+body[data-app-mode="public"] .talk-connecting {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  filter: none;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .talk-label {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .dock-meta {
+  gap: 18px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+body[data-app-mode="public"] .dock-meta svg {
+  display: none;
+}
+
+body[data-app-mode="public"] .dock-meta-item + .dock-meta-item::before {
+  content: "·";
+  margin-right: 18px;
+  color: var(--border);
+}
+
+/* Overlay shell keeps depth because it is a real modal layer. */
+body[data-app-mode="public"] .overlay-surface,
+body[data-app-mode="public"] .settings-panel {
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-md);
+}
+
+body[data-app-mode="public"] .overlay-header,
+body[data-app-mode="public"] .settings-head {
+  min-height: 56px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+body[data-app-mode="public"] .overlay-scroll {
+  padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+body[data-app-mode="public"] .overlay-section {
+  margin-top: 20px;
+}
+
+body[data-app-mode="public"] .overlay-section h3,
+body[data-app-mode="public"] .replay-transcript h3,
+body[data-app-mode="public"] .compare-card h3 {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Coach: feedback hierarchy instead of card stack. */
+body[data-app-mode="public"] .score-hero {
+  padding: 2px 0 18px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .score-hero span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .score-hero strong {
+  font-size: 38px;
+}
+
+body[data-app-mode="public"] .score-track {
+  height: 4px;
+  margin-top: 9px;
+}
+
+body[data-app-mode="public"] .coach-metrics {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .coach-metric {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+body[data-app-mode="public"] .coach-metric-head {
+  font-size: 13px;
+}
+
+body[data-app-mode="public"] .coach-metric-head strong {
+  font-size: 14px;
+}
+
+body[data-app-mode="public"] .problem-list {
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+body[data-app-mode="public"] .problem-card,
+body[data-app-mode="public"] .natural-card {
+  min-height: 56px;
+  gap: 10px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .problem-icon,
+body[data-app-mode="public"] .tip-icon {
+  flex-basis: 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .problem-icon .ui-svg,
+body[data-app-mode="public"] .tip-icon .ui-svg {
+  width: 17px;
+  height: 17px;
+}
+
+body[data-app-mode="public"] .problem-copy strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .problem-chevron {
+  color: var(--text-muted);
+}
+
+body[data-app-mode="public"] .coach-note,
+body[data-app-mode="public"] .tip-card {
+  gap: 9px;
+  margin-top: 18px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .compare-card,
+body[data-app-mode="public"] .replay-transcript,
+body[data-app-mode="public"] .heard-card {
+  padding: 12px 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+body[data-app-mode="public"] .compare-corrected {
+  margin-top: 2px;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary-soft);
+}
+
+body[data-app-mode="public"] .compare-arrow {
+  height: 34px;
+  color: var(--text-muted);
+}
+
+body[data-app-mode="public"] .heard-card {
+  padding: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+body[data-app-mode="public"] .replay-main {
+  background: var(--primary);
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .replay-note {
+  margin-top: 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Settings: familiar rows, not decorative section cards. */
+body[data-app-mode="public"] .settings-release {
+  border-bottom: 1px solid var(--border);
+}
+
+body[data-app-mode="public"] .setting-section {
+  margin: 0 16px;
+  padding: 0;
+}
+
+body[data-app-mode="public"] .setting-section + .setting-section {
+  border-top: 0;
+}
+
+body[data-app-mode="public"] .setting-control-row,
+body[data-app-mode="public"] .switch-row {
+  min-height: 56px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+body[data-app-mode="public"] .setting-section:last-of-type .switch-row:last-child,
+body[data-app-mode="public"] .setting-section:last-of-type .setting-control-row:last-child {
+  border-bottom: 0;
+}
+
+body[data-app-mode="public"] .setting-control-row > label,
+body[data-app-mode="public"] .switch-row strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+body[data-app-mode="public"] .switch-row small,
+body[data-app-mode="public"] .setting-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+body[data-app-mode="public"] .setting-control-row select {
+  min-width: 96px;
+  min-height: 44px;
+  max-width: 52%;
+  padding: 6px 26px 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: right;
+}
+
+body[data-app-mode="public"] .switch-control {
+  flex-basis: 46px;
+}
+
+@media (min-width: 600px) {
+  body[data-app-mode="public"] .overlay-surface,
+  body[data-app-mode="public"] .settings-panel {
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 380px) {
+  body[data-app-mode="public"] .app-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  body[data-app-mode="public"] .app-header {
+    margin-left: -10px;
+    margin-right: -10px;
+  }
+
+  body[data-app-mode="public"] .message-stack {
+    max-width: 88%;
+  }
+
+  body[data-app-mode="public"] .talk-button {
+    width: 64px;
+    height: 64px;
+  }
+
+  body[data-app-mode="public"] .setting-control-row,
+  body[data-app-mode="public"] .switch-row {
+    gap: 10px;
+  }
+}
