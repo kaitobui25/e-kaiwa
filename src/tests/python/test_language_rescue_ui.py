@@ -61,6 +61,7 @@ class LanguageRescueUiTests(unittest.TestCase):
             "output_language_codes",
             "language_mode",
             "support_language",
+            "target_language",
             "language_policy_version",
             "coach_eligible",
             "coach_called",

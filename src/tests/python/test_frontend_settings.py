@@ -9,6 +9,7 @@ HTML = SRC / "web" / "live.html"
 JS = SRC / "web" / "live.js"
 AUDIO = SRC / "web" / "audio.js"
 PREFERENCES = SRC / "web" / "preferences.js"
+UI = SRC / "web" / "ui.js"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
 
@@ -47,10 +48,19 @@ class FrontendSettingsTests(unittest.TestCase):
         prefs = PREFERENCES.read_text(encoding="utf-8")
         self.assertIn('id="feedback-language"', html)
         self.assertIn('id="theme"', html)
+        self.assertIn('id="target-language"', html)
+        self.assertIn('<select id="target-language"></select>', html)
         self.assertIn("SUPPORTED_APP_LANGUAGES", prefs)
         self.assertIn("SUPPORTED_THEMES", prefs)
         self.assertIn("SUPPORTED_TARGET_LANGUAGES", prefs)
         self.assertIn("TARGET_LANGUAGE = 'en'", prefs)
+
+    def test_target_choices_come_from_server_and_public_copy_is_target_neutral(self):
+        js = JS.read_text(encoding="utf-8")
+        ui = UI.read_text(encoding="utf-8")
+        self.assertIn("setTargetLanguageChoices(payload?.target_languages", js)
+        self.assertNotIn("英会話を始めましょう", ui)
+        self.assertNotIn("tiếng Anh sẽ gần hơn", ui)
 
     def test_dev_model_selectors_still_exist(self):
         html = HTML.read_text(encoding="utf-8")

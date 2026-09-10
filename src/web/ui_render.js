@@ -20,31 +20,49 @@ function severityClass(problem) {
   return problem?.severity === 'red' ? 'severity-red' : 'severity-yellow';
 }
 
+function escapedRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function usesAsciiWordBoundary(value) {
+  return /^[A-Za-z0-9_'’-]+$/.test(value);
+}
+
 export function highlightProblems(text, pronunciation) {
   const raw = String(text || '…');
   const problems = Array.isArray(pronunciation?.problems) ? pronunciation.problems.slice(0, 4) : [];
   if (!problems.length) return escapeHtml(raw);
 
-  const byWord = new Map();
-  for (const problem of problems) {
-    const word = String(problem?.word || '').trim();
-    if (word) byWord.set(word.toLocaleLowerCase('en-US'), problem);
-  }
-  const words = [...byWord.keys()].sort((a, b) => b.length - a.length);
-  if (!words.length) return escapeHtml(raw);
+  const candidates = problems
+    .map(problem => ({problem, word: String(problem?.word || '').trim()}))
+    .filter(item => item.word)
+    .sort((a, b) => b.word.length - a.word.length);
+  if (!candidates.length) return escapeHtml(raw);
 
-  const pattern = words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
+  const ranges = [];
+  for (const candidate of candidates) {
+    const escaped = escapedRegex(candidate.word);
+    const source = usesAsciiWordBoundary(candidate.word) ? `\\b${escaped}\\b` : escaped;
+    const regex = new RegExp(source, 'gi');
+    for (const match of raw.matchAll(regex)) {
+      const start = match.index ?? -1;
+      if (start < 0) continue;
+      const end = start + match[0].length;
+      if (ranges.some(range => start < range.end && end > range.start)) continue;
+      ranges.push({start, end, problem: candidate.problem});
+    }
+  }
+
+  if (!ranges.length) return escapeHtml(raw);
+  ranges.sort((a, b) => a.start - b.start || b.end - a.end);
   let html = '';
-  let lastIndex = 0;
-  raw.replace(regex, (match, _captured, offset) => {
-    html += escapeHtml(raw.slice(lastIndex, offset));
-    const problem = byWord.get(match.toLocaleLowerCase('en-US'));
-    html += `<span class="pron-problem ${severityClass(problem)}">${escapeHtml(match)}</span>`;
-    lastIndex = offset + match.length;
-    return match;
-  });
-  return html + escapeHtml(raw.slice(lastIndex));
+  let cursor = 0;
+  for (const range of ranges) {
+    html += escapeHtml(raw.slice(cursor, range.start));
+    html += `<span class="pron-problem ${severityClass(range.problem)}">${escapeHtml(raw.slice(range.start, range.end))}</span>`;
+    cursor = range.end;
+  }
+  return html + escapeHtml(raw.slice(cursor));
 }
 
 export function turnScore(turn) {

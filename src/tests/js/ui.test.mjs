@@ -5,6 +5,7 @@ import {CONVERSATION_MODES} from '../../web/preferences.js';
 import {
   coachOverviewHtml,
   correctionOverlayHtml,
+  highlightProblems,
   publicTurnHtml,
   replayDuration,
   replayOverlayHtml,
@@ -90,6 +91,18 @@ test('correction and word detail expose audio only when manual audio is allowed'
   assert.match(wordPtt, /data-audio-action="speak-problem"/);
   assert.match(wordPtt, /listenin/);
   assert.doesNotMatch(wordHandsFree, /data-audio-action="speak-problem"/);
+});
+
+test('problem highlighting supports Japanese and Chinese without breaking English word boundaries', () => {
+  const japanese = highlightProblems('今日は天気です。', {problems: [{word: '天気', severity: 'yellow'}]});
+  assert.match(japanese, /今日は<span class="pron-problem severity-yellow">天気<\/span>です。/);
+
+  const chinese = highlightProblems('你好世界', {problems: [{word: '世界', severity: 'red'}]});
+  assert.match(chinese, /你好<span class="pron-problem severity-red">世界<\/span>/);
+
+  const english = highlightProblems('scatter cat', {problems: [{word: 'cat', severity: 'yellow'}]});
+  assert.doesNotMatch(english, /s<span[^>]*>cat<\/span>ter/);
+  assert.match(english, /scatter <span class="pron-problem severity-yellow">cat<\/span>/);
 });
 
 test('replay overlay uses local PCM for waveform and duration without extra data dependency', () => {

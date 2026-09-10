@@ -98,6 +98,12 @@ def _language_mode(value: object) -> str:
     return mode if mode in {"target", "non_target", "unknown"} else "unknown"
 
 
+def _metric_target_language(payload: dict) -> str | None:
+    if "target_language" not in payload:
+        return "en"
+    return normalize_target_language(payload.get("target_language"))
+
+
 def _mic_audio_settings(value: object) -> dict:
     data = value if isinstance(value, dict) else {}
     return {
@@ -319,7 +325,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         output_language_codes=_short_string_list(payload.get("output_language_codes")),
                         language_mode=_language_mode(payload.get("language_mode")),
                         support_language=normalize_feedback_language(payload.get("support_language")),
-                        target_language=normalize_target_language(payload.get("target_language"), "en"),
+                        target_language=_metric_target_language(payload),
                         language_policy_version=_short_text(payload.get("language_policy_version")),
                         coach_eligible=_optional_bool(payload.get("coach_eligible")),
                         coach_called=_optional_bool(payload.get("coach_called")),

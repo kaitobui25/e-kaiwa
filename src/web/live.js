@@ -1,10 +1,12 @@
 import {
   LANGUAGE_POLICY_VERSION,
   buildLiveLanguageInstruction,
+  concatTargetTranscript,
   finalizeLanguageMode,
   isCoachEligible,
   recordLanguageCode,
-  selectedSupportLanguage
+  selectedSupportLanguage,
+  TARGET_LANGUAGE_METADATA
 } from './language_policy.js';
 import {
   CONVERSATION_MODES,
@@ -124,6 +126,23 @@ import {UiController} from './ui.js';
     element.value = selected || values[0] || '';
   }
 
+  function setTargetLanguageChoices(choices, selected) {
+    if (!elements.targetLanguage) return;
+    const values = [...new Set((Array.isArray(choices) ? choices : [])
+      .filter(value => Object.prototype.hasOwnProperty.call(TARGET_LANGUAGE_METADATA, value)))];
+    const supported = values.length ? values : [TARGET_LANGUAGE];
+    const selectedValue = supported.includes(selected)
+      ? selected
+      : (supported.includes(TARGET_LANGUAGE) ? TARGET_LANGUAGE : supported[0]);
+    elements.targetLanguage.replaceChildren(...supported.map(value => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = TARGET_LANGUAGE_METADATA[value]?.name || value;
+      return option;
+    }));
+    elements.targetLanguage.value = selectedValue;
+  }
+
   function publicOrDev(publicKey, devText) {
     return state.appMode === 'public' ? state.ui?.t(publicKey) || publicKey : devText;
   }
@@ -147,13 +166,8 @@ import {UiController} from './ui.js';
     });
   }
 
-  function concatTranscript(previous, incoming) {
-    const oldText = (previous || '').trim();
-    const newText = (incoming || '').trim();
-    if (!oldText) return newText;
-    if (!newText || oldText.endsWith(newText)) return oldText;
-    if (newText.startsWith(oldText)) return newText;
-    return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
+  function concatTranscript(previous, incoming, targetLanguage = state.targetLanguage) {
+    return concatTargetTranscript(previous, incoming, targetLanguage);
   }
 
   function bytesToB64(bytes) {
@@ -259,6 +273,7 @@ import {UiController} from './ui.js';
     const settings = payload?.settings || {};
     const models = payload?.models || {};
     const choices = payload?.choices || {};
+    setTargetLanguageChoices(payload?.target_languages, state.selectedTargetLanguage);
 
     elements.teacher.value = settings.teacher || 'Normal';
     elements.silenceDuration.value = String(settings.silence_duration_ms || 1000);
@@ -668,12 +683,12 @@ import {UiController} from './ui.js';
     if (!turn) return;
     if (content.inputTranscription?.languageCode) recordLanguageCode(turn, content.inputTranscription.languageCode, 'input');
     if (content.inputTranscription?.text) {
-      turn.userText = concatTranscript(turn.userText, content.inputTranscription.text);
+      turn.userText = concatTranscript(turn.userText, content.inputTranscription.text, turn.targetLanguage);
       render();
     }
     if (content.outputTranscription?.languageCode) recordLanguageCode(turn, content.outputTranscription.languageCode, 'output');
     if (content.outputTranscription?.text) {
-      turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text);
+      turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text, turn.targetLanguage);
       render();
     }
 

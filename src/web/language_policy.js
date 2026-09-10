@@ -66,6 +66,18 @@ export function textLooksLikeTarget(text, targetLanguage) {
   return Boolean(value) && ENGLISH_LETTER.test(value) && ASCII_ENGLISH_TEXT.test(value);
 }
 
+export function concatTargetTranscript(previous, incoming, targetLanguage = 'en') {
+  const oldText = String(previous || '').trim();
+  const newText = String(incoming || '').trim();
+  if (!oldText) return newText;
+  if (!newText || oldText.endsWith(newText)) return oldText;
+  if (newText.startsWith(oldText)) return newText;
+
+  const target = normalizeTargetLanguage(targetLanguage);
+  if (target !== 'en') return oldText + newText;
+  return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
+}
+
 export function finalizeLanguageMode(turn) {
   const target = normalizeTargetLanguage(turn?.targetLanguage);
   const normalized = [...(turn?.inputLanguageCodes || [])]

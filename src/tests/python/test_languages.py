@@ -17,6 +17,7 @@ from e_kaiwa.languages import (
     supported_target_languages,
     target_language_aliases,
 )
+from e_kaiwa.server import _metric_target_language
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -33,6 +34,11 @@ class LanguageProfileTests(unittest.TestCase):
         self.assertEqual(normalize_target_language("ja_JP"), "ja")
         self.assertEqual(normalize_target_language("cmn-Hans"), "zh-Hans")
         self.assertIsNone(normalize_target_language("zh-Hant"))
+
+    def test_metric_target_language_preserves_invalid_explicit_values(self):
+        self.assertEqual(_metric_target_language({}), "en")
+        self.assertEqual(_metric_target_language({"target_language": "cmn"}), "zh-Hans")
+        self.assertIsNone(_metric_target_language({"target_language": "zh-Hant"}))
 
     def test_coach_rejects_explicit_unsupported_target(self):
         service = CoachService.__new__(CoachService)
