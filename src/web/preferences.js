@@ -1,6 +1,13 @@
+import {
+  SUPPORTED_TARGET_LANGUAGES as POLICY_TARGET_LANGUAGES,
+  normalizeTargetLanguage as normalizePolicyTargetLanguage,
+  TARGET_LANGUAGE_ALIASES,
+  TARGET_LANGUAGE_METADATA
+} from './language_policy.js';
+
 export const SUPPORTED_APP_LANGUAGES = Object.freeze(['ja', 'vi']);
 export const SUPPORTED_THEMES = Object.freeze(['light', 'dark']);
-export const SUPPORTED_TARGET_LANGUAGES = Object.freeze(['en']);
+export const SUPPORTED_TARGET_LANGUAGES = POLICY_TARGET_LANGUAGES;
 export const CONVERSATION_MODES = Object.freeze({
   PUSH_TO_TALK: 'push_to_talk',
   HANDS_FREE: 'hands_free'
@@ -12,7 +19,8 @@ const STORAGE_KEYS = Object.freeze({
   theme: 'e-kaiwa.theme',
   playbackRate: 'e-kaiwa.playback-rate',
   pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
-  conversationMode: 'e-kaiwa.conversation-mode'
+  conversationMode: 'e-kaiwa.conversation-mode',
+  targetLanguage: 'e-kaiwa.target-language'
 });
 
 const PLAYBACK_RATES = Object.freeze(
@@ -23,6 +31,13 @@ export function normalizeAppLanguage(value, fallback = 'ja') {
   const normalized = String(value || '').trim().toLowerCase();
   if (SUPPORTED_APP_LANGUAGES.includes(normalized)) return normalized;
   return SUPPORTED_APP_LANGUAGES.includes(fallback) ? fallback : 'ja';
+}
+
+export function normalizeTargetLanguage(value, fallback = TARGET_LANGUAGE) {
+  const raw = String(value || '').trim().toLowerCase().replaceAll('_', '-');
+  const candidate = TARGET_LANGUAGE_ALIASES[raw] || raw;
+  if (SUPPORTED_TARGET_LANGUAGES.includes(candidate)) return normalizePolicyTargetLanguage(candidate);
+  return SUPPORTED_TARGET_LANGUAGES.includes(fallback) ? fallback : TARGET_LANGUAGE;
 }
 
 export function detectDefaultAppLanguage(browserLanguage = '') {
@@ -62,10 +77,7 @@ export function isHandsFreeMode(value) {
 }
 
 export function targetSpeechLocale(targetLanguage = TARGET_LANGUAGE) {
-  const locales = {
-    en: 'en-US'
-  };
-  return locales[targetLanguage] || 'en-US';
+  return TARGET_LANGUAGE_METADATA[normalizeTargetLanguage(targetLanguage)].speechLocale;
 }
 
 export class PreferencesStore {
@@ -121,7 +133,7 @@ export class PreferencesStore {
         this._read(STORAGE_KEYS.conversationMode),
         defaultConversationMode
       ),
-      targetLanguage: TARGET_LANGUAGE
+      targetLanguage: normalizeTargetLanguage(this._read(STORAGE_KEYS.targetLanguage), defaults.targetLanguage)
     };
     return {...this.value};
   }
@@ -157,5 +169,11 @@ export class PreferencesStore {
     this.value.conversationMode = normalizeConversationMode(value, this.value.conversationMode);
     this._write(STORAGE_KEYS.conversationMode, this.value.conversationMode);
     return this.value.conversationMode;
+  }
+
+  setTargetLanguage(value) {
+    this.value.targetLanguage = normalizeTargetLanguage(value, this.value.targetLanguage);
+    this._write(STORAGE_KEYS.targetLanguage, this.value.targetLanguage);
+    return this.value.targetLanguage;
   }
 }

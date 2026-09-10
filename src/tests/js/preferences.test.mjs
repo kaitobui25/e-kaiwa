@@ -10,6 +10,7 @@ import {
   normalizeAppLanguage,
   normalizeConversationMode,
   normalizePlaybackRate,
+  normalizeTargetLanguage,
   normalizeTheme,
   targetSpeechLocale
 } from '../../web/preferences.js';
@@ -73,6 +74,7 @@ test('preferences persist without coupling target language to app language', () 
   first.setPlaybackRate(0.9);
   first.setPronunciationEnabled(false);
   first.setConversationMode(CONVERSATION_MODES.HANDS_FREE);
+  first.setTargetLanguage('zh-CN');
 
   const second = new PreferencesStore({storage, browserLanguage: 'ja-JP'});
   const value = second.load();
@@ -81,7 +83,11 @@ test('preferences persist without coupling target language to app language', () 
   assert.equal(value.playbackRate, 0.9);
   assert.equal(value.pronunciationEnabled, false);
   assert.equal(value.conversationMode, CONVERSATION_MODES.HANDS_FREE);
-  assert.equal(value.targetLanguage, TARGET_LANGUAGE);
+  assert.equal(value.targetLanguage, 'zh-Hans');
   assert.equal(TARGET_LANGUAGE, 'en');
   assert.equal(targetSpeechLocale(TARGET_LANGUAGE), 'en-US');
+  assert.equal(targetSpeechLocale('ja'), 'ja-JP');
+  assert.equal(targetSpeechLocale('zh-Hans'), 'zh-CN');
+  assert.equal(normalizeTargetLanguage('cmn'), 'zh-Hans');
+  assert.equal(normalizeTargetLanguage('unsupported'), 'en');
 });

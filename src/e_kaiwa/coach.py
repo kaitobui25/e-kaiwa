@@ -15,6 +15,7 @@ from .config import (
     resolve_teacher,
 )
 from .gemini import extract_text, parse_json_text, post_json
+from .languages import LanguageProfile, resolve_language_profile
 from .model_policy import coach_attempt_order, is_retryable_failure
 from .sessions import SessionStore, save_pcm_wav
 from .settings import SettingsStore
@@ -116,6 +117,7 @@ def correction(
     user_text: str,
     teacher: TeacherMode,
     feedback_language: object,
+    target_language: LanguageProfile,
     *,
     mode: str,
     selected_model: str,
@@ -123,15 +125,16 @@ def correction(
     turn_no: int,
 ) -> StructuredCallResult:
     lang_code, lang_name = feedback_language_name(feedback_language)
-    prompt = f'''You are an English coach.
+    prompt = f'''You are a {target_language.name} coach.
 The learner said: "{user_text}"
 Teacher strictness: {teacher.name}
 Correction rule: {teacher.correction_rule}
 
 Return ONLY one JSON object with these string fields:
-- correction: corrected natural English version according to the correction rule; if no correction is needed, copy it unchanged
+- correction: corrected natural {target_language.name} version according to the correction rule; if no correction is needed, copy it unchanged
 - explanation: one very short {lang_name} explanation of the most useful correction; use an empty string if correction is unchanged
 
+{target_language.correction_instruction}
 Keep the explanation concise and practical.'''
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -164,6 +167,7 @@ def pronunciation(
     reference: str,
     teacher: TeacherMode,
     feedback_language: object,
+    target_language: LanguageProfile,
     *,
     mode: str,
     selected_model: str,
@@ -171,15 +175,16 @@ def pronunciation(
     turn_no: int,
 ) -> StructuredCallResult:
     lang_code, lang_name = feedback_language_name(feedback_language)
-    prompt = f'''You are an English pronunciation coach.
+    prompt = f'''You are a {target_language.name} pronunciation coach.
 Teacher mode: {teacher.name}.
 Reference sentence: "{reference}"
 
 {teacher.pronunciation_instruction}
+{target_language.pronunciation_instruction}
 
 Listen to the audio and judge ONLY what is clearly audible. Do not invent accent stereotypes.
-Assess pronunciation, word stress, fluency/rhythm, and intonation. Do not judge grammar or meaning.
-For pronunciation, compare the actual sounds to natural standard English, not merely whether STT recognized the word.
+Assess pronunciation, fluency/rhythm, and prosody appropriate to {target_language.name}. Do not judge grammar or meaning.
+For pronunciation, compare the actual sounds to natural standard {target_language.name}, not merely whether STT recognized the word.
 
 Return ONLY JSON:
 {{"recognized_text":"...","overall_score":0,"pronunciation_score":0,"fluency_score":0,"intonation_score":0,
@@ -247,6 +252,16 @@ class CoachService:
             raise ValueError("empty transcript")
         if len(transcript) > 4000:
             raise ValueError("transcript too long")
+        # Missing predates the target-language contract and keeps the English
+        # baseline. An explicit value must be supported; do not silently turn
+        # malformed requests (including zh-Hant) into English coaching.
+        target_language = (
+            resolve_language_profile(payload["target_language"])
+            if "target_language" in payload
+            else resolve_language_profile("en")
+        )
+        if target_language is None:
+            raise ValueError("invalid target_language")
 
         persisted = self.settings.snapshot()["settings"]
         teacher = resolve_teacher(persisted["teacher"])
@@ -287,6 +302,7 @@ class CoachService:
                     transcript,
                     teacher,
                     feedback_language,
+                    target_language,
                     mode=coach_mode,
                     selected_model=requested_model,
                     fallback_models=fallback_models,
@@ -302,6 +318,7 @@ class CoachService:
                     transcript,
                     teacher,
                     feedback_language,
+                    target_language,
                     mode=coach_mode,
                     selected_model=requested_model,
                     fallback_models=fallback_models,
@@ -333,6 +350,7 @@ class CoachService:
                 user_text=transcript,
                 teacher=teacher.name,
                 feedback_language=normalized_language,
+                target_language=target_language.code,
                 coach_model_mode=coach_mode,
                 coach_requested_model=requested_model,
                 correction=correction_text,
@@ -364,6 +382,7 @@ class CoachService:
                 "correction": correction_text,
                 "explanation": explanation,
                 "feedback_language": normalized_language,
+                "target_language": target_language.code,
                 "pronunciation": pron_value,
                 "coach_wall_s": round(coach_wall, 3),
                 "coach_model_mode": coach_mode,

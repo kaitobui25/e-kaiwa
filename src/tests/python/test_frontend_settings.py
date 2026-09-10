@@ -66,7 +66,7 @@ class FrontendSettingsTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn("_client_settings_payload", server)
         self.assertIn('"app_mode": "public"', server)
-        self.assertIn('"target_language": "en"', server)
+        self.assertIn('"target_languages": list(supported_target_languages())', server)
         self.assertIn('"public settings are read-only"', server)
         self.assertIn("runtime.access.is_public", server)
 

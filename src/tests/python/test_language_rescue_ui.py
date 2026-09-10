@@ -34,16 +34,24 @@ class LanguageRescueUiTests(unittest.TestCase):
         js = JS.read_text(encoding="utf-8")
         prefs = PREFERENCES.read_text(encoding="utf-8")
         self.assertIn("state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);", js)
-        self.assertIn("buildLiveLanguageInstruction(state.supportLanguage)", js)
+        self.assertIn("buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage)", js)
         self.assertIn("feedback_language: elements.feedbackLanguage.value", js)
         self.assertIn("setAppLanguage", js)
         self.assertIn("SUPPORTED_APP_LANGUAGES", prefs)
 
-    def test_target_language_is_separate_and_english_only_for_v1(self):
+    def test_target_language_is_separate_and_supports_all_profiles(self):
         prefs = PREFERENCES.read_text(encoding="utf-8")
-        self.assertIn("SUPPORTED_TARGET_LANGUAGES = Object.freeze(['en'])", prefs)
+        self.assertIn("SUPPORTED_TARGET_LANGUAGES = POLICY_TARGET_LANGUAGES", prefs)
         self.assertIn("TARGET_LANGUAGE = 'en'", prefs)
         self.assertIn("targetSpeechLocale", prefs)
+        self.assertIn("e-kaiwa.target-language", prefs)
+
+    def test_target_switch_waits_for_an_active_turn_and_settings_keep_session_target(self):
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn("selectedTargetLanguage", js)
+        self.assertIn("inputBusy() || state.activeTurn", js)
+        self.assertIn("state.selectedTargetLanguage !== state.targetLanguage", js)
+        self.assertIn("state.targetLanguage = state.selectedTargetLanguage", js)
 
     def test_turn_metrics_include_language_and_coach_debug_state(self):
         js = JS.read_text(encoding="utf-8")

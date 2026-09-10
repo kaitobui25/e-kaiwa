@@ -1,4 +1,4 @@
-export const LANGUAGE_POLICY_VERSION = 'english-first-rescue-v2';
+export const LANGUAGE_POLICY_VERSION = 'target-language-rescue-v4';
 
 const SUPPORT_LANGUAGES = {
   vi: 'Vietnamese',
@@ -8,6 +8,19 @@ const SUPPORT_LANGUAGES = {
 const UNKNOWN_LANGUAGE_CODES = new Set(['und', 'zxx']);
 const ASCII_ENGLISH_TEXT = /^[\x00-\x7F]+$/;
 const ENGLISH_LETTER = /[A-Za-z]/;
+export const TARGET_LANGUAGE_ALIASES = Object.freeze({
+  en: 'en', 'en-us': 'en', 'en-gb': 'en', english: 'en',
+  ja: 'ja', 'ja-jp': 'ja', japanese: 'ja',
+  zh: 'zh-Hans', 'zh-cn': 'zh-Hans', 'zh-hans': 'zh-Hans', cmn: 'zh-Hans',
+  'cmn-hans': 'zh-Hans', mandarin: 'zh-Hans', chinese: 'zh-Hans'
+});
+export const TARGET_LANGUAGE_METADATA = Object.freeze({
+  en: Object.freeze({name: 'English', speechLocale: 'en-US'}),
+  ja: Object.freeze({name: 'Japanese', speechLocale: 'ja-JP'}),
+  'zh-Hans': Object.freeze({name: 'Mandarin Chinese (Simplified)', speechLocale: 'zh-CN'})
+});
+export const SUPPORTED_TARGET_LANGUAGES = Object.freeze(Object.keys(TARGET_LANGUAGE_METADATA));
+const TARGET_LANGUAGES = new Set(SUPPORTED_TARGET_LANGUAGES);
 
 export function normalizeLanguageCode(code) {
   const raw = String(code || '').trim().toLowerCase();
@@ -31,32 +44,50 @@ export function recordLanguageCode(turn, code, direction) {
   if (target instanceof Set) target.add(raw);
 }
 
-export function isEnglishText(text) {
+export function normalizeTargetLanguage(value) {
+  const raw = String(value || '').trim().toLowerCase().replaceAll('_', '-');
+  const normalized = TARGET_LANGUAGE_ALIASES[raw] || raw;
+  return TARGET_LANGUAGES.has(normalized) ? normalized : 'en';
+}
+
+// Detection must never use the preference fallback. An unrecognised detector
+// code is evidence of a non-target turn, not evidence that it was English.
+function detectedTargetLanguage(code) {
+  const raw = String(code || '').trim().toLowerCase().replaceAll('_', '-');
+  if (!raw || UNKNOWN_LANGUAGE_CODES.has(raw.split('-', 1)[0])) return '';
+  return TARGET_LANGUAGE_ALIASES[raw] || TARGET_LANGUAGE_ALIASES[raw.split('-', 1)[0]] || raw;
+}
+
+export function textLooksLikeTarget(text, targetLanguage) {
   const value = String(text || '').trim();
+  const target = normalizeTargetLanguage(targetLanguage);
+  if (target === 'ja') return /[\u3040-\u30ff\u3400-\u9fff]/.test(value);
+  if (target === 'zh-Hans') return /[\u3400-\u9fff]/.test(value) && !/[\u3040-\u30ff]/.test(value);
   return Boolean(value) && ENGLISH_LETTER.test(value) && ASCII_ENGLISH_TEXT.test(value);
 }
 
 export function finalizeLanguageMode(turn) {
+  const target = normalizeTargetLanguage(turn?.targetLanguage);
   const normalized = [...(turn?.inputLanguageCodes || [])]
-    .map(normalizeLanguageCode)
+    .map(detectedTargetLanguage)
     .filter(Boolean);
 
-  if (normalized.some(language => language !== 'en')) {
-    turn.languageMode = 'non_english';
+  if (normalized.some(language => language !== target)) {
+    turn.languageMode = 'non_target';
     turn.coachEligible = false;
-    turn.coachSkipReason = 'non_english_input';
-  } else if (normalized.includes('en')) {
-    turn.languageMode = 'english';
+    turn.coachSkipReason = 'non_target_input';
+  } else if (normalized.some(language => language === target)) {
+    turn.languageMode = 'target';
     turn.coachEligible = true;
     turn.coachSkipReason = null;
-  } else if (isEnglishText(turn?.userText)) {
-    turn.languageMode = 'english';
+  } else if (textLooksLikeTarget(turn?.userText, target)) {
+    turn.languageMode = 'target';
     turn.coachEligible = true;
     turn.coachSkipReason = null;
   } else {
-    turn.languageMode = 'non_english';
+    turn.languageMode = 'non_target';
     turn.coachEligible = false;
-    turn.coachSkipReason = 'non_english_or_unknown_text';
+    turn.coachSkipReason = 'non_target_or_unknown_text';
   }
 
   return turn.languageMode;
@@ -66,13 +97,15 @@ export function isCoachEligible(turn) {
   return turn?.coachEligible !== false;
 }
 
-export function buildLiveLanguageInstruction(supportLanguage) {
+export function buildLiveLanguageInstruction(supportLanguage, targetLanguage = 'en') {
   const language = selectedSupportLanguage(supportLanguage);
   const languageName = SUPPORT_LANGUAGES[language];
+  const target = normalizeTargetLanguage(targetLanguage);
+  const targetName = TARGET_LANGUAGE_METADATA[target].name;
 
   return `Language policy ${LANGUAGE_POLICY_VERSION}.
-You are an English conversation partner for an English learner.
-Keep normal conversation in English. The configured support language is ${languageName} (${language}).
-If the learner clearly speaks a non-English utterance, treat it as a short rescue turn rather than switching the conversation language. If their intent is clear, briefly help in ${languageName}, give the natural English phrase, and ask them to say it in English. If their intent is unclear or the speech may have been misheard, do not confidently translate it; briefly ask in ${languageName} for another attempt in English.
-Never choose the rescue language from the detected input language; always use ${languageName}. Keep rescue responses short and return immediately to English practice.`;
+You are a ${targetName} conversation partner for a ${targetName} learner.
+Keep normal conversation in ${targetName}. The configured support language is ${languageName} (${language}).
+If the learner clearly speaks an utterance outside ${targetName}, treat it as a short rescue turn rather than switching the conversation language. If their intent is clear, briefly help in ${languageName}, give the natural ${targetName} phrase, and ask them to say it in ${targetName}. If their intent is unclear or the speech may have been misheard, do not confidently translate it; briefly ask in ${languageName} for another attempt in ${targetName}.
+Never choose the rescue language from the detected input language; always use ${languageName}. Keep rescue responses short and return immediately to ${targetName} practice.`;
 }

@@ -12,6 +12,7 @@ import {
   TARGET_LANGUAGE,
   isHandsFreeMode,
   normalizePlaybackRate,
+  normalizeTargetLanguage,
   targetSpeechLocale
 } from './preferences.js';
 import {PlaybackCoordinator} from './audio.js';
@@ -36,6 +37,7 @@ import {UiController} from './ui.js';
     conversation: document.getElementById('conversation'),
     teacher: document.getElementById('teacher'),
     feedbackLanguage: document.getElementById('feedback-language'),
+    targetLanguage: document.getElementById('target-language'),
     theme: document.getElementById('theme'),
     realtimeModel: document.getElementById('realtime-model'),
     coachModel: document.getElementById('coach-model'),
@@ -62,6 +64,9 @@ import {UiController} from './ui.js';
     sessionRequestedModel: '',
     sessionFallbackTried: false,
     supportLanguage: 'ja',
+    // selectedTargetLanguage is the control/preference value. targetLanguage is
+    // frozen for the active Live session and every turn it creates.
+    selectedTargetLanguage: TARGET_LANGUAGE,
     targetLanguage: TARGET_LANGUAGE,
     sessionSilenceDurationMs: 1000,
     echoGuardMs: 250,
@@ -266,9 +271,12 @@ import {UiController} from './ui.js';
         appLanguage: settings.support_language || 'ja',
         playbackRate: settings.ai_playback_rate ?? 0.8,
         pronunciationEnabled: settings.pronunciation_enabled !== false,
+        targetLanguage: TARGET_LANGUAGE,
         conversationMode: CONVERSATION_MODES.PUSH_TO_TALK
       });
       elements.feedbackLanguage.value = preferences.appLanguage;
+      elements.targetLanguage.value = preferences.targetLanguage;
+      state.selectedTargetLanguage = preferences.targetLanguage;
       elements.aiSpeed.value = String(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
       state.conversationMode = preferences.conversationMode;
@@ -277,6 +285,12 @@ import {UiController} from './ui.js';
       state.ui.setConversationMode(state.conversationMode);
     } else {
       elements.feedbackLanguage.value = settings.support_language || 'vi';
+      // Saving server settings must not overwrite the developer's selected
+      // target while the existing Live socket still has its old instruction.
+      elements.targetLanguage.value = normalizeTargetLanguage(
+        elements.targetLanguage.value || state.selectedTargetLanguage
+      );
+      state.selectedTargetLanguage = elements.targetLanguage.value;
       elements.aiSpeed.value = AI_SPEED_VALUES.includes(String(settings.ai_playback_rate))
         ? String(settings.ai_playback_rate)
         : DEFAULT_AI_SPEED;
@@ -323,7 +337,9 @@ import {UiController} from './ui.js';
   }
 
   function requestSessionReconnect(message) {
-    if (inputBusy()) {
+    // In push-to-talk, release clears inputBusy before Gemini completes the
+    // turn. Preserve that turn and reconnect only after finishTurn().
+    if (inputBusy() || state.activeTurn) {
       state.ui.setStatus(message);
       return;
     }
@@ -416,6 +432,7 @@ import {UiController} from './ui.js';
       coachEligible: true,
       coachSkipReason: null,
       supportLanguage: state.supportLanguage,
+      targetLanguage: state.targetLanguage,
       languagePolicyVersion: LANGUAGE_POLICY_VERSION,
       firstAudioMs: null,
       startedAtMs: performance.now(),
@@ -449,6 +466,7 @@ import {UiController} from './ui.js';
           transcript: turn.userText,
           teacher: elements.teacher.value,
           feedback_language: elements.feedbackLanguage.value,
+          target_language: turn.targetLanguage,
           pronunciation_enabled: elements.pron.checked,
           sample_rate: 16000,
           pcm_b64: pcmToBase64(turn.replayPcm)
@@ -488,6 +506,7 @@ import {UiController} from './ui.js';
         output_language_codes: [...turn.outputLanguageCodes],
         language_mode: turn.languageMode,
         support_language: turn.supportLanguage,
+        target_language: turn.targetLanguage,
         language_policy_version: turn.languagePolicyVersion,
         coach_eligible: turn.coachEligible,
         coach_called: turn.coachSent,
@@ -545,6 +564,11 @@ import {UiController} from './ui.js';
     state.pushActivityOpen = false;
     postTurnMetric(turn);
     render();
+
+    if (sessionSettingsChanged()) {
+      newLiveSession().catch(error => showReconnect(`Connection error: ${error.message}.`));
+      return;
+    }
 
     if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
       showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
@@ -709,12 +733,14 @@ import {UiController} from './ui.js';
     socket.onopen = () => {
       if (state.ws !== socket) return;
       state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
+      state.selectedTargetLanguage = normalizeTargetLanguage(elements.targetLanguage.value);
+      state.targetLanguage = state.selectedTargetLanguage;
       state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : `WebSocket open · configuring ${modelLabel(data.model)}…`);
       socket.send(JSON.stringify({
         setup: {
           model: `models/${data.model}`,
           generationConfig: {responseModalities: ['AUDIO']},
-          systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage)}]},
+          systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage)}]},
           realtimeInputConfig: {
             automaticActivityDetection: liveVadConfig()
           },
@@ -749,7 +775,7 @@ import {UiController} from './ui.js';
   }
 
   function sessionSettingsChanged() {
-    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || (
+    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || state.selectedTargetLanguage !== state.targetLanguage || (
       state.appMode === 'dev' && (
         elements.realtimeModel.value !== state.sessionRequestedModel ||
         Number(elements.silenceDuration.value) !== state.sessionSilenceDurationMs
@@ -866,13 +892,13 @@ import {UiController} from './ui.js';
       played = await state.playback.playUserPcm(turn.replayPcm, 16000);
     } else if (action === 'speak-correction') {
       played = await state.playback.speak(turn.coach?.correction || turn.userText, {
-        lang: targetSpeechLocale(state.targetLanguage),
+        lang: targetSpeechLocale(turn.targetLanguage),
         rate: Math.min(1, aiPlaybackRate())
       });
     } else if (action === 'speak-problem') {
       const problems = turn.coach?.pronunciation?.problems || [];
       const word = problems[detail.problem]?.word;
-      if (word) played = await state.playback.speak(word, {lang: targetSpeechLocale(state.targetLanguage), rate: 0.8});
+      if (word) played = await state.playback.speak(word, {lang: targetSpeechLocale(turn.targetLanguage), rate: 0.8});
     }
 
     if (!played) state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
@@ -890,6 +916,14 @@ import {UiController} from './ui.js';
       await persistSettings({support_language: elements.feedbackLanguage.value});
       requestSessionReconnect('Support / correction language saved.');
     } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.targetLanguage.addEventListener('change', () => {
+    const target = normalizeTargetLanguage(elements.targetLanguage.value);
+    elements.targetLanguage.value = target;
+    state.selectedTargetLanguage = target;
+    if (state.appMode === 'public') state.preferences.setTargetLanguage(target);
+    requestSessionReconnect(state.appMode === 'public' ? state.ui.t('language') : 'Target language changed.');
   });
 
   elements.theme.addEventListener('change', () => {

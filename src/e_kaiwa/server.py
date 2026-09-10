@@ -23,6 +23,7 @@ from .config import (
     normalize_feedback_language,
 )
 from .gemini import create_ephemeral_token
+from .languages import normalize_target_language, supported_target_languages
 from .sessions import SessionStore
 from .settings import ALLOWED_SUPPORT_LANGUAGES, SettingsStore
 
@@ -94,7 +95,7 @@ def _short_string_list(value: object, *, max_items: int = 8, max_length: int = 3
 
 def _language_mode(value: object) -> str:
     mode = str(value or "").strip()
-    return mode if mode in {"english", "non_english", "unknown"} else "unknown"
+    return mode if mode in {"target", "non_target", "unknown"} else "unknown"
 
 
 def _mic_audio_settings(value: object) -> dict:
@@ -110,7 +111,7 @@ def _client_settings_payload(runtime: Runtime) -> dict:
     if not runtime.access.is_public:
         payload = runtime.settings.public_payload()
         payload["app_mode"] = "dev"
-        payload["target_language"] = "en"
+        payload["target_languages"] = list(supported_target_languages())
         return payload
 
     config = runtime.settings.snapshot()
@@ -118,7 +119,7 @@ def _client_settings_payload(runtime: Runtime) -> dict:
     return {
         "version": config["version"],
         "app_mode": "public",
-        "target_language": "en",
+        "target_languages": list(supported_target_languages()),
         "settings": {
             "support_language": settings["support_language"],
             "pronunciation_enabled": settings["pronunciation_enabled"],
@@ -275,7 +276,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 try:
                     result = runtime.settings.update(self.read_json())
                     result["app_mode"] = "dev"
-                    result["target_language"] = "en"
+                    result["target_languages"] = list(supported_target_languages())
                     self.send_json(200, result)
                 except Exception as exc:
                     self.send_json(400, {"error": str(exc)})
@@ -318,6 +319,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         output_language_codes=_short_string_list(payload.get("output_language_codes")),
                         language_mode=_language_mode(payload.get("language_mode")),
                         support_language=normalize_feedback_language(payload.get("support_language")),
+                        target_language=normalize_target_language(payload.get("target_language"), "en"),
                         language_policy_version=_short_text(payload.get("language_policy_version")),
                         coach_eligible=_optional_bool(payload.get("coach_eligible")),
                         coach_called=_optional_bool(payload.get("coach_called")),

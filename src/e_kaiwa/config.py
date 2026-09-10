@@ -36,7 +36,7 @@ TEACHER_MODES: dict[str, TeacherMode] = {
         key="1",
         name="Easy",
         correction_rule=(
-            "Correct only mistakes that clearly hurt grammar or understanding. "
+            "Correct only mistakes that clearly hurt target-language grammar or understanding. "
             "Ignore small unnatural phrasing."
         ),
         pronunciation_instruction=(
@@ -49,11 +49,11 @@ TEACHER_MODES: dict[str, TeacherMode] = {
         key="2",
         name="Normal",
         correction_rule=(
-            "Correct clear grammar mistakes and noticeably unnatural learner English."
+            "Correct clear grammar mistakes and noticeably unnatural learner phrasing."
         ),
         pronunciation_instruction=(
-            "Use normal pronunciation-teacher standards. Report clear vowel/consonant, word stress, "
-            "rhythm, fluency, or intonation issues, even when the sentence is still understandable."
+            "Use normal pronunciation-teacher standards. Report clear, clearly audible issues covered "
+            "by the target language's pronunciation rubric, even when the sentence is understandable."
         ),
         max_pronunciation_problems=4,
     ),
@@ -61,16 +61,15 @@ TEACHER_MODES: dict[str, TeacherMode] = {
         key="3",
         name="Strict",
         correction_rule=(
-            "Be picky. Correct grammar, tense, articles, prepositions, word choice, and unnatural "
-            "phrasing when a native speaker would normally say it differently."
+            "Be picky. Correct clear grammar, word choice, and unnatural phrasing when a proficient "
+            "speaker of the target language would normally say it differently."
         ),
         pronunciation_instruction=(
-            "Be a demanding pronunciation coach. Listen critically to every word. Report subtle but "
-            "clearly audible vowel quality/length, consonant articulation, consonant clusters, final "
-            "sounds, word stress, linking, rhythm, reductions, and intonation issues. Do not give 95-100 "
-            "unless the speech is genuinely near-native for this sentence. A clearly non-native but fully "
-            "understandable reading should normally score around 70-90, depending on severity. Do not invent "
-            "errors that are not audible and do not penalize accent identity by itself."
+            "Be a demanding pronunciation coach. Listen critically and report subtle but clearly audible "
+            "issues covered by the target language's pronunciation rubric. Do not give 95-100 unless the "
+            "speech is genuinely near-native for this sentence. A clearly non-native but fully understandable "
+            "reading should normally score around 70-90, depending on severity. Do not invent errors that are "
+            "not audible and do not penalize accent identity by itself."
         ),
         max_pronunciation_problems=6,
     ),
