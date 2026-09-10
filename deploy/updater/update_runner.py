@@ -16,14 +16,15 @@ from typing import Any, Sequence
 
 try:
     from .update_checks import CheckResult, run_all_checks
-    from .update_status import StatusWriter
+    from .update_status import JournalWriter, StatusWriter
 except ImportError:
     from update_checks import CheckResult, run_all_checks
-    from update_status import StatusWriter
+    from update_status import JournalWriter, StatusWriter
 
 REPO_ROOT = Path(os.environ.get("E_KAIWA_REPO", "/home/ubuntu/e-kaiwa"))
 PYTHON_BIN = Path(os.environ.get("E_KAIWA_PYTHON", "/home/ubuntu/e-kaiwa/.venv/bin/python"))
 STATUS_PATH = Path(os.environ.get("E_KAIWA_UPDATE_STATUS", "/var/lib/ekaiwa-update/status.json"))
+JOURNAL_PATH = Path(os.environ.get("E_KAIWA_UPDATE_LOG", "/var/lib/ekaiwa-update/updater.jsonl"))
 REQUEST_PATH = Path(os.environ.get("E_KAIWA_UPDATE_REQUEST", "/home/ubuntu/.local/state/e-kaiwa/update-request"))
 LOCK_PATH = Path(os.environ.get("E_KAIWA_UPDATE_LOCK", "/run/ekaiwa-update.lock"))
 SERVICE_NAME = os.environ.get("E_KAIWA_SERVICE", "ekaiwa.service")
@@ -135,7 +136,8 @@ def health_ready(expected_revision: str, expected_version: str, timeout: int = 2
 
 
 def main() -> int:
-    writer = StatusWriter(STATUS_PATH)
+    status_writer = StatusWriter(STATUS_PATH)
+    journal_writer = JournalWriter(JOURNAL_PATH)
     update_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     base: dict[str, Any] = {
         "schema": 1,
@@ -151,6 +153,11 @@ def main() -> int:
         "updated_at": now_iso(),
     }
 
+    def journal(event: str, **data: object) -> None:
+        row = {"ts": now_iso(), "update_id": update_id, "event": event, **data}
+        journal_writer.write(row)
+        print(json.dumps(row, ensure_ascii=False, separators=(",", ":")), flush=True)
+
     def publish(state: str, progress: int, message: str, *, failures: list[str] | None = None) -> None:
         base.update(
             state=state,
@@ -159,17 +166,28 @@ def main() -> int:
             failures=failures if failures is not None else base.get("failures", []),
             updated_at=now_iso(),
         )
-        writer.write(base)
+        status_writer.write(base)
+        journal(
+            "state",
+            state=base["state"],
+            progress=base["progress"],
+            message=base["message"],
+            from_version=base.get("from_version", ""),
+            to_version=base.get("to_version", ""),
+            from_revision=base.get("from_revision", ""),
+            to_revision=base.get("to_revision", ""),
+            failures=base.get("failures", []),
+        )
 
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     lock_handle = LOCK_PATH.open("a+")
     try:
         fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        journal("skipped", reason="another updater is already running")
         REQUEST_PATH.unlink(missing_ok=True)
         return 0
 
-    stopped = False
     stop_attempted = False
     check_results: list[CheckResult] = []
     operational: list[str] = []
@@ -209,7 +227,6 @@ def main() -> int:
         publish("stopping", 10, "Stopping E-KAIWA")
         stop_attempted = True
         checked(["systemctl", "stop", SERVICE_NAME], timeout=45)
-        stopped = True
 
         try:
             publish("updating", 20, "Applying Git update")
@@ -230,22 +247,31 @@ def main() -> int:
                     as_user=True,
                     timeout=420,
                 )
+                journal("dependencies", ok=True)
             except Exception as exc:
                 operational.append(f"Dependencies: {str(exc)[:160]}")
+                journal("dependencies", ok=False, summary=str(exc)[:180])
+        else:
+            journal("dependencies", ok=True, skipped=True, reason="requirements unchanged")
 
         def on_check(name: str) -> None:
             publish("testing", PROGRESS.get(name, 45), f"Running {name}", failures=public_failures(check_results, operational))
 
         check_results = run_all_checks(REPO_ROOT, PYTHON_BIN, on_start=on_check)
+        for result in check_results:
+            journal("check_result", check=result.name, ok=result.ok, summary=result.summary[:240])
         failures = public_failures(check_results, operational)
         publish("checks_complete", 90, "Checks complete", failures=failures)
         try:
             refresh_installed_updater()
+            journal("updater_refresh", ok=True)
         except Exception as exc:
             operational.append(f"Updater refresh: {str(exc)[:160]}")
+            journal("updater_refresh", ok=False, summary=str(exc)[:180])
 
     except Exception as exc:
         operational.append(f"Updater: {str(exc)[:180]}")
+        journal("exception", summary=str(exc)[:240])
         publish(
             "checks_complete" if stop_attempted else "failed",
             90 if stop_attempted else 100,
@@ -261,8 +287,10 @@ def main() -> int:
     publish("starting", 92, "Starting E-KAIWA", failures=public_failures(check_results, operational))
     try:
         checked(["systemctl", "start", SERVICE_NAME], timeout=45)
+        journal("service_start", ok=True)
     except Exception as exc:
         operational.append(f"Start: {str(exc)[:160]}")
+        journal("service_start", ok=False, summary=str(exc)[:180])
 
     try:
         deployed_revision = git("rev-parse", "HEAD")
@@ -278,6 +306,7 @@ def main() -> int:
 
     publish("health", 97, "Waiting for health", failures=public_failures(check_results, operational))
     ready, health_error = health_ready(deployed_revision, deployed_version)
+    journal("health_check", ok=ready, summary=health_error)
     if not ready:
         operational.append(f"Health: {health_error}")
         publish("start_failed", 100, "E-KAIWA failed health check", failures=public_failures(check_results, operational))
