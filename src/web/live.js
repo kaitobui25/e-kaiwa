@@ -812,6 +812,12 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
 
     if (message.error) {
       const detail = message.error.message || JSON.stringify(message.error);
+      emitUiEvent({
+        event: 'gemini_error',
+        phase: state.setupReady ? 'live' : 'setup',
+        reason: socket.__ekaiwaReason || 'unknown',
+        error: String(detail).slice(0, 240)
+      });
       if (!state.setupReady) {
         state.connecting = false;
         if (await retryFreshAfterResume(socket, detail)) return;
@@ -917,6 +923,12 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     const data = await readJsonResponse(response);
     if (!response.ok) {
       state.connecting = false;
+      emitUiEvent({
+        event: 'session_request_failed',
+        reason,
+        http_status: response.status,
+        error: String(data.error || 'Could not create live session').slice(0, 240)
+      });
       throw new Error(data.error || 'Could not create live session');
     }
 
@@ -1329,6 +1341,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       await newLiveSession({reason: 'initial'});
     } catch (error) {
       if (!state.ui) initializeUi({app_mode: 'dev'});
+      emitUiEvent({event: 'startup_error', error: String(error.message || error).slice(0, 240)});
       showReconnect(`Startup error: ${error.message}.`);
     }
   }
