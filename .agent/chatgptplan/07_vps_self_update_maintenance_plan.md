@@ -4,34 +4,82 @@ Status: **planning only**. Plan này chỉ chốt kiến trúc/flow; chưa sửa
 
 ## 1. Mục tiêu
 
-Build một cơ chế update E-KAIWA trực tiếp từ UI đang chạy trên VPS:
+Build cơ chế update E-KAIWA trực tiếp từ UI đang chạy trên VPS:
 
 - user giữ nút `Update` trong **5 giây** mới trigger;
 - updater kéo code mới từ `origin/main` về VPS;
-- toàn bộ browser đang mở nhìn thấy maintenance overlay + progress `%`;
-- khi maintenance bắt đầu, browser phải dừng microphone, dừng playback, đóng Gemini Live WebSocket và khóa mọi interaction;
+- toàn bộ browser đang mở thấy maintenance overlay + progress `%`;
+- khi maintenance bắt đầu, browser dừng microphone, playback, Gemini Live WebSocket và khóa toàn bộ interaction;
 - E-KAIWA backend được stop trong thời gian apply update + chạy checks/tests;
-- **mọi test/check đều chạy đến cuối**, check fail không làm updater dừng giữa chừng;
+- **mọi test/check đều chạy đến cuối**, fail không làm updater dừng giữa chừng;
 - sau khi tổng hợp kết quả update/test xong mới `START ekaiwa`;
 - sau start phải GET `/health` xác nhận app thực sự ready;
-- nếu app ready: tất cả browser hiện result ngắn rồi reload để load code mới;
-- nếu test/check có lỗi: vẫn start/deploy, popup chỉ nêu ngắn gọn lỗi ở đâu;
-- nếu app không start/health fail: maintenance overlay giữ nguyên, không giả vờ thành công;
-- version public bắt đầu từ `0.1`; update quan trọng tăng thủ công `0.2`, `0.3`, ...;
+- app healthy + test fail vẫn deploy, popup chỉ nêu ngắn gọn fail ở đâu;
+- app start/health fail thì maintenance overlay giữ nguyên, không fake success;
+- app version bắt đầu từ `0.1`, nhưng **updater tuyệt đối không tự tăng version**;
+- version chỉ thay đổi khi developer chủ động sửa canonical version trong source code/repo rồi commit/push;
+- updater chỉ **đọc** version của code hiện tại và code vừa kéo về;
+- UI tự load version từ app runtime sau reload, không hardcode version trong frontend;
 - version hiển thị chữ nhỏ ở đầu Settings;
-- code phải clean, module hóa vừa đủ, dễ bảo trì/nâng cấp và nhẹ cho VPS ~1 GB RAM.
+- code clean, module hóa vừa đủ, dễ bảo trì/nâng cấp và nhẹ cho VPS ~1 GB RAM.
 
 ## 2. Quyết định đã chốt
 
 ### 2.1 Tạm thời không có admin auth
 
-V1 **không build account/admin/password**.
+V1 không build account/admin/password.
 
 Trigger update dùng hold 5 giây để tránh bấm nhầm.
 
-Lưu ý rõ: hold 5 giây chỉ là UX guard, **không phải security**. User biết endpoint vẫn có thể tự gọi update. Đây là trade-off được chấp nhận tạm thời; auth có thể thêm sau mà không đổi updater core.
+Hold 5 giây chỉ là UX guard, **không phải security**. Auth có thể thêm sau mà không đổi updater core.
 
-### 2.2 Không rollback khi test fail
+### 2.2 Version thuộc source/release, không thuộc updater
+
+Quy tắc bắt buộc:
+
+```text
+Developer sửa code
+      ↓
+nếu đây là release quan trọng thì developer tự sửa VERSION
+      ↓
+commit + push GitHub
+      ↓
+VPS Update chỉ pull code
+      ↓
+updater đọc VERSION mới
+      ↓
+app start
+      ↓
+UI load VERSION từ runtime
+```
+
+Updater không có logic:
+
+```text
+0.1 + 1 => 0.2
+```
+
+Updater không ghi/sửa file version.
+
+Update mới hoàn toàn có thể xảy ra mà version **không đổi**:
+
+```text
+before revision: abc1111  version: 0.1
+after revision : def2222  version: 0.1
+```
+
+Đây là trạng thái hợp lệ.
+
+Chỉ khi developer chủ động đổi source version:
+
+```text
+before revision: def2222  version: 0.1
+after revision : xyz3333  version: 0.2
+```
+
+UI sau reload mới tự hiện `v0.2`.
+
+### 2.3 Không rollback khi test fail
 
 Nếu một check fail:
 
@@ -51,9 +99,9 @@ START ekaiwa
 
 Không rollback chỉ vì test fail.
 
-### 2.3 `START ekaiwa` đặt sau kết quả update/test
+### 2.4 `START ekaiwa` đặt sau kết quả update/test
 
-Flow semantic phải phân biệt:
+Flow semantic:
 
 ```text
 CHECK SUMMARY COMPLETE
@@ -65,18 +113,18 @@ HEALTH READY
 DEPLOY FINAL STATUS
 ```
 
-`check summary` có thể xong trước start, nhưng chỉ được gọi deployment `ready/success` sau khi process mới lên và health check pass.
+Check summary có thể xong trước start, nhưng chỉ được gọi deployment `ready/success` sau khi process mới lên và health pass.
 
-### 2.4 Caddy phải sống xuyên maintenance
+### 2.5 Caddy phải sống xuyên maintenance
 
 E-KAIWA có thể stop, nhưng Caddy không stop.
 
-Caddy có 2 trách nhiệm trong maintenance:
+Caddy:
 
-1. reverse proxy E-KAIWA khi app đang chạy;
-2. serve maintenance status file trực tiếp khi E-KAIWA đang stop.
+1. reverse proxy E-KAIWA khi app chạy;
+2. serve maintenance status trực tiếp khi E-KAIWA stop.
 
-Do đó browser vẫn nhận `%` và final status dù backend Python đã chết.
+Browser vẫn nhận `%` và status dù backend Python đang chết.
 
 ## 3. Architecture mục tiêu
 
@@ -88,7 +136,7 @@ Do đó browser vẫn nhận `%` và final status dù backend Python đã chết
                                      ▼
 Browser ── HTTPS ──> Caddy ──> E-KAIWA :7860
   │                   │               │
-  │                   │               └─ POST update request marker
+  │                   │               └─ update trigger facade
   │                   │
   │                   └─ GET /maintenance/status.json
   │                          │
@@ -116,20 +164,19 @@ Browser ── HTTPS ──> Caddy ──> E-KAIWA :7860
       └─ reload after READY
 ```
 
-Important: Gemini Live hiện là browser → Gemini trực tiếp. Vì vậy chỉ stop backend không đủ để pause user. Frontend maintenance state phải chủ động đóng Live WebSocket và mic trước khi updater stop service.
+Gemini Live hiện là browser → Gemini trực tiếp. Vì vậy stop backend không đủ để pause user. Frontend maintenance state phải chủ động đóng Live WebSocket + mic trước downtime.
 
 ## 4. Nguyên tắc tránh overengineering
 
 Không làm trong Plan 07:
 
-- không Docker;
-- không Kubernetes;
-- không blue/green deploy;
+- không Docker/Kubernetes;
+- không blue/green;
 - không multi-instance zero-downtime;
 - không GitHub webhook/CD server;
 - không Redis/message queue;
-- không SSE/WebSocket server riêng cho progress;
-- không database cho update history;
+- không SSE/WebSocket progress server riêng;
+- không database update history;
 - không React/Vue migration;
 - không auth/admin trong V1;
 - không rollback engine;
@@ -148,38 +195,38 @@ Giữ:
 ### 5.1 Application runtime
 
 ```text
+VERSION                     # canonical app release version, developer-owned
+
 src/e_kaiwa/
-  version.py            # canonical app-version reader
-  server.py             # chỉ expose health/update trigger facade
-  ...                   # realtime/coach giữ ownership hiện tại
+  version.py                # read-only canonical version loader
+  server.py                 # health/update trigger facade only
+  ...                       # realtime/coach giữ ownership hiện tại
 ```
 
-`server.py` không được chứa git/systemctl/test orchestration.
+`server.py` không chứa git/systemctl/test orchestration.
 
 ### 5.2 Frontend
 
 ```text
 src/web/
-  live.js                    # realtime orchestration; expose pause/resume boundary
+  live.js                    # realtime orchestration; expose maintenance pause boundary
   maintenance.js             # polling + maintenance state machine
-  ui_maintenance.js          # full-screen progress/result overlay only
+  ui_maintenance.js          # full-screen progress/result overlay
   ui.js                      # UI facade hiện tại
-  ui_overlay.js              # Coach/settings overlay hiện tại, không gộp maintenance vào đây
+  ui_overlay.js              # Coach/settings overlays hiện tại
   live.html
   live.css
 ```
 
-Maintenance overlay phải tách khỏi `UiOverlayController` hiện tại vì semantics khác hoàn toàn:
+Maintenance overlay tách khỏi normal overlay vì:
 
 - không click backdrop để đóng;
-- không Escape để đóng;
+- không Escape;
 - không close button;
-- phải khóa cả app;
-- phải tồn tại xuyên backend downtime.
+- khóa cả app;
+- sống xuyên backend downtime.
 
 ### 5.3 Deployment/update code
-
-Đề xuất:
 
 ```text
 deploy/
@@ -193,68 +240,121 @@ deploy/
     ekaiwa-update.path
 
   caddy/
-    maintenance.caddy         # reference snippet/documentation
+    maintenance.caddy         # reference config/snippet
 ```
 
-Không tách thêm module nếu chưa cần.
+Không split nhỏ hơn khi chưa có nhu cầu thật.
 
-## 6. Versioning: một nguồn duy nhất
+## 6. Versioning — một canonical source, updater read-only
 
-Hiện repo có `__version__ = "0.2.0"` và `config.yaml version: 1`; hai khái niệm này không được trộn.
+Hiện repo có `e_kaiwa.__version__` và `config.yaml version`; hai khái niệm không được trộn.
 
-Plan 07 chuẩn hóa như sau:
+### 6.1 Canonical app version
 
-### App release version
-
-Canonical public version:
+Plan 07 đề xuất root file:
 
 ```text
 VERSION
 ```
 
-Nội dung hiện tại khi implement Plan 07:
+Ví dụ initial value:
 
 ```text
 0.1
 ```
 
-Mỗi update quan trọng tăng thủ công:
+Owner của file này là developer/release process.
+
+Khi developer thấy code đủ quan trọng để đổi public version thì tự sửa:
 
 ```text
-0.1
-0.2
-0.3
-0.4
-...
+0.1 → 0.2
 ```
 
-Không bắt buộc semantic `0.1.0` cho MVP.
+rồi commit cùng code.
 
-`src/e_kaiwa/version.py` chỉ đọc source này.
+Nếu chỉ fix nhỏ không muốn đổi public version thì giữ nguyên `0.1` dù Git revision mới.
 
-`e_kaiwa.__version__` nếu còn cần thì phải derive từ cùng source, không hardcode lần hai.
+### 6.2 Updater không mutate version
 
-### Config schema version
+Updater chỉ đọc:
 
-`config.yaml version: 1` tiếp tục là version/schema của settings/config nếu code hiện tại cần nó.
+```text
+current_version = VERSION ở checkout hiện tại
+target_version  = VERSION trong origin/main
+```
+
+Có thể đọc target trước checkout bằng Git (`git show origin/main:VERSION`) hoặc đọc sau ff-only apply. Implementation chọn cách sạch nhất, nhưng tuyệt đối không tính/increment version.
+
+`from_version == to_version` là hợp lệ.
+
+### 6.3 Runtime version loader
+
+`src/e_kaiwa/version.py` chỉ đọc canonical `VERSION`.
+
+Nếu `e_kaiwa.__version__` vẫn cần thì derive từ loader này, không hardcode lần hai.
+
+Frontend không hardcode `0.1`, `0.2`.
+
+### 6.4 Config schema version
+
+`config.yaml version: 1` tiếp tục là config/settings schema version nếu code cần.
 
 Không hiển thị nó như app release.
 
-### Git revision
+### 6.5 Git revision vẫn là deployment identity chính xác
 
-Ngoài `app_version`, updater/health nên giữ `git_revision` (short SHA) nội bộ.
+Updater/health giữ thêm short Git SHA.
 
-Lý do: có commit nhỏ không tăng `0.1 → 0.2` nhưng vẫn cần biết VPS đã chạy đúng commit mới.
+Lý do:
 
-Public Settings chỉ cần hiện:
+```text
+version 0.1 + revision aaa1111
+version 0.1 + revision bbb2222
+```
+
+là hai deployments khác nhau dù public version giống nhau.
+
+Khi xác nhận VPS đã kéo đúng code, **revision là điều kiện quan trọng nhất**.
+
+Settings chỉ cần hiện:
 
 ```text
 E-KAIWA v0.1
 ```
 
-Không cần show SHA cho user bình thường.
+Không show SHA cho user bình thường.
 
-## 7. Health contract
+## 7. UI version load
+
+Version hiển thị trong Settings phải tới từ backend/runtime payload, không đọc hardcoded JS constant.
+
+Có thể dùng một trong hai cách sạch:
+
+1. `/api/settings` trả thêm `app_version`;
+2. frontend bootstrap lấy `/health` rồi truyền `version` vào UI.
+
+Ưu tiên tránh thêm request nếu `/api/settings` đã được load lúc bootstrap.
+
+Flow:
+
+```text
+page load/reload
+    ↓
+backend đọc VERSION
+    ↓
+settings/bootstrap payload có app_version
+    ↓
+UI render E-KAIWA vX.Y
+```
+
+Do đó sau update:
+
+- VERSION không đổi → UI vẫn version cũ, nhưng code/revision đã mới;
+- VERSION đổi trong Git → UI tự hiện version mới;
+- updater không cần sửa frontend/version state.
+
+## 8. Health contract
 
 `GET /health` sau Plan 07 nên trả tối thiểu:
 
@@ -262,28 +362,41 @@ Không cần show SHA cho user bình thường.
 {
   "ok": true,
   "mode": "public",
-  "version": "0.2",
+  "version": "0.1",
   "revision": "abc1234"
 }
 ```
 
-Health update phải dùng **GET**, không dùng HEAD.
+Health dùng **GET**, không dùng HEAD.
 
-Updater chỉ coi app ready khi:
+Updater coi app ready khi:
 
 - HTTP 200;
 - `ok == true`;
-- version/revision khớp checkout vừa deploy khi dữ liệu đó có sẵn.
+- `revision == target_revision`;
+- `version == target_version` đọc từ target checkout.
 
-## 8. Maintenance status transport
+Version không cần khác `from_version`.
 
-Runtime state file:
+Ví dụ hợp lệ:
+
+```text
+from_version = 0.1
+to_version   = 0.1
+revision     = old → new
+health       = new revision + version 0.1
+=> READY
+```
+
+## 9. Maintenance status transport
+
+Runtime state:
 
 ```text
 /var/lib/ekaiwa-update/status.json
 ```
 
-Caddy serve file này trực tiếp ở một path cố định, ví dụ:
+Caddy serve trực tiếp tại:
 
 ```text
 /maintenance/status.json
@@ -291,7 +404,7 @@ Caddy serve file này trực tiếp ở một path cố định, ví dụ:
 
 Không proxy path này vào E-KAIWA.
 
-Headers nên là `Cache-Control: no-store`.
+Header: `Cache-Control: no-store`.
 
 ### Status schema V1
 
@@ -303,7 +416,7 @@ Headers nên là `Cache-Control: no-store`.
   "progress": 63,
   "message": "Running browser tests",
   "from_version": "0.1",
-  "to_version": "0.2",
+  "to_version": "0.1",
   "from_revision": "123abcd",
   "to_revision": "789efgh",
   "failures": [],
@@ -311,25 +424,23 @@ Headers nên là `Cache-Control: no-store`.
 }
 ```
 
-`failures` public chỉ chứa summary ngắn, không chứa stack trace, API key, filesystem secret hay raw command output.
+`to_version` được đọc từ Git target, không do updater tạo.
 
-Full details đi vào `journalctl -u ekaiwa-update`.
+`failures` public chỉ chứa summary ngắn; full logs ở journald.
 
 ### Atomic write
 
-`update_status.py` phải:
+`update_status.py`:
 
-1. write temp file cùng filesystem;
+1. write temp cùng filesystem;
 2. flush/close;
 3. `os.replace(temp, status.json)`.
 
-Không write trực tiếp từng byte vào status file vì browser poll có thể đọc trúng JSON dở dang.
+Không write trực tiếp status file từng phần.
 
-## 9. Progress model
+## 10. Progress model
 
-Không giả vờ đo thời gian chính xác. `%` là phase progress cố định.
-
-Baseline:
+`%` là phase progress cố định, không giả độ chính xác theo thời gian.
 
 ```text
   0%  Preparing
@@ -348,15 +459,13 @@ Baseline:
 100%  Ready
 ```
 
-Nếu step được skip vì không cần, progress nhảy sang phase tiếp theo.
+Step skip thì progress nhảy tới phase tiếp.
 
-Nếu check fail, progress vẫn tiến.
+Check fail vẫn tiếp tục.
 
-## 10. Trigger architecture: không để E-KAIWA tự update chính nó
+## 11. Trigger architecture — app không tự update chính nó
 
-Không chạy updater như child process sống trong `ekaiwa.service` rồi hy vọng nó survive `systemctl stop ekaiwa`.
-
-Đề xuất privilege boundary:
+Không spawn updater child rồi stop chính `ekaiwa.service`.
 
 ```text
 POST /api/update
@@ -368,173 +477,149 @@ ekaiwa-update.path phát hiện
 ekaiwa-update.service chạy độc lập
 ```
 
-Runtime request path ví dụ:
+Request marker ví dụ:
 
 ```text
 /run/ekaiwa-update/request
 ```
 
-Directory được provision sao cho E-KAIWA user `ubuntu` chỉ có quyền tạo request marker, không có quyền chạy arbitrary root command.
+Web app chỉ được tạo marker; không có general sudo shell.
 
-`ekaiwa-update.service` là root-owned oneshot vì cần stop/start service.
+`ekaiwa-update.service` root-owned oneshot vì cần stop/start service.
 
-Các command làm việc trong repo (`git`, pip nếu cần) phải chạy dưới user `ubuntu` để tránh biến file repo thành root-owned.
+Git/pip trong repo chạy dưới user `ubuntu` để tránh root-owned files.
 
-Không cấp cho web app sudo shell tổng quát.
+## 12. Long-press Update UX
 
-## 11. Long-press Update UX
-
-Update control đặt trong Settings, gần version nhưng không làm header rối.
-
-Behavior:
+Update control nằm trong Settings gần version.
 
 ```text
 pointer/key down
     ↓
-start 5-second hold progress
+start 5-second hold
     ↓
-release/cancel trước 5s → cancel, không request
+release/cancel < 5s → cancel
     ↓
 đủ 5s → trigger đúng 1 lần
 ```
 
-Sau khi trigger:
+Sau trigger:
 
-- button disabled;
-- maintenance overlay hiện ngay ở browser initiator, không đợi poll vòng đầu;
-- server/updater duplicate request phải được reject/no-op khi update đang chạy.
+- disable button;
+- browser initiator show overlay ngay;
+- duplicate updater request reject/no-op.
 
-Cần handle:
+Handle pointerdown/up/cancel/lost capture + keyboard Space/Enter.
 
-- `pointerdown`;
-- `pointerup`;
-- `pointercancel`;
-- `lostpointercapture`;
-- keyboard Space/Enter nếu giữ lâu.
+Long-press logic encapsulate riêng, không rải timeout trong `live.js`.
 
-Không dùng một `setTimeout` rải rác trong `live.js`; encapsulate long-press helper/controller.
+## 13. Global browser maintenance state
 
-## 12. Global browser maintenance state
-
-Mỗi browser đang mở chạy lightweight poll tới Caddy status path.
-
-Đề xuất polling:
+Mỗi browser poll Caddy status path.
 
 ```text
 visible + idle      : ~2 s
 hidden + idle       : ~5 s
 active maintenance  : ~0.5–1 s
-visibility becomes visible -> immediate poll
+visibility visible  : immediate poll
 ```
 
-Status file nhỏ và do Caddy serve nên không tạo load đáng kể cho Python app.
-
-Không dùng SSE vì E-KAIWA sẽ stop và ta không muốn thêm status server riêng.
+Status JSON nhỏ, Caddy serve trực tiếp nên không tạo load đáng kể lên Python.
 
 ### Enter maintenance
-
-Khi state chuyển khỏi `idle/complete` vào maintenance:
 
 ```text
 maintenanceActive = true
         ↓
-block future reconnect/new session
+block reconnect/new session
         ↓
 inputForwarding = false
         ↓
-cancel push-to-talk hold/activity
+cancel push-to-talk activity
         ↓
-stop/cleanup microphone
+cleanup microphone
         ↓
-stop live/manual playback
+stop playback
         ↓
-close Gemini WebSocket intentionally
+close Gemini WS intentionally
         ↓
 set application inert
         ↓
-show non-dismissible maintenance overlay
+show non-dismissible overlay
 ```
 
-Important: intentional WebSocket close trong maintenance không được chạy normal reconnect/fallback path.
+Intentional WS close không được chạy normal reconnect/fallback.
 
-`live.js` cần một boundary rõ, ví dụ:
+`live.js` expose boundary nhỏ:
 
 ```text
 pauseForMaintenance()
 ```
 
-`maintenance.js` gọi function này; nó không được tự sửa sâu tất cả realtime state từ ngoài.
+`maintenance.js` gọi boundary này; không sửa realtime internals từ ngoài.
 
 ### Interaction lock
-
-Maintenance overlay root nên nằm ngoài normal app shell.
-
-Ví dụ:
 
 ```html
 <main id="app-shell">...</main>
 <div id="maintenance-root" hidden>...</div>
 ```
 
-Khi maintenance:
+Maintenance:
 
 ```text
 app-shell.inert = true
 maintenance-root.hidden = false
 ```
 
-CSS thêm fallback `pointer-events` nếu cần.
+Talk/Settings/Coach/Replay/keyboard focus đều bị khóa.
 
-Do đó:
-
-- Talk disabled;
-- Settings không thao tác;
-- Coach/replay không thao tác;
-- keyboard focus không lọt vào app;
-- Gemini không còn interaction.
-
-## 13. Updater state machine
+## 14. Updater state machine
 
 ### Phase A — preflight, app vẫn chạy
 
 ```text
-request received
-      ↓
-acquire update lock
-      ↓
+request
+  ↓
+lock
+  ↓
 git fetch origin
-      ↓
-read current HEAD/version
-      ↓
-read origin/main target HEAD/version
+  ↓
+read current HEAD + current VERSION
+  ↓
+read origin/main HEAD + target VERSION
 ```
 
 Nếu `HEAD == origin/main`:
 
 - không stop app;
 - status `already_latest`;
-- browser trả result ngắn;
-- không tạo downtime vô ích.
+- không downtime.
 
-Nếu tracked working tree dirty hoặc fast-forward không hợp lệ:
+Không dùng version để quyết định có update hay không.
+
+**Chỉ Git revision quyết định latest.**
+
+Ví dụ target commit mới nhưng version vẫn `0.1` → vẫn phải update.
+
+Dirty tracked tree hoặc non-fast-forward:
 
 - không stop app;
-- status failed;
-- hiện summary;
-- không tự merge/reset phá local state.
+- failed status;
+- không auto merge/reset phá local state.
 
 ### Phase B — announce maintenance
 
-Updater write:
+Write:
 
 ```text
 state=preparing
 progress=5
 ```
 
-Cho active browsers một grace window ngắn để poll status, đóng Gemini/mic và dựng overlay trước khi backend stop.
+Cho clients grace window ngắn để đóng mic/Gemini trước backend stop.
 
-Grace này là config constant rõ ràng, không hardcode magic sleep rải rác.
+Grace là config constant rõ ràng.
 
 ### Phase C — stop app
 
@@ -542,65 +627,48 @@ Grace này là config constant rõ ràng, không hardcode magic sleep rải rác
 systemctl stop ekaiwa
 ```
 
-Từ đây E-KAIWA backend unavailable.
-
-Caddy + maintenance status vẫn available.
+Caddy/status vẫn sống.
 
 ### Phase D — apply code
 
-Dùng fast-forward only.
+Fast-forward only.
 
-Không merge tự động.
+Không auto merge.
 
-Không reset force local repo.
+Không force reset.
 
-Expected conceptual command:
+Concept:
 
 ```text
 git merge --ff-only origin/main
 ```
 
-hoặc equivalent pull `--ff-only`.
-
 ### Phase E — dependencies
 
-Tối ưu downtime:
-
 - compare old/new `src/requirements.txt` hash;
-- nếu không đổi → skip pip install;
-- nếu đổi → dùng E-KAIWA venv hiện tại để install.
-
-Không recreate `.venv` mỗi update.
+- không đổi → skip pip;
+- đổi → install vào existing E-KAIWA venv;
+- không recreate `.venv` mỗi update.
 
 ### Phase F — run all checks
 
-Check registry chạy sequential trên VPS 1 GB để tránh peak RAM.
+Sequential trên VPS 1 GB.
 
 Mỗi check:
 
 ```text
-start
-  ↓
-run subprocess
-  ↓
-capture exit code + short summary
-  ↓
+run
+ ↓
+capture exit + short result
+ ↓
 append result
-  ↓
-continue regardless pass/fail
+ ↓
+continue pass/fail
 ```
 
-Không dùng một shell chain kiểu:
-
-```bash
-cmd1 && cmd2 && cmd3
-```
-
-vì command đầu fail sẽ chặn command sau.
+Không dùng `cmd1 && cmd2 && cmd3`.
 
 ### Phase G — freeze check summary
-
-Trước START:
 
 ```text
 progress=90
@@ -608,58 +676,39 @@ state=checks_complete
 failures=[...]
 ```
 
-Đây là status cuối của phần update/test theo yêu cầu.
-
 ### Phase H — always attempt start
 
-Sau khi app đã bị stop, orchestration phải có `finally`-style guarantee:
-
-```text
-try:
-    update + checks
-finally:
-    attempt START ekaiwa
-```
-
-Ngay cả khi:
-
-- pip fail;
-- git apply fail giữa phase;
-- test runner exception;
-- một check timeout;
-
-updater vẫn phải thử start service một lần ở cuối.
-
-Không để exception khiến VPS nằm lại trong trạng thái app stopped mà không attempt recovery.
+Sau khi app đã stop, orchestration có `finally`-style guarantee để luôn attempt start một lần, kể cả pip/git/check có lỗi.
 
 ### Phase I — health
 
 Sau start:
 
 - GET `http://127.0.0.1:7860/health`;
-- retry trong bounded timeout;
-- không dùng HEAD;
-- validate version/revision nếu có.
+- bounded retry;
+- validate target Git revision;
+- validate target VERSION value;
+- không yêu cầu version phải tăng.
 
-Nếu health pass:
+Pass:
 
 ```text
 state=complete
 progress=100
 ```
 
-Nếu health fail:
+Fail:
 
 ```text
 state=start_failed
 progress=100
 ```
 
-Browser không auto reload khi `start_failed`.
+Không auto reload khi start failed.
 
-## 14. Check registry V1
+## 15. Check registry V1
 
-Bám CI hiện tại, tối thiểu:
+Bám CI hiện tại:
 
 ### Python unit tests
 
@@ -681,42 +730,36 @@ python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py
 
 ### JavaScript syntax
 
-Equivalent của CI hiện tại cho `src/web/*.js`.
+Equivalent CI cho `src/web/*.js`.
 
-Nếu tool như `node` không có trên VPS:
+Tool thiếu thì record warning/failure ngắn, tiếp tục checks; không fake success.
 
-- không báo fake success;
-- record `Browser tests: node unavailable`;
-- tiếp tục remaining checks;
-- popup summary ngắn;
-- full detail ở journal.
+## 16. Result UX
 
-Không cài tool lớn tự động giữa update trừ khi deployment prerequisites đã quyết định rõ.
+Popup lấy version từ `to_version`/runtime, không tự suy ra version mới.
 
-## 15. Result UX
+### Success, version không đổi
 
-### Success
+```text
+✓ E-KAIWA v0.1
+Update complete
+```
+
+### Success, developer đã đổi version trong Git
 
 ```text
 ✓ E-KAIWA v0.2
 Update complete
 ```
 
-### Có check fail nhưng app healthy
+### Check fail nhưng app healthy
 
 ```text
-⚠ E-KAIWA v0.2
+⚠ E-KAIWA v0.1
 Failed: Browser tests (1)
 ```
 
-Nếu nhiều failure:
-
-```text
-⚠ E-KAIWA v0.2
-Failed: Python tests, JS syntax
-```
-
-Không dump stack trace lên popup.
+Version nào hiện ra phụ thuộc canonical VERSION trong code vừa deploy.
 
 ### Start/health fail
 
@@ -725,11 +768,11 @@ Không dump stack trace lên popup.
 E-KAIWA failed to start
 ```
 
-Overlay giữ nguyên; không unlock interaction với một backend chưa ready.
+Không dump stack trace lên popup.
 
-## 16. Reload tất cả browser
+## 17. Reload tất cả browser
 
-Khi poll thấy:
+Khi:
 
 ```text
 state=complete
@@ -740,48 +783,41 @@ browser:
 
 1. ghi `update_id` đã consume;
 2. show short result;
-3. gọi `location.reload()`;
-4. page mới lấy static assets mới (`no-store` hiện tại hỗ trợ flow này).
+3. `location.reload()`;
+4. page mới tự load app version từ runtime payload.
 
-Cần chống reload loop bằng `update_id`.
+Chống reload loop bằng `update_id` trong session/local storage phù hợp.
 
-Đề xuất lưu `lastCompletedUpdateId` trong `sessionStorage` hoặc local storage phù hợp.
+Browser background khi foreground lại phải immediate status check.
 
-Status có thể tiếp tục ở `complete`; browser đã consume cùng `update_id` không reload lần hai.
+## 18. Settings UI
 
-Nếu browser bị background/throttled, khi trở lại foreground phải immediate status check và catch up update result.
-
-## 17. Settings UI
-
-Settings header public sau Plan 07 dự kiến:
+Ví dụ:
 
 ```text
 Settings                         E-KAIWA v0.1
 ```
 
-hoặc visual tương đương theo UI hiện tại.
-
 Version:
 
-- chữ nhỏ;
-- secondary/muted;
+- nhỏ/muted;
 - không lấy `config.yaml version`;
-- lấy app release source duy nhất.
+- không hardcode JS;
+- không lấy từ update counter;
+- lấy canonical app version qua runtime payload.
 
-Update control không nên chiếm diện tích lớn.
-
-Có thể đặt compact row gần version:
+Update button compact gần version:
 
 ```text
 E-KAIWA v0.1
 [ Hold 5s to Update ]
 ```
 
-## 18. Caddy responsibilities
+Nhấn Update không làm UI đổi `v0.1 → v0.2` trừ khi code Git vừa pull thật sự chứa VERSION `0.2`.
 
-Plan implementation cần thêm route static maintenance status trước generic reverse proxy.
+## 19. Caddy responsibilities
 
-Concept:
+Static maintenance status route trước generic reverse proxy:
 
 ```text
 /maintenance/status.json
@@ -791,289 +827,297 @@ all other paths
     → reverse_proxy 127.0.0.1:7860
 ```
 
-Caddy phải:
+Caddy:
 
-- serve status khi ekaiwa.service stopped;
-- set no-store;
-- không expose cả `/var/lib/ekaiwa-update/` directory listing;
-- chỉ expose file/status path cần thiết.
+- serve status khi app stopped;
+- no-store;
+- không expose directory listing;
+- chỉ expose file cần thiết.
 
-Optional later: static maintenance fallback page cho user mở site mới đúng lúc backend đang stop. Không bắt buộc V1 vì requirement hiện tại tập trung browser đã đang mở.
+Maintenance fallback page cho visitor mới là optional later.
 
-## 19. systemd responsibilities
+## 20. systemd responsibilities
 
-### Existing
+Existing:
 
 ```text
 ekaiwa.service
 caddy.service
 ```
 
-### New
+New:
 
 ```text
 ekaiwa-update.path
-    └─ watches update request marker
+    └─ watches request marker
 
 ekaiwa-update.service
     └─ root oneshot updater
 ```
 
-`ekaiwa-update.service`:
+Updater service:
 
-- không Restart loop vô hạn;
-- stdout/stderr vào journald;
 - one update at a time;
-- bounded timeout cho external commands;
-- explicit working paths;
-- không phụ thuộc shell activation.
+- bounded timeout;
+- explicit paths;
+- journald logs;
+- không shell activation dependency;
+- không restart loop vô hạn.
 
-## 20. Updater self-modification rule
+## 21. Updater self-modification rule
 
-Updater đang chạy không nên phụ thuộc vào code bị thay đổi sau `git pull` một cách lazy/khó đoán.
-
-Implementation phải chọn một trong hai cách rõ ràng:
-
-### Preferred
-
-Install stable updater copy ngoài repo, ví dụ:
+Preferred:
 
 ```text
 /opt/ekaiwa-updater/
 ```
 
-Repo giữ source/reference ở `deploy/updater/`.
+là stable installed updater copy; repo giữ source ở `deploy/updater/`.
 
-Updater hiện tại hoàn thành deployment bằng code stable đang load; source updater mới chỉ dùng cho lần sau.
+Updater hiện tại hoàn thành bằng code stable đang load; updater source mới áp dụng cho lần sau.
 
-### Acceptable MVP
+Acceptable MVP nếu chạy từ repo: load/import updater modules trước Git mutation và không lazy-import sau pull.
 
-Nếu chạy updater trực tiếp từ repo, toàn bộ updater modules phải import/load trước phase git mutation và không lazy-import sau pull.
+## 22. Performance rules cho VPS ~1 GB
 
-Không trộn hai mô hình mơ hồ.
-
-## 21. Performance rules cho VPS ~1 GB
-
-- Caddy serve tiny status JSON thay vì hit Python backend;
-- idle poll thấp tần suất;
-- update poll tăng tần suất chỉ khi cần;
-- tests sequential để tránh RAM spike;
-- không spawn nhiều workers;
+- Caddy serve tiny JSON;
+- polling idle thấp;
+- maintenance polling nhanh chỉ khi cần;
+- tests sequential;
 - skip pip nếu requirements không đổi;
-- skip update hoàn toàn nếu HEAD đã latest;
-- không rebuild venv mỗi lần;
-- không tải dependency/tooling không cần thiết;
-- full logs ở journald, status JSON rất nhỏ;
-- timeout mọi subprocess/network step để updater không treo vô hạn.
+- skip update nếu Git HEAD đã latest;
+- không dùng version equality để skip update;
+- không rebuild venv;
+- không tải tooling không cần;
+- full logs ở journald;
+- subprocess/network đều có timeout.
 
-## 22. Failure classification
-
-Không gom mọi lỗi thành một boolean.
+## 23. Failure classification
 
 ### Preflight failure
 
-Ví dụ:
+Git fetch fail, dirty tree, non-FF.
 
-- git fetch fail;
-- local tracked changes;
-- non-fast-forward.
-
-App chưa stop → giữ app đang chạy, show failure.
+App chưa stop → giữ app chạy + show failure.
 
 ### Check failure
 
-Ví dụ:
+Unit/browser/syntax fail.
 
-- Python unit test fail;
-- browser test fail;
-- syntax check fail.
+Continue all → start → health.
 
-Continue all checks → start app → health.
+Health OK → deployed warning.
 
-Nếu health OK: deployed nhưng warning.
+### Operational failure
 
-### Dependency/update operational failure
+Git apply/pip/runtime issue.
 
-Record failure; dependent checks có thể fail/skip; cuối cùng vẫn attempt start.
+Record; cuối cùng vẫn attempt start.
 
 ### Start/health failure
 
-Maintenance không được release.
+Maintenance không release.
 
-Status file/Caddy vẫn báo lỗi cho clients.
+Caddy status vẫn báo lỗi.
 
-## 23. Code-quality rules
+## 24. Code-quality rules
 
 ### Backend
 
-- handler chỉ validate request + create request marker;
-- không `subprocess(git...)` trong HTTP handler;
+- handler validate + create marker only;
+- không subprocess git trong HTTP handler;
 - không systemctl trong `server.py`;
-- update state schema tập trung một module;
-- no broad mutable globals cho update runtime.
+- update state schema một owner;
+- app version loader read-only;
+- không logic tăng version trong updater/backend/frontend.
 
 ### Frontend
 
-- maintenance state chỉ có một owner;
-- realtime code expose small pause boundary;
-- không rải `if (updating)` ở hàng chục event handler nếu có thể gate ở controller/UI facade;
-- overlay maintenance riêng khỏi Coach/settings overlay;
-- pure render function cho progress/result nếu có thể test độc lập.
+- maintenance state một owner;
+- realtime expose small pause boundary;
+- không rải `if (updating)` khắp handlers;
+- maintenance overlay tách normal overlay;
+- version render từ runtime data, không constant duplicate.
 
 ### Deployment
 
-- subprocess argument list, hạn chế `shell=True`;
-- explicit timeout;
-- explicit user khi chạy git/pip;
+- subprocess argument list;
+- hạn chế `shell=True`;
+- explicit timeout/user/path;
 - atomic status file;
-- no secret in public status;
-- no force reset/merge.
+- no secret public;
+- no force reset/merge;
+- VERSION là read-only đối với updater.
 
-## 24. Tests cần thêm cho Plan 07
+## 25. Tests cần thêm
 
 ### Python
 
-- app version reader đọc đúng canonical version;
-- maintenance status writer atomic/schema đúng;
+- version loader đọc canonical VERSION đúng;
+- updater không mutate VERSION;
+- target version reader đọc đúng `origin/main:VERSION`;
+- cùng version + khác revision vẫn update;
+- health validation chấp nhận same version nhưng target revision mới;
+- status writer atomic/schema;
 - check aggregator tiếp tục sau failure;
-- multiple failures aggregate ngắn đúng;
 - update lock chống concurrent run;
-- health validation version/revision;
-- preflight latest branch không stop service;
-- dirty/non-FF preflight abort trước downtime.
+- latest Git branch không stop service;
+- dirty/non-FF abort trước downtime.
 
 ### JavaScript
 
-- 5s long press trigger đúng một lần;
-- release trước 5s cancel;
-- maintenance status enters overlay;
-- app becomes non-interactive;
-- maintenance pauses realtime exactly once;
-- reconnect bị suppress trong maintenance;
-- progress render đúng;
-- complete result reload once;
-- same `update_id` không reload loop;
-- failed checks vẫn complete/reload nếu health OK;
-- `start_failed` không reload/unlock.
+- 5s hold trigger một lần;
+- release sớm cancel;
+- maintenance enters overlay;
+- app inert;
+- realtime pause once;
+- reconnect suppress;
+- progress render;
+- complete reload once;
+- same update_id không loop;
+- failed checks vẫn reload nếu health OK;
+- start_failed không unlock/reload;
+- Settings version render từ payload;
+- update completion không tự increment version client-side.
 
 ### Manual VPS acceptance
 
-- 2 browser cùng mở site;
-- browser A hold update;
-- A và B cùng thấy maintenance overlay;
-- mic/Live Gemini của cả hai dừng;
-- E-KAIWA stop nhưng progress vẫn chạy;
-- test fail giả lập vẫn chạy các check còn lại;
-- updater start app sau summary;
+- 2 browser cùng mở;
+- A hold Update;
+- A/B cùng overlay;
+- mic/Gemini cả hai dừng;
+- app stop nhưng progress chạy;
+- fake test fail vẫn chạy checks còn lại;
+- start sau summary;
 - health pass;
 - cả hai reload;
-- Settings hiển thị version mới;
-- journal có full result;
-- status public chỉ có summary an toàn.
+- nếu VERSION Git giữ 0.1 thì Settings vẫn 0.1;
+- nếu developer commit VERSION 0.2 thì Settings tự hiện 0.2;
+- journal full result;
+- public status không leak secret.
 
-## 25. Implementation phases
+## 26. Implementation phases
 
 ### Phase 07A — version foundation
 
-- canonical `VERSION` = `0.1`;
-- `version.py`;
+- add canonical root `VERSION`, initial `0.1`;
+- migrate existing `__version__` sang derive/read canonical source;
+- giữ `config.yaml version` là config schema riêng;
 - health trả app version + git revision;
-- Settings show version nhỏ.
+- bootstrap/settings payload trả app version cho UI;
+- Settings show version nhỏ;
+- updater không có write permission/logic cho VERSION ngoài Git checkout update bình thường.
 
 ### Phase 07B — maintenance transport
 
 - status schema/writer;
 - runtime directory permissions;
-- Caddy static status route;
+- Caddy static route;
 - initial idle status;
-- polling controller frontend.
+- frontend polling.
 
 ### Phase 07C — frontend freeze
 
-- dedicated maintenance overlay;
+- dedicated overlay;
 - progress ring/%;
-- `pauseForMaintenance()` boundary;
+- `pauseForMaintenance()`;
 - mic/playback/WS shutdown;
 - inert app;
 - reload/result handling.
 
 ### Phase 07D — update trigger + systemd bridge
 
-- long-press control;
-- minimal update endpoint;
+- long-press;
+- minimal trigger endpoint;
 - request marker;
 - `.path` + `.service`;
-- concurrency lock.
+- lock.
 
 ### Phase 07E — updater
 
 - preflight/fetch;
-- no-op if latest;
+- read current/target revision + version;
+- latest decision dựa Git revision;
 - stop;
 - ff-only apply;
-- conditional requirements install;
-- sequential all-check registry;
-- failure aggregation;
-- start in finalization;
-- health;
+- conditional requirements;
+- all-check registry;
+- aggregate failures;
+- start finalization;
+- health target revision/version;
 - complete/fail status.
 
 ### Phase 07F — regression + VPS real test
 
 - automated tests;
 - two-browser maintenance test;
-- simulated test failure;
-- simulated app start failure;
-- verify Caddy status survives E-KAIWA stop;
-- verify browser reload no loop.
+- update commit không đổi VERSION;
+- update commit có đổi VERSION;
+- simulated test fail;
+- simulated app start fail;
+- Caddy status survives app stop;
+- no reload loop.
 
-## 26. Acceptance criteria
+## 27. Acceptance criteria
 
-Plan 07 chỉ coi hoàn thành khi tất cả điều sau đúng:
+Plan 07 chỉ hoàn thành khi:
 
-1. Settings hiện `E-KAIWA v0.1` (hoặc version release hiện tại) từ một canonical source.
-2. Hold Update < 5s không trigger.
-3. Hold đủ 5s trigger đúng một update.
-4. Concurrent update request không tạo hai updater.
-5. Tất cả browser đang mở thấy overlay khi maintenance bắt đầu.
-6. Trong overlay không thể Talk/settings/replay/Coach interaction.
-7. Mic đã stop và Gemini Live WS đã close trước backend downtime.
-8. E-KAIWA stop trong apply + tests.
-9. Caddy status `%` vẫn available khi E-KAIWA stopped.
-10. Tất cả checks chạy đến cuối dù một/một số check fail.
-11. Check failure không tự rollback.
-12. `START ekaiwa` chỉ sau check summary.
-13. Updater luôn attempt start nếu app đã bị stop.
-14. Health dùng GET và xác nhận app ready.
-15. Healthy + check failures → popup warning ngắn + reload.
-16. Healthy + all pass → success + reload.
-17. Start/health fail → giữ maintenance/error, không fake success.
-18. Reload không loop.
-19. Public status không leak secret/raw logs.
-20. VPS không cần thêm framework/service nặng ngoài systemd/Caddy hiện tại.
+1. Có đúng một canonical app VERSION source.
+2. Version ban đầu dự kiến `0.1`.
+3. Chỉ developer/source commit quyết định đổi version.
+4. Nhấn Update không tự increment/mutate version.
+5. Commit mới cùng version vẫn được updater deploy theo Git revision.
+6. Settings tự load version runtime, không hardcode.
+7. Hold <5s không trigger; đủ 5s trigger đúng một lần.
+8. Concurrent update không tạo hai updater.
+9. Tất cả browser đang mở thấy maintenance overlay.
+10. Trong maintenance không Talk/Settings/Replay/Coach/Gemini interaction.
+11. Mic stop + Gemini WS close trước backend downtime.
+12. E-KAIWA stop trong apply + tests.
+13. Caddy status `%` vẫn available khi E-KAIWA stopped.
+14. Tất cả checks chạy hết dù fail.
+15. Check fail không rollback.
+16. `START ekaiwa` chỉ sau check summary.
+17. Nếu app đã stop, updater luôn attempt start.
+18. Health GET xác nhận target revision + target VERSION value.
+19. Health không yêu cầu version phải tăng.
+20. Healthy + check fail → warning ngắn + reload.
+21. Healthy + all pass → success + reload.
+22. Start/health fail → giữ maintenance/error.
+23. Reload không loop.
+24. Sau reload UI phản ánh VERSION thực tế của code vừa deploy.
+25. Public status không leak secrets/raw logs.
+26. Không thêm framework/service nặng ngoài systemd/Caddy hiện tại.
 
-## 27. Future extension points — không làm ngay
+## 28. Future extension points — không làm ngay
 
-Sau V1 có thể thêm mà không rewrite core:
-
-- Caddy Basic Auth/admin session cho trigger endpoint;
+- Caddy Basic Auth/admin session;
 - release notes/version history;
-- rollback tới previous known-good revision;
-- maintenance page cho new visitors trong downtime;
+- rollback previous revision;
+- maintenance page cho visitor mới;
 - GitHub Actions deploy trigger;
-- zero-downtime dual instance nếu traffic tăng;
-- signed update/release policy.
+- zero-downtime dual instance;
+- signed release/update policy.
 
-Các extension này phải ngồi ngoài realtime/Gemini logic.
+Version release vẫn phải độc lập updater ngay cả khi sau này thêm các extension này.
 
-## 28. Final target flow
+## 29. Final target flow
 
 ```text
+Developer code/change
+      ↓
+optional: developer manually edits VERSION
+      ↓
+commit + push GitHub
+
 HOLD UPDATE 5s
       ↓
-preflight/fetch while app alive
+fetch while app alive
       ↓
-latest? → no-op, no downtime
+read current revision/version
+read target revision/version
+      ↓
+revision latest? → no-op, no downtime
       ↓
 status PREPARING
       ↓
@@ -1093,11 +1137,19 @@ CHECK SUMMARY COMPLETE (90%)
       ↓
 START ekaiwa
       ↓
-GET /health (version + revision)
+GET /health
+  validate target revision
+  validate target VERSION value
       ↓
 healthy?
   ├─ YES → 100% + result popup + reload all clients
-  └─ NO  → error overlay stays, no fake completion
+  │          ↓
+  │       UI reads VERSION from new runtime
+  └─ NO  → error overlay stays
 ```
 
-Đây là kiến trúc mục tiêu cho Plan 07: updater độc lập với app, maintenance state độc lập với backend, frontend pause Gemini đúng nghĩa, flow fail-safe đủ cho một VPS nhỏ nhưng vẫn giữ code đơn giản và dễ nâng cấp.
+Core rule của Plan 07:
+
+> **Updater deploys Git revisions; developer owns release version.**
+>
+> Update không tự tăng version. Version UI chỉ thay đổi khi canonical VERSION trong code Git thay đổi.
