@@ -30,3 +30,17 @@ class StatusWriter:
                 temp_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+class JournalWriter:
+    """Append-only structured updater history, separate from the public status snapshot."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(self, payload: dict[str, Any]) -> None:
+        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
