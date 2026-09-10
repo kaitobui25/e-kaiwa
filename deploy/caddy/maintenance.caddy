@@ -1,0 +1,13 @@
+# Merge this handler into the existing ekaiwa.duckdns.org site block,
+# before the generic reverse_proxy handler.
+@maintenanceStatus path /maintenance/status.json
+handle @maintenanceStatus {
+    root * /var/lib/ekaiwa-update
+    rewrite * /status.json
+    header Cache-Control "no-store"
+    file_server
+}
+
+handle {
+    reverse_proxy 127.0.0.1:7860
+}
