@@ -6,6 +6,19 @@ import {
 } from './ui_render.js';
 
 const DYNAMIC_OVERLAYS = new Set(['coach', 'correction', 'word', 'replay']);
+const FOCUSABLE = 'button, select, input, textarea, a[href], [tabindex]';
+
+function canFocus(node) {
+  return node && node.isConnected !== false && !node.disabled && node.tabIndex >= 0
+    && !node.closest('[hidden], [inert]') && node.getClientRects().length > 0
+    && getComputedStyle(node).visibility !== 'hidden';
+}
+
+function actionKey(node) {
+  if (!node?.dataset) return null;
+  const {uiAction, audioAction, turn, problem} = node.dataset;
+  return uiAction || audioAction ? JSON.stringify([uiAction, audioAction, turn, problem]) : null;
+}
 
 export class OverlayState {
   constructor() {
@@ -60,11 +73,16 @@ export class UiOverlayController {
     this.onAudioAction = onAudioAction;
     this.state = new OverlayState();
     this.turn = null;
+    this.previousFocus = null;
+    this.previousFocusKey = null;
+    this.renderedMarkup = null;
     this._bind();
   }
 
   setMode(mode) {
     this.mode = mode === 'public' ? 'public' : 'dev';
+    if (this.mode === 'public') this.settingsPanel?.setAttribute('aria-modal', 'true');
+    else this.settingsPanel?.removeAttribute('aria-modal');
     if (this.mode !== 'public') this.close();
   }
 
@@ -88,7 +106,32 @@ export class UiOverlayController {
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && this.state.type) this.close();
+      if (!this.state.type) return;
+      if (event.key === 'Escape') {
+        event.preventDefault?.();
+        this.close();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const container = this.state.type === 'settings' ? this.settingsPanel : this.surface;
+      const focusable = [...(container?.querySelectorAll(FOCUSABLE) || [])].filter(canFocus);
+      if (!focusable.length) {
+        event.preventDefault();
+        container?.focus({preventScroll: true});
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!focusable.includes(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     });
   }
 
@@ -110,6 +153,10 @@ export class UiOverlayController {
 
   _show(type) {
     if (this.mode !== 'public' || !this.root) return false;
+    if (!this.state.type) {
+      this.previousFocus = document.activeElement;
+      this.previousFocusKey = actionKey(document.activeElement);
+    }
     this.root.hidden = false;
     this.root.dataset.overlay = type;
     this.root.setAttribute('aria-hidden', 'false');
@@ -123,7 +170,7 @@ export class UiOverlayController {
     this.state.open(type, {turnNo: turn?.no ?? null, problemIndex});
     if (this.settingsPanel) this.settingsPanel.hidden = true;
     if (this.surface) this.surface.hidden = false;
-    this.renderActive();
+    this.renderActive({initialFocus: true});
   }
 
   openSettings() {
@@ -133,7 +180,8 @@ export class UiOverlayController {
     if (this.surface) this.surface.hidden = true;
     if (this.settingsPanel) this.settingsPanel.hidden = false;
     this.settingsOpen?.setAttribute?.('aria-expanded', 'true');
-    requestAnimationFrame(() => this.settingsClose?.focus?.({preventScroll: true}));
+    this.settingsPanel?.setAttribute('aria-modal', 'true');
+    this.settingsClose?.focus({preventScroll: true});
   }
 
   openCoach(turn) {
@@ -156,15 +204,30 @@ export class UiOverlayController {
     this._showDynamic('replay', turn);
   }
 
-  renderActive() {
+  renderActive({initialFocus = false} = {}) {
     if (!this.dynamic || !DYNAMIC_OVERLAYS.has(this.state.type) || !this.turn) return;
     const t = key => this.translate(key);
     const allowAudio = this.audioActionsAllowed();
-    if (this.state.type === 'coach') this.dynamic.innerHTML = coachOverviewHtml(this.turn, t);
-    else if (this.state.type === 'correction') this.dynamic.innerHTML = correctionOverlayHtml(this.turn, t, allowAudio);
-    else if (this.state.type === 'word') this.dynamic.innerHTML = wordOverlayHtml(this.turn, this.state.problemIndex, t, allowAudio);
-    else if (this.state.type === 'replay') this.dynamic.innerHTML = replayOverlayHtml(this.turn, t);
-    requestAnimationFrame(() => this.dynamic.querySelector?.('.overlay-icon')?.focus?.({preventScroll: true}));
+    let markup;
+    if (this.state.type === 'coach') markup = coachOverviewHtml(this.turn, t);
+    else if (this.state.type === 'correction') markup = correctionOverlayHtml(this.turn, t, allowAudio);
+    else if (this.state.type === 'word') markup = wordOverlayHtml(this.turn, this.state.problemIndex, t, allowAudio);
+    else if (this.state.type === 'replay') markup = replayOverlayHtml(this.turn, t);
+    const focusedInside = this.dynamic.contains(document.activeElement);
+    const key = focusedInside ? actionKey(document.activeElement) : null;
+    if (markup !== this.renderedMarkup) {
+      const scrollTop = this.dynamic.querySelector('.overlay-scroll')?.scrollTop || 0;
+      this.dynamic.innerHTML = markup;
+      this.renderedMarkup = markup;
+      const scroll = this.dynamic.querySelector('.overlay-scroll');
+      if (scroll && !initialFocus) scroll.scrollTop = scrollTop;
+      if (focusedInside && !initialFocus) {
+        const replacement = [...this.dynamic.querySelectorAll(FOCUSABLE)]
+          .find(node => key && actionKey(node) === key && canFocus(node));
+        (replacement || this.dynamic.querySelector('.overlay-icon'))?.focus({preventScroll: true});
+      }
+    }
+    if (initialFocus) this.dynamic.querySelector('.overlay-icon')?.focus({preventScroll: true});
   }
 
   refresh(turns) {
@@ -189,8 +252,17 @@ export class UiOverlayController {
     }
     if (this.surface) this.surface.hidden = false;
     if (this.dynamic) this.dynamic.replaceChildren();
+    this.renderedMarkup = null;
     if (this.settingsPanel && this.mode === 'public') this.settingsPanel.hidden = true;
     this.settingsOpen?.setAttribute?.('aria-expanded', 'false');
     document.body.classList.remove('overlay-open');
+    const restore = this.previousFocus;
+    this.previousFocus = null;
+    const replacement = this.previousFocusKey
+      ? [...document.querySelectorAll('[data-ui-action]')].find(node => actionKey(node) === this.previousFocusKey && canFocus(node))
+      : null;
+    const target = canFocus(restore) ? restore : (replacement || this.settingsOpen);
+    this.previousFocusKey = null;
+    if (canFocus(target)) target.focus({preventScroll: true});
   }
 }

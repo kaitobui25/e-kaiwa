@@ -17,7 +17,7 @@
       <h1>E-KAIWA</h1>
       <div class="app-tagline" data-i18n="appTagline">Speak more. Learn naturally.</div>
     </div>
-    <button id="settings-open" class="header-icon" type="button" aria-label="Settings" aria-expanded="false" hidden>
+    <button id="settings-open" class="header-icon" type="button" aria-label="Settings" data-i18n-aria-label="settings" aria-expanded="false" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
     </button>
   </header>
@@ -26,11 +26,11 @@
     <div class="muted">Gemini Live audio → audio · hands-free turns · Coach sidecar</div>
   </section>
 
-  <section class="conversation-card" aria-label="Conversation history">
+  <section class="conversation-card" aria-label="Conversation history" data-i18n-aria-label="conversationHistory">
     <div id="conversation" class="conversation"><div class="empty-state">Loading…</div></div>
   </section>
 
-  <section class="control-dock" aria-label="Conversation controls">
+  <section class="control-dock" aria-label="Conversation controls" data-i18n-aria-label="conversationControls">
     <div id="status" class="status">Loading settings…</div>
     <div class="voice-control-row">
       <div class="voice-waves voice-waves-left public-only" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
@@ -40,7 +40,7 @@
       <div class="voice-waves voice-waves-right public-only" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
     </div>
     <div id="talk-label" class="talk-label">Connecting…</div>
-    <div class="dock-meta public-only" aria-label="Current conversation preferences">
+    <div class="dock-meta public-only" aria-label="Current conversation preferences" data-i18n-aria-label="currentPreferences">
       <span class="dock-meta-item">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18"/></svg>
         <span id="quick-language">日本語</span>
@@ -60,33 +60,29 @@
   </section>
 
   <div id="overlay-root" class="overlay-root" hidden aria-hidden="true">
-    <button id="overlay-backdrop" class="overlay-backdrop" type="button" aria-label="Close overlay"></button>
-    <section id="overlay-surface" class="overlay-surface" role="dialog" aria-modal="true" aria-label="Details">
+    <button id="overlay-backdrop" class="overlay-backdrop" type="button" aria-label="Close overlay" data-i18n-aria-label="closeOverlay"></button>
+    <section id="overlay-surface" class="overlay-surface" role="dialog" tabindex="-1" aria-modal="true" aria-label="Details" data-i18n-aria-label="details">
       <div id="overlay-dynamic"></div>
     </section>
   </div>
 
-  <aside id="settings-panel" class="settings-panel" role="dialog" aria-label="Settings" hidden>
+  <aside id="settings-panel" class="settings-panel" role="dialog" tabindex="-1" aria-label="Settings" data-i18n-aria-label="settings" hidden>
     <div class="settings-head public-only">
       <strong data-i18n="settings">Settings</strong>
-      <button id="settings-close" class="overlay-icon" type="button" aria-label="Close">
+      <button id="settings-close" class="overlay-icon" type="button" aria-label="Close" data-i18n-aria-label="close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
       </button>
     </div>
 
     <div class="settings-release public-only">
       <span id="app-version" class="app-version">E-KAIWA</span>
-      <button id="update-button" class="update-button" type="button" data-holding="false" aria-label="Hold for 5 seconds to update E-KAIWA" hidden>
-        <span>Hold 5s to Update</span>
+      <button id="update-button" class="update-button" type="button" data-holding="false" aria-label="Hold for 5 seconds to update E-KAIWA" data-i18n-aria-label="updateHold" hidden>
+        <span data-i18n="updateHoldShort">Hold 5s to Update</span>
       </button>
     </div>
 
     <section class="setting-section">
-      <div class="setting-section-title public-only">
-        <span class="setting-section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18"/></svg></span>
-        <span data-i18n="language">Language</span>
-      </div>
-      <div class="setting-control-row"><span data-i18n="language">Language</span><select id="feedback-language">
+      <div class="setting-control-row"><label for="feedback-language" data-i18n="language">Language</label><select id="feedback-language">
         <option value="ja">日本語</option>
         <option value="vi">Tiếng Việt</option>
       </select></div>
@@ -94,29 +90,21 @@
     </section>
 
     <section class="setting-section">
-      <div class="setting-control-row"><span data-i18n="targetLanguage">Target language</span><select id="target-language"></select></div>
+      <div class="setting-control-row"><label for="target-language" data-i18n="targetLanguage">Target language</label><select id="target-language"></select></div>
       <span class="muted setting-note" data-i18n="targetLanguageDescription">Language to practice; changing it starts a new Live session.</span>
     </section>
 
     <section class="setting-section public-only">
-      <div class="setting-section-title">
-        <span class="setting-section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg></span>
-        <span data-i18n="theme">Theme</span>
-      </div>
-      <div class="setting-control-row"><span data-i18n="theme">Theme</span><select id="theme">
+      <div class="setting-control-row"><label for="theme" data-i18n="theme">Theme</label><select id="theme">
         <option value="light" data-i18n="light">Light</option>
         <option value="dark" data-i18n="dark">Dark</option>
       </select></div>
     </section>
 
     <section class="setting-section">
-      <div class="setting-section-title public-only">
-        <span class="setting-section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"/></svg></span>
-        <span data-i18n="talkMode">Talk</span>
-      </div>
       <label class="switch-row public-only" for="talk-mode">
         <span><strong data-i18n="talkMode">Talk</strong><small data-i18n="talkDescription">ON: hands-free / OFF: hold to talk</small></span>
-        <input id="talk-mode" class="switch-control" type="checkbox" role="switch" aria-label="Talk">
+        <input id="talk-mode" class="switch-control" type="checkbox" role="switch" aria-label="Talk" data-i18n-aria-label="talkMode">
       </label>
 
       <div class="dev-only">
@@ -136,7 +124,7 @@
         <span class="muted setting-note">Auto rotates keys first, then models.</span>
       </div>
 
-      <div class="setting-control-row"><span data-i18n="speed">AI response speed</span><select id="ai-speed">
+      <div class="setting-control-row"><label for="ai-speed" data-i18n="speed">AI response speed</label><select id="ai-speed">
         <option value="0.5">0.5×</option><option value="0.6">0.6×</option><option value="0.7">0.7×</option><option value="0.8" selected>0.8×</option><option value="0.9">0.9×</option><option value="1.0">1.0×</option><option value="1.1">1.1×</option><option value="1.2">1.2×</option><option value="1.3">1.3×</option><option value="1.4">1.4×</option><option value="1.5">1.5×</option>
       </select></div>
 

@@ -11,6 +11,10 @@ class FakeElement {
     this.listeners = new Map();
     this.innerHTML = '';
     this.focused = false;
+    this.isConnected = true;
+    this.disabled = false;
+    this.tabIndex = 0;
+    this.children = [];
   }
 
   addEventListener(type, callback) {
@@ -21,6 +25,14 @@ class FakeElement {
     this.attributes.set(name, String(value));
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
   replaceChildren() {
     this.innerHTML = '';
   }
@@ -29,8 +41,25 @@ class FakeElement {
     return null;
   }
 
+  querySelectorAll() {
+    return this.children;
+  }
+
+  contains(node) {
+    return this.children.includes(node);
+  }
+
+  closest(selector) {
+    return selector.includes('[hidden]') && this.hidden ? this : null;
+  }
+
+  getClientRects() {
+    return this.hidden ? [] : [{}];
+  }
+
   focus() {
     this.focused = true;
+    global.document.activeElement = this;
   }
 
   emit(type, event = {}) {
@@ -42,6 +71,7 @@ function installFakeDocument() {
   const listeners = new Map();
   const classes = new Set();
   global.document = {
+    activeElement: null,
     body: {
       classList: {
         add: value => classes.add(value),
@@ -49,8 +79,10 @@ function installFakeDocument() {
         contains: value => classes.has(value)
       }
     },
-    addEventListener: (type, callback) => listeners.set(type, callback)
+    addEventListener: (type, callback) => listeners.set(type, callback),
+    querySelectorAll: () => []
   };
+  global.getComputedStyle = () => ({visibility: 'visible'});
   global.requestAnimationFrame = callback => callback();
   return {listeners, classes};
 }
@@ -98,6 +130,31 @@ function makeController({allowAudio = true} = {}) {
   return {controller, root, backdrop, surface, dynamic, settingsPanel, settingsOpen, settingsClose, audioCalls, env};
 }
 
+function installDynamicMarkupHarness(dynamic) {
+  let markup = '';
+  let children = [];
+  let scroll = {scrollTop: 0};
+  let close = new FakeElement({hidden: false});
+  Object.defineProperty(dynamic, 'innerHTML', {
+    configurable: true,
+    get: () => markup,
+    set: value => {
+      for (const child of children) child.isConnected = false;
+      markup = String(value);
+      scroll = {scrollTop: 0};
+      close = new FakeElement({hidden: false});
+      const actionMatch = markup.match(/data-audio-action="([^"]+)"/);
+      children = actionMatch ? [new FakeElement({hidden: false})] : [];
+      if (actionMatch) children[0].dataset.audioAction = actionMatch[1];
+      dynamic.children = children;
+    }
+  });
+  dynamic.querySelector = selector => selector === '.overlay-scroll' ? scroll : (selector === '.overlay-icon' ? close : null);
+  dynamic.querySelectorAll = () => children;
+  dynamic.contains = node => children.includes(node);
+  return {getChildren: () => children, getScroll: () => scroll};
+}
+
 test('overlay state keeps exactly one active view', () => {
   const state = new OverlayState();
   assert.deepEqual(state.snapshot(), {type: null, turnNo: null, problemIndex: 0});
@@ -128,6 +185,112 @@ test('settings and dynamic overlays share one backdrop and close on outside clic
   env.listeners.get('keydown')?.({key: 'Escape'});
   assert.equal(controller.state.type, null);
   assert.equal(root.hidden, true);
+});
+
+test('overlay restores focus to the opener after closing', () => {
+  const {controller, settingsOpen, env} = makeController();
+  global.document.activeElement = settingsOpen;
+  controller.openSettings();
+  env.listeners.get('keydown')?.({key: 'Escape', preventDefault() {}});
+  assert.equal(settingsOpen.focused, true);
+});
+
+test('Tab containment skips disabled and hidden controls and wraps focus', () => {
+  const {controller, settingsPanel, settingsClose, env} = makeController();
+  const first = new FakeElement({hidden: false});
+  const disabled = new FakeElement({hidden: false});
+  disabled.disabled = true;
+  const hidden = new FakeElement({hidden: true});
+  const last = new FakeElement({hidden: false});
+  settingsPanel.children = [first, disabled, hidden, last];
+  controller.openSettings();
+
+  global.document.activeElement = last;
+  const forward = {key: 'Tab', shiftKey: false, preventDefault() { this.prevented = true; }};
+  env.listeners.get('keydown')?.(forward);
+  assert.equal(forward.prevented, true);
+  assert.equal(global.document.activeElement, first);
+
+  global.document.activeElement = first;
+  const backward = {key: 'Tab', shiftKey: true, preventDefault() { this.prevented = true; }};
+  env.listeners.get('keydown')?.(backward);
+  assert.equal(backward.prevented, true);
+  assert.equal(global.document.activeElement, last);
+  assert.notEqual(global.document.activeElement, disabled);
+  assert.notEqual(settingsClose, disabled);
+});
+
+test('detached opener falls back to the visible settings trigger', () => {
+  const {controller, settingsOpen, env} = makeController();
+  const opener = new FakeElement({hidden: false});
+  global.document.activeElement = opener;
+  controller.openSettings();
+  opener.isConnected = false;
+  env.listeners.get('keydown')?.({key: 'Escape', preventDefault() {}});
+  assert.equal(settingsOpen.focused, true);
+});
+
+test('empty dialog traps Tab on the dialog itself', () => {
+  const {controller, settingsPanel, env} = makeController();
+  controller.openSettings();
+  const event = {key: 'Tab', shiftKey: false, preventDefault() { this.prevented = true; }};
+  env.listeners.get('keydown')?.(event);
+  assert.equal(event.prevented, true);
+  assert.equal(settingsPanel.focused, true);
+});
+
+test('refresh replaces focused action while preserving its identity and scroll position', () => {
+  const {controller, dynamic} = makeController();
+  const harness = installDynamicMarkupHarness(dynamic);
+  const firstTurn = sampleTurn();
+  controller.openWord(firstTurn, 0);
+  const oldAction = harness.getChildren()[0];
+  global.document.activeElement = oldAction;
+  harness.getScroll().scrollTop = 42;
+
+  const updated = sampleTurn();
+  updated.coach.pronunciation.problems[0].tip = 'Updated tip.';
+  controller.refresh([updated]);
+
+  const replacement = harness.getChildren()[0];
+  assert.equal(oldAction.isConnected, false);
+  assert.notEqual(replacement, oldAction);
+  assert.equal(global.document.activeElement, replacement);
+  assert.equal(harness.getScroll().scrollTop, 42);
+});
+
+test('unchanged refresh does not replace markup or steal focus', () => {
+  const {controller, dynamic} = makeController();
+  const harness = installDynamicMarkupHarness(dynamic);
+  const turn = sampleTurn();
+  controller.openWord(turn, 0);
+  const action = harness.getChildren()[0];
+  global.document.activeElement = action;
+  let replacements = 1;
+  const originalSetter = Object.getOwnPropertyDescriptor(dynamic, 'innerHTML').set;
+  Object.defineProperty(dynamic, 'innerHTML', {
+    configurable: true,
+    get: () => dynamic._markup || '',
+    set: value => { replacements += 1; dynamic._markup = value; originalSetter(value); }
+  });
+  controller.refresh([turn]);
+  assert.equal(replacements, 1);
+  assert.equal(global.document.activeElement, action);
+});
+
+test('detached dynamic opener restores to the matching replacement action', () => {
+  const {controller, settingsOpen, env} = makeController();
+  const opener = new FakeElement({hidden: false});
+  opener.dataset = {uiAction: 'open-coach', turn: '7'};
+  const replacement = new FakeElement({hidden: false});
+  replacement.dataset = {uiAction: 'open-coach', turn: '7'};
+  global.document.activeElement = opener;
+  global.document.querySelectorAll = () => [replacement];
+  controller.openSettings();
+  opener.isConnected = false;
+  env.listeners.get('keydown')?.({key: 'Escape', preventDefault() {}});
+  assert.equal(replacement.focused, true);
+  assert.equal(settingsOpen.focused, false);
 });
 
 test('coach navigation reuses the overlay instead of stacking panels', () => {

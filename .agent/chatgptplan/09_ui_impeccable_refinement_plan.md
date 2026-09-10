@@ -1,6 +1,6 @@
 # E-KAIWA UI Refinement Plan (Preliminary)
 
-Status: preliminary plan only. No production UI changes yet.
+Status: implementation complete for confirmed accessibility, containment, touch-target, i18n, contrast, and visual-noise scope. Rendered/browser and text-zoom verification remain pending because BrowserOS Neo was unavailable.
 
 ## Goal
 

@@ -11,6 +11,14 @@ import {UiOverlayController} from './ui_overlay.js';
 
 const COPY = Object.freeze({
   ja: {
+    conversationHistory: '会話履歴',
+    conversationControls: '会話コントロール',
+    currentPreferences: '現在の会話設定',
+    closeOverlay: 'オーバーレイを閉じる',
+    details: '詳細',
+    back: '戻る',
+    updateHold: '5秒長押しでE-KAIWAを更新',
+    updateHoldShort: '5秒長押しで更新',
     appTagline: '気軽に、たくさん話そう！',
     settings: '設定',
     close: '閉じる',
@@ -64,6 +72,14 @@ const COPY = Object.freeze({
     replayHint: '自分の声を聞き返すことで、発音やリズムを客観的に確認できます。'
   },
   vi: {
+    conversationHistory: 'Lịch sử hội thoại',
+    conversationControls: 'Điều khiển hội thoại',
+    currentPreferences: 'Tùy chọn hội thoại hiện tại',
+    closeOverlay: 'Đóng bảng thông tin',
+    details: 'Chi tiết',
+    back: 'Quay lại',
+    updateHold: 'Nhấn giữ 5 giây để cập nhật E-KAIWA',
+    updateHoldShort: 'Giữ 5 giây để cập nhật',
     appTagline: 'Cứ nói nhiều, giao tiếp sẽ tự nhiên hơn!',
     settings: 'Cài đặt',
     close: 'Đóng',
@@ -212,6 +228,10 @@ export class UiController {
     for (const node of document.querySelectorAll('[data-i18n]')) {
       const key = node.dataset.i18n;
       if (key) node.textContent = this.t(key);
+    }
+    for (const node of document.querySelectorAll('[data-i18n-aria-label]')) {
+      const key = node.dataset.i18nAriaLabel;
+      if (key) node.setAttribute('aria-label', this.t(key));
     }
     if (this.elements.feedbackLanguage) this.elements.feedbackLanguage.value = this.language;
     if (this.elements.quickLanguage) this.elements.quickLanguage.textContent = this.t(this.language === 'vi' ? 'appLanguageVi' : 'appLanguageJa');

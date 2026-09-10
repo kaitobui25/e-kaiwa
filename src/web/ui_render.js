@@ -123,11 +123,11 @@ export function devTurnHtml(turn, pronunciationEnabled) {
   </div>`;
 }
 
-function overlayHeader(title, {back = false} = {}) {
+function overlayHeader(title, t, {back = false} = {}) {
   return `<header class="overlay-header">
-    ${back ? `<button class="overlay-icon" type="button" data-ui-action="back-coach" aria-label="Back">${icon('back')}</button>` : '<span class="overlay-header-spacer"></span>'}
+    ${back ? `<button class="overlay-icon" type="button" data-ui-action="back-coach" aria-label="${escapeHtml(t('back'))}">${icon('back')}</button>` : '<span class="overlay-header-spacer"></span>'}
     <h2>${escapeHtml(title)}</h2>
-    <button class="overlay-icon" type="button" data-ui-action="close-overlay" aria-label="Close">${icon('close')}</button>
+    <button class="overlay-icon" type="button" data-ui-action="close-overlay" aria-label="${escapeHtml(t('close'))}">${icon('close')}</button>
   </header>`;
 }
 
@@ -189,7 +189,7 @@ function naturalExpressionCard(turn, t) {
 export function coachOverviewHtml(turn, t) {
   const overall = turnScore(turn);
   const pronunciation = turn?.coach?.pronunciation;
-  return `${overlayHeader(t('coach'))}
+  return `${overlayHeader(t('coach'), t)}
     <div class="overlay-scroll">
       ${overall == null ? '' : `<section class="score-hero">
         <div><span>${escapeHtml(t('score'))}</span><strong>${overall}<small>/100</small></strong></div>
@@ -206,7 +206,7 @@ export function correctionOverlayHtml(turn, t, allowAudioActions) {
   const original = turn?.userText || '';
   const correction = turn?.coach?.correction || original;
   const explanation = turn?.coach?.explanation || '';
-  return `${overlayHeader(t('naturalExpression'), {back: true})}
+  return `${overlayHeader(t('naturalExpression'), t, {back: true})}
     <div class="overlay-scroll">
       <section class="compare-card compare-original">
         <h3>${escapeHtml(t('yourSpeech'))}</h3>
@@ -224,7 +224,7 @@ export function correctionOverlayHtml(turn, t, allowAudioActions) {
 export function wordOverlayHtml(turn, problemIndex, t, allowAudioActions) {
   const problems = turn?.coach?.pronunciation?.problems || [];
   const problem = problems[problemIndex] || {};
-  return `${overlayHeader(t('wordPractice'), {back: true})}
+  return `${overlayHeader(t('wordPractice'), t, {back: true})}
     <div class="overlay-scroll word-practice">
       <section class="word-hero">
         <div><h3>${escapeHtml(problem.word || '')}</h3>${problem.sound ? `<p>${escapeHtml(problem.sound)}</p>` : ''}</div>
@@ -257,7 +257,7 @@ export function replayDuration(pcm, sampleRate = 16000) {
 }
 
 export function replayOverlayHtml(turn, t) {
-  return `${overlayHeader(t('replayMine'))}
+  return `${overlayHeader(t('replayMine'), t)}
     <div class="overlay-scroll replay-view">
       <section class="replay-transcript"><h3>${escapeHtml(t('yourSpeech'))}</h3><p>${escapeHtml(turn?.userText || '')}</p></section>
       <div class="waveform" aria-hidden="true">${waveformBars(turn?.replayPcm)}</div>
