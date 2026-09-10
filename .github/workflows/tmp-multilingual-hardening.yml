@@ -1,0 +1,284 @@
+name: Temporary multilingual hardening
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply exact multilingual hardening patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old[:80]!r}')
+              write(path, text.replace(old, new, 1))
+
+          def replace_between(path, start_marker, end_marker, replacement):
+              text = read(path)
+              start = text.find(start_marker)
+              if start < 0:
+                  raise SystemExit(f'{path}: missing start marker {start_marker!r}')
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f'{path}: missing end marker {end_marker!r}')
+              write(path, text[:start] + replacement + text[end:])
+
+          # 1) Language-aware transcript concatenation lives with language policy.
+          path = 'src/web/language_policy.js'
+          marker = '\nexport function finalizeLanguageMode(turn) {'
+          text = read(path)
+          if 'export function concatTargetTranscript' in text:
+              raise SystemExit(f'{path}: concatTargetTranscript already exists')
+          if text.count(marker) != 1:
+              raise SystemExit(f'{path}: finalize marker mismatch')
+          helper = r'''
+export function concatTargetTranscript(previous, incoming, targetLanguage = 'en') {
+  const oldText = String(previous || '').trim();
+  const newText = String(incoming || '').trim();
+  if (!oldText) return newText;
+  if (!newText || oldText.endsWith(newText)) return oldText;
+  if (newText.startsWith(oldText)) return newText;
+
+  const target = normalizeTargetLanguage(targetLanguage);
+  if (target !== 'en') return oldText + newText;
+  return oldText + (/[\s,.!?]$/.test(oldText) ? '' : ' ') + newText;
+}
+'''
+          write(path, text.replace(marker, '\n' + helper + marker, 1))
+
+          # 2) CJK-safe pronunciation highlighting without losing English boundaries.
+          path = 'src/web/ui_render.js'
+          replacement = r'''function escapedRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function usesAsciiWordBoundary(value) {
+  return /^[A-Za-z0-9_'’-]+$/.test(value);
+}
+
+export function highlightProblems(text, pronunciation) {
+  const raw = String(text || '…');
+  const problems = Array.isArray(pronunciation?.problems) ? pronunciation.problems.slice(0, 4) : [];
+  if (!problems.length) return escapeHtml(raw);
+
+  const candidates = problems
+    .map(problem => ({problem, word: String(problem?.word || '').trim()}))
+    .filter(item => item.word)
+    .sort((a, b) => b.word.length - a.word.length);
+  if (!candidates.length) return escapeHtml(raw);
+
+  const ranges = [];
+  for (const candidate of candidates) {
+    const escaped = escapedRegex(candidate.word);
+    const source = usesAsciiWordBoundary(candidate.word) ? `\\b${escaped}\\b` : escaped;
+    const regex = new RegExp(source, 'gi');
+    for (const match of raw.matchAll(regex)) {
+      const start = match.index ?? -1;
+      if (start < 0) continue;
+      const end = start + match[0].length;
+      if (ranges.some(range => start < range.end && end > range.start)) continue;
+      ranges.push({start, end, problem: candidate.problem});
+    }
+  }
+
+  if (!ranges.length) return escapeHtml(raw);
+  ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+  let html = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    html += escapeHtml(raw.slice(cursor, range.start));
+    html += `<span class="pron-problem ${severityClass(range.problem)}">${escapeHtml(raw.slice(range.start, range.end))}</span>`;
+    cursor = range.end;
+  }
+  return html + escapeHtml(raw.slice(cursor));
+}
+
+'''
+          replace_between(path, 'export function highlightProblems(text, pronunciation) {', 'export function turnScore(turn) {', replacement)
+
+          # 3) Wire target-aware concatenation and server-owned target choices into Live UI.
+          path = 'src/web/live.js'
+          replace_once(
+              path,
+              "  buildLiveLanguageInstruction,\n  finalizeLanguageMode,\n  isCoachEligible,\n  recordLanguageCode,\n  selectedSupportLanguage\n} from './language_policy.js';",
+              "  buildLiveLanguageInstruction,\n  concatTargetTranscript,\n  finalizeLanguageMode,\n  isCoachEligible,\n  recordLanguageCode,\n  selectedSupportLanguage,\n  TARGET_LANGUAGE_METADATA\n} from './language_policy.js';",
+          )
+          replace_between(
+              path,
+              '  function concatTranscript(previous, incoming) {',
+              '  function bytesToB64(bytes) {',
+              "  function concatTranscript(previous, incoming, targetLanguage = state.targetLanguage) {\n    return concatTargetTranscript(previous, incoming, targetLanguage);\n  }\n\n",
+          )
+          replace_once(
+              path,
+              "  function publicOrDev(publicKey, devText) {",
+              "  function setTargetLanguageChoices(choices, selected) {\n    if (!elements.targetLanguage) return;\n    const values = [...new Set((Array.isArray(choices) ? choices : [])\n      .filter(value => Object.prototype.hasOwnProperty.call(TARGET_LANGUAGE_METADATA, value)))];\n    const supported = values.length ? values : [TARGET_LANGUAGE];\n    const selectedValue = supported.includes(selected)\n      ? selected\n      : (supported.includes(TARGET_LANGUAGE) ? TARGET_LANGUAGE : supported[0]);\n    elements.targetLanguage.replaceChildren(...supported.map(value => {\n      const option = document.createElement('option');\n      option.value = value;\n      option.textContent = TARGET_LANGUAGE_METADATA[value]?.name || value;\n      return option;\n    }));\n    elements.targetLanguage.value = selectedValue;\n  }\n\n  function publicOrDev(publicKey, devText) {",
+          )
+          replace_once(
+              path,
+              "    const choices = payload?.choices || {};\n\n    elements.teacher.value = settings.teacher || 'Normal';",
+              "    const choices = payload?.choices || {};\n    setTargetLanguageChoices(payload?.target_languages, state.selectedTargetLanguage);\n\n    elements.teacher.value = settings.teacher || 'Normal';",
+          )
+          replace_once(
+              path,
+              "      turn.userText = concatTranscript(turn.userText, content.inputTranscription.text);",
+              "      turn.userText = concatTranscript(turn.userText, content.inputTranscription.text, turn.targetLanguage);",
+          )
+          replace_once(
+              path,
+              "      turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text);",
+              "      turn.aiText = concatTranscript(turn.aiText, content.outputTranscription.text, turn.targetLanguage);",
+          )
+
+          # 4) Target selector is populated from /api/settings, not duplicated in HTML.
+          path = 'src/web/live.html'
+          replace_once(
+              path,
+              '''      <div class="setting-control-row"><span>Target language</span><select id="target-language">\n        <option value="en">English</option>\n        <option value="ja">Japanese</option>\n        <option value="zh-Hans">Mandarin Chinese (Simplified)</option>\n      </select></div>\n      <span class="muted setting-note">Language to practice; changing it starts a new Live session.</span>''',
+              '''      <div class="setting-control-row"><span data-i18n="targetLanguage">Target language</span><select id="target-language"></select></div>\n      <span class="muted setting-note" data-i18n="targetLanguageDescription">Language to practice; changing it starts a new Live session.</span>''',
+          )
+
+          # 5) Remove English-only public copy and localize target-language labels.
+          path = 'src/web/ui.js'
+          replace_once(path, "    language: '表示・コーチ言語',", "    language: '表示・コーチ言語',\n    targetLanguage: '学習言語',\n    targetLanguageDescription: '練習する言語です。変更するとLiveセッションを再接続します。',")
+          replace_once(path, "    noConversation: 'マイクを押して、英会話を始めましょう。',", "    noConversation: 'マイクを押して、会話を始めましょう。',")
+          replace_once(path, "    appTagline: 'Cứ nói nhiều, tiếng Anh sẽ gần hơn!',", "    appTagline: 'Cứ nói nhiều, giao tiếp sẽ tự nhiên hơn!',")
+          replace_once(path, "    language: 'Ngôn ngữ UI & Coach',", "    language: 'Ngôn ngữ UI & Coach',\n    targetLanguage: 'Ngôn ngữ đang học',\n    targetLanguageDescription: 'Ngôn ngữ luyện tập; đổi lựa chọn sẽ tạo lại phiên Live.',")
+
+          # 6) Metrics keep explicit invalid target invalid instead of lying as English.
+          path = 'src/e_kaiwa/server.py'
+          replace_once(
+              path,
+              "\ndef _mic_audio_settings(value: object) -> dict:",
+              "\ndef _metric_target_language(payload: dict) -> str | None:\n    if \"target_language\" not in payload:\n        return \"en\"\n    return normalize_target_language(payload.get(\"target_language\"))\n\n\ndef _mic_audio_settings(value: object) -> dict:",
+          )
+          replace_once(
+              path,
+              '                        target_language=normalize_target_language(payload.get("target_language"), "en"),',
+              '                        target_language=_metric_target_language(payload),',
+          )
+
+          # 7) Regression coverage.
+          path = 'src/tests/js/language_policy.test.mjs'
+          replace_once(
+              path,
+              "test('support language remains independent and live instruction is target-specific', () => {",
+              "test('transcript concatenation preserves English spacing and CJK adjacency', () => {\n  assert.equal(policy.concatTargetTranscript('Hello', 'world', 'en'), 'Hello world');\n  assert.equal(policy.concatTargetTranscript('今日は', '天気です', 'ja'), '今日は天気です');\n  assert.equal(policy.concatTargetTranscript('你好', '世界', 'zh-Hans'), '你好世界');\n  assert.equal(policy.concatTargetTranscript('今日は天気です', '天気です', 'ja'), '今日は天気です');\n});\n\ntest('support language remains independent and live instruction is target-specific', () => {",
+          )
+
+          path = 'src/tests/js/ui.test.mjs'
+          replace_once(
+              path,
+              "  correctionOverlayHtml,\n  publicTurnHtml,",
+              "  correctionOverlayHtml,\n  highlightProblems,\n  publicTurnHtml,",
+          )
+          replace_once(
+              path,
+              "test('replay overlay uses local PCM for waveform and duration without extra data dependency', () => {",
+              r'''test('problem highlighting supports Japanese and Chinese without breaking English word boundaries', () => {
+  const japanese = highlightProblems('今日は天気です。', {problems: [{word: '天気', severity: 'yellow'}]});
+  assert.match(japanese, /今日は<span class="pron-problem severity-yellow">天気<\/span>です。/);
+
+  const chinese = highlightProblems('你好世界', {problems: [{word: '世界', severity: 'red'}]});
+  assert.match(chinese, /你好<span class="pron-problem severity-red">世界<\/span>/);
+
+  const english = highlightProblems('scatter cat', {problems: [{word: 'cat', severity: 'yellow'}]});
+  assert.doesNotMatch(english, /s<span[^>]*>cat<\/span>ter/);
+  assert.match(english, /scatter <span class="pron-problem severity-yellow">cat<\/span>/);
+});
+
+test('replay overlay uses local PCM for waveform and duration without extra data dependency', () => {''',
+          )
+
+          path = 'src/tests/python/test_languages.py'
+          replace_once(
+              path,
+              "from e_kaiwa.languages import (\n",
+              "from e_kaiwa.languages import (\n",
+          )
+          text = read(path)
+          import_marker = ")\n\n\nROOT = Path(__file__).resolve().parents[3]"
+          if text.count(import_marker) != 1:
+              raise SystemExit(f'{path}: import marker mismatch')
+          text = text.replace(import_marker, ")\nfrom e_kaiwa.server import _metric_target_language\n\n\nROOT = Path(__file__).resolve().parents[3]", 1)
+          write(path, text)
+          replace_once(
+              path,
+              "    def test_coach_rejects_explicit_unsupported_target(self):",
+              "    def test_metric_target_language_preserves_invalid_explicit_values(self):\n        self.assertEqual(_metric_target_language({}), \"en\")\n        self.assertEqual(_metric_target_language({\"target_language\": \"cmn\"}), \"zh-Hans\")\n        self.assertIsNone(_metric_target_language({\"target_language\": \"zh-Hant\"}))\n\n    def test_coach_rejects_explicit_unsupported_target(self):",
+          )
+
+          path = 'src/tests/python/test_frontend_settings.py'
+          replace_once(path, 'PREFERENCES = SRC / "web" / "preferences.js"', 'PREFERENCES = SRC / "web" / "preferences.js"\nUI = SRC / "web" / "ui.js"')
+          replace_once(
+              path,
+              "        self.assertIn('id=\"theme\"', html)\n        self.assertIn(\"SUPPORTED_APP_LANGUAGES\", prefs)",
+              "        self.assertIn('id=\"theme\"', html)\n        self.assertIn('id=\"target-language\"', html)\n        self.assertIn('<select id=\"target-language\"></select>', html)\n        self.assertIn(\"SUPPORTED_APP_LANGUAGES\", prefs)",
+          )
+          replace_once(
+              path,
+              "    def test_dev_model_selectors_still_exist(self):",
+              "    def test_target_choices_come_from_server_and_public_copy_is_target_neutral(self):\n        js = JS.read_text(encoding=\"utf-8\")\n        ui = UI.read_text(encoding=\"utf-8\")\n        self.assertIn(\"setTargetLanguageChoices(payload?.target_languages\", js)\n        self.assertNotIn(\"英会話を始めましょう\", ui)\n        self.assertNotIn(\"tiếng Anh sẽ gần hơn\", ui)\n\n    def test_dev_model_selectors_still_exist(self):",
+          )
+
+          path = 'src/tests/python/test_language_rescue_ui.py'
+          replace_once(
+              path,
+              '            "support_language",\n            "language_policy_version",',
+              '            "support_language",\n            "target_language",\n            "language_policy_version",',
+          )
+
+          PY
+
+      - name: Install runtime dependencies
+        run: python -m pip install -r src/requirements.txt
+
+      - name: Python regression tests
+        run: python -m unittest discover -s src/tests/python -p 'test_*.py'
+
+      - name: Browser module tests
+        run: node --test src/tests/js/*.test.mjs
+
+      - name: Syntax checks
+        shell: bash
+        run: |
+          python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py deploy/updater
+          for file in src/web/*.js; do
+            node --input-type=module --check < "$file"
+          done
+
+      - name: Commit verified fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-multilingual-hardening.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: harden multilingual CJK behavior'
+          git push origin HEAD:main
