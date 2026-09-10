@@ -4,6 +4,8 @@ import {MaintenanceOverlay} from './ui_maintenance.js';
 const appShell = document.getElementById('app-shell');
 const updateButton = document.getElementById('update-button');
 const versionNode = document.getElementById('app-version');
+const settingsOpen = document.getElementById('settings-open');
+const settingsClose = document.getElementById('settings-close');
 const overlay = new MaintenanceOverlay({
   root: document.getElementById('maintenance-root'),
   appShell,
@@ -12,6 +14,34 @@ const overlay = new MaintenanceOverlay({
   message: document.getElementById('maintenance-message'),
   detail: document.getElementById('maintenance-detail'),
 });
+
+function createClientId() {
+  const key = 'e-kaiwa.ui-client-id';
+  try {
+    const existing = sessionStorage.getItem(key);
+    if (existing) return existing;
+    const generated = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(key, generated);
+    return generated;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+const clientId = createClientId();
+
+function logUiEvent(payload) {
+  const body = JSON.stringify({client_id: clientId, ...payload});
+  fetch('/api/ui-event', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+settingsOpen?.addEventListener('click', () => logUiEvent({event: 'settings_open', target: 'settings_button'}));
+settingsClose?.addEventListener('click', () => logUiEvent({event: 'settings_close', target: 'settings_close'}));
 
 async function loadReleaseInfo() {
   try {
@@ -37,9 +67,7 @@ async function maintenanceTransportReady() {
 }
 
 function pauseRealtimeForMaintenance() {
-  // live.js owns all realtime resources and already centralizes their cleanup
-  // in its unload boundary. Dispatching the same event avoids reaching into
-  // its private state from the maintenance module.
+  // live.js owns realtime resources; reuse its existing centralized cleanup boundary.
   window.dispatchEvent(new Event('beforeunload'));
 }
 
@@ -47,6 +75,7 @@ const controller = new MaintenanceController({
   overlay,
   updateButton,
   pauseForMaintenance: pauseRealtimeForMaintenance,
+  logEvent: logUiEvent,
 });
 
 async function bootstrapMaintenance() {
