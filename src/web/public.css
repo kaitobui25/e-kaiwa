@@ -23,6 +23,7 @@ body[data-app-mode="public"] {
   --radius-lg: 20px;
   --shadow-sm: 0 4px 14px rgba(24, 33, 47, 0.06);
   --shadow-md: 0 18px 44px rgba(24, 33, 47, 0.16);
+  --control-dock-safe-area: 156px;
 }
 
 body[data-app-mode="public"][data-theme="dark"] {
@@ -46,7 +47,7 @@ body[data-app-mode="public"][data-theme="dark"] {
 
 body[data-app-mode="public"] .app-shell {
   width: min(100%, 720px);
-  padding: 0 12px calc(150px + env(safe-area-inset-bottom));
+  padding: 0 12px calc(var(--control-dock-safe-area) + env(safe-area-inset-bottom));
 }
 
 body[data-app-mode="public"] .app-header {
@@ -83,7 +84,7 @@ body[data-app-mode="public"] .empty-state {
 }
 
 body[data-app-mode="public"] .turn {
-  scroll-margin-bottom: 148px;
+  scroll-margin-bottom: var(--control-dock-safe-area);
 }
 
 body[data-app-mode="public"] .message-row {
@@ -147,6 +148,15 @@ body[data-app-mode="public"] .text {
   line-height: 1.58;
 }
 
+body[data-app-mode="public"] .message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 44px;
+  margin: 5px -4px -5px 0;
+}
+
 body[data-app-mode="public"] .inline-action {
   background: transparent;
   color: var(--primary);
@@ -156,6 +166,22 @@ body[data-app-mode="public"] .score-pill {
   border: 1px solid color-mix(in srgb, var(--success) 26%, var(--border));
   border-radius: 10px;
   background: transparent;
+}
+
+body[data-app-mode="public"] .inline-action:active,
+body[data-app-mode="public"] .score-button:active,
+body[data-app-mode="public"] .problem-card:active,
+body[data-app-mode="public"] .natural-card:active,
+body[data-app-mode="public"] .round-audio:active,
+body[data-app-mode="public"] .replay-main:active {
+  transform: scale(0.97);
+  opacity: 0.78;
+}
+
+body[data-app-mode="public"] .inline-action:disabled {
+  opacity: 0.38;
+  cursor: default;
+  transform: none;
 }
 
 /* Talk dock: one primary action, quiet status/meta, no decorative pseudo-waveform. */
@@ -398,7 +424,7 @@ body[data-app-mode="public"] .replay-note {
   background: transparent;
 }
 
-/* Settings: familiar rows, not decorative section cards. */
+/* Settings: familiar rows with subtle functional boundaries. */
 body[data-app-mode="public"] .settings-release {
   border-bottom: 1px solid var(--border);
 }
@@ -409,7 +435,7 @@ body[data-app-mode="public"] .setting-section {
 }
 
 body[data-app-mode="public"] .setting-section + .setting-section {
-  border-top: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
 body[data-app-mode="public"] .setting-control-row,
@@ -442,12 +468,17 @@ body[data-app-mode="public"] .setting-control-row select {
   min-width: 96px;
   min-height: 44px;
   max-width: 52%;
-  padding: 6px 26px 6px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
   color: var(--text);
   text-align: right;
+}
+
+body[data-app-mode="public"] .setting-control-row select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 58%, transparent);
+  outline-offset: 2px;
 }
 
 body[data-app-mode="public"] .switch-control {
@@ -462,6 +493,10 @@ body[data-app-mode="public"] .switch-control {
 }
 
 @media (max-width: 380px) {
+  body[data-app-mode="public"] {
+    --control-dock-safe-area: 150px;
+  }
+
   body[data-app-mode="public"] .app-shell {
     padding-left: 10px;
     padding-right: 10px;
@@ -484,5 +519,16 @@ body[data-app-mode="public"] .switch-control {
   body[data-app-mode="public"] .setting-control-row,
   body[data-app-mode="public"] .switch-row {
     gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-app-mode="public"] .inline-action:active,
+  body[data-app-mode="public"] .score-button:active,
+  body[data-app-mode="public"] .problem-card:active,
+  body[data-app-mode="public"] .natural-card:active,
+  body[data-app-mode="public"] .round-audio:active,
+  body[data-app-mode="public"] .replay-main:active {
+    transform: none;
   }
 }
