@@ -1,26 +1,26 @@
 # E-KAIWA
 
-Mobile-first realtime AI speaking practice with Gemini Live.
+Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current app version: `0.11`**
+**Current version: `0.11`**  
+**Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
-E-KAIWA started as a minimal English-conversation app for Japanese learners and has evolved into one shared realtime engine with multilingual target-language profiles. The public UI is optimized for phones, especially iPhone/Android, while the backend stays intentionally small and inexpensive to run.
+E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
 
-## What is working now
+## Highlights
 
-- **Realtime audio-to-audio conversation** through Gemini Live.
-- **Push-to-Talk by default** in public mode, with optional Hands-free conversation.
-- **Target languages:** English (`en`), Japanese (`ja`), and Mandarin Chinese Simplified (`zh-Hans`).
-- **Separate app/support language and learning target language** — changing one does not redefine the other.
-- **Coach sidecar** after each learner turn for correction and pronunciation feedback without delaying the realtime reply.
-- **Replay / Coach mobile UI** with stable touch actions and incremental transcript rendering.
-- **Live-session recovery:** Gemini session resumption, GoAway handling, reconnect fallback, browser offline/online recovery, and stale-response watchdog.
-- **iPhone/Chrome microphone reuse:** Gemini reconnects, language changes, and PTT release pause the existing mic capture instead of destroying it and requesting `getUserMedia()` again.
-- **Ubuntu VPS deployment** with systemd + Caddy HTTPS; the Python app remains private on `127.0.0.1:7860`.
-- **Built-in VPS self-update flow:** hold Update for 5 seconds, enter maintenance mode, run update/checks, restart, health-check, then show success or persistent warnings.
-- **Deterministic CI/updater browser tests** with explicit ES-module semantics and Node `18.19.1`, matching the VPS system Node environment.
+- **Realtime audio-to-audio** conversation with Gemini Live.
+- **Push-to-Talk by default**, with optional Hands-free mode.
+- **Target languages:** English, Japanese, and Mandarin Chinese (Simplified).
+- **Coach sidecar** for correction + pronunciation after each learner turn without delaying the realtime reply.
+- **Mobile-first UI** with replay, Coach score/details, light/dark themes, and stable streaming transcript updates.
+- **Live recovery** with session resumption, GoAway handling, offline/online recovery, and a stale-response watchdog.
+- **iPhone/Chrome mic reuse:** reconnects and language changes reuse the granted microphone capture instead of unnecessarily calling `getUserMedia()` again.
+- **Ubuntu VPS deployment** using one Python process behind Caddy + systemd.
+- **Built-in 5-second self-update flow** with maintenance mode, checks, restart, health verification, and readable warnings.
+- **Deterministic CI** on Python 3.12 + Node 18.19.1, matching the VPS updater's system Node environment.
 
-Recent release sequence:
+## Recent releases
 
 ```text
 0.9  mobile public UI refresh
@@ -32,7 +32,7 @@ Future incremental releases continue as `0.12`, `0.13`, ... unless the version p
 
 ## Architecture
 
-The realtime path deliberately avoids routing live audio through the VPS:
+Live audio does **not** pass through the VPS:
 
 ```text
 Phone browser
@@ -52,48 +52,45 @@ E-KAIWA Python server (127.0.0.1:7860)
 Phone browser  <====== direct WebSocket audio ======>  Gemini Live
 ```
 
-This keeps realtime latency low and lets the VPS stay lightweight. The current deployment target is roughly one Python process plus Caddy; no Docker, Kubernetes, Gunicorn, or frontend framework is required.
+The realtime reply stays low-latency while the server handles tokens, Coach, logging, settings, and operations.
 
-## Public conversation flow
+No React/Vue, Docker, Kubernetes, Gunicorn, or multi-worker stack is required for the current deployment.
 
-### Push-to-Talk — default
+## Conversation modes
+
+**Push-to-Talk — public default**
 
 ```text
-Open app
--> Gemini Live session becomes ready
--> hold microphone button
--> browser streams PCM directly to Gemini Live
--> release to end learner activity
--> Gemini streams audio reply immediately
+hold mic
+-> stream PCM directly to Gemini Live
+-> release
+-> Gemini streams the spoken reply
 -> transcript updates incrementally
--> Coach runs separately after the turn
--> hold microphone again for the next turn
+-> Coach runs separately
+-> hold mic again
 ```
 
-### Hands-free — optional
+**Hands-free — optional**
 
 ```text
-Enable Talk / Hands-free
--> microphone capture is prepared
--> Gemini automatic activity detection handles turn boundaries
--> AI audio plays
+start conversation
+-> microphone capture stays reusable
+-> Gemini activity detection handles turn boundaries
+-> AI replies
 -> input resumes after playback / echo guard
--> conversation continues until stopped
 ```
 
-The browser reuses a healthy microphone `MediaStream` during the current page session. Normal Gemini reconnects or language changes must **not** call `track.stop()`; full mic release is reserved for real page teardown or broken/stale capture.
+Normal PTT release, language changes, network recovery, and Gemini reconnects pause microphone capture without calling `track.stop()`. Full mic release is reserved for page teardown or a broken/stale capture.
 
 ## Multilingual engine
 
-Target-language behavior is driven by a shared registry instead of separate applications per language:
+The project uses one generic realtime/Coach pipeline plus language profiles:
 
 ```text
-Generic realtime / Coach engine
-          +
+Generic E-KAIWA engine
+        +
 Language profile / registry
 ```
-
-Current profiles:
 
 | Code | Target language | Speech locale |
 | --- | --- | --- |
@@ -101,69 +98,35 @@ Current profiles:
 | `ja` | Japanese | `ja-JP` |
 | `zh-Hans` | Mandarin Chinese (Simplified) | `zh-CN` |
 
-The same realtime, audio, session, UI, and Coach infrastructure is reused across targets. Language-specific correction/pronunciation rules live in the profile layer.
+App/support language and learning target language are separate concepts. The same realtime, audio, session, UI, and Coach infrastructure is reused across targets; only language-specific policy/rubrics live in the profile layer.
 
-## Realtime reliability
+## Reliability work
 
-The browser treats Gemini Live sockets as finite-lived rather than permanent connections.
+Gemini Live sockets are treated as finite-lived connections rather than permanent sessions. Current recovery covers:
 
-Current recovery behavior includes:
+- session resumption + latest handle;
+- top-level `sessionResumptionUpdate` and `GoAway`;
+- new ephemeral token per new WebSocket;
+- resume first, fresh-session fallback when needed;
+- browser offline/online recovery;
+- stale active-turn cleanup;
+- response watchdog after PTT `activityEnd`;
+- context-window compression for longer conversations.
 
-- `sessionResumption` with the latest resumption handle;
-- top-level `sessionResumptionUpdate` handling;
-- `GoAway` scheduling before a connection expires;
-- a new ephemeral token for every new WebSocket;
-- resume first, then fresh-session fallback if resume fails;
-- browser `offline` / `online` recovery;
-- forced cleanup of stale/incomplete turns;
-- response watchdog after Push-to-Talk `activityEnd`;
-- context-window compression for longer Live sessions.
-
-Relevant frontend ownership:
-
-```text
-live.js           realtime orchestration / PTT / turn lifecycle
-live_recovery.js  resumption / GoAway / watchdog timing
- audio.js          microphone capture + playback ownership
-ui.js             DOM controller / incremental updates / autoscroll
-ui_render.js      conversation / Coach markup
-ui_overlay.js     Settings / Coach overlays
-```
-
-## Mobile UI
-
-The public interface is intentionally vanilla HTML/CSS/JS and optimized for phone interaction:
-
-- fixed bottom microphone control with safe-area spacing;
-- stable replay / score action row below message text;
-- partial transcript updates without rebuilding the full conversation on every chunk;
-- autoscroll only while the user is already near the bottom;
-- light/dark themes;
-- Japanese-first public UX;
-- Settings with subtle mobile control boundaries rather than heavy nested cards.
-
-`live.css` owns the base/dev presentation; `public.css` contains the public/mobile visual layer.
+Streaming transcript chunks update the active turn in place instead of rebuilding the whole conversation DOM every time, reducing mobile scroll jitter and keeping replay/score targets stable.
 
 ## Local setup
 
-`api.txt` must exist at the repository root and contain one Gemini API key per non-empty line. It is gitignored and must never be committed.
+`api.txt` must exist at repository root with one Gemini API key per non-empty line. It is gitignored and must never be committed.
 
-Windows helper setup:
+### Windows helper
 
 ```bat
 src\scripts\setup.bat
 src\scripts\run.bat
 ```
 
-The local app listens on:
-
-```text
-http://127.0.0.1:7860
-```
-
-The Windows runner can expose it to a phone through a temporary Cloudflare HTTPS tunnel.
-
-Direct Python setup is also simple:
+### Direct Python
 
 ```bash
 python -m venv .venv
@@ -172,141 +135,83 @@ python -m pip install -r src/requirements.txt
 python src/app.py --mode public
 ```
 
+Local address:
+
+```text
+http://127.0.0.1:7860
+```
+
+The Windows runner can expose the local app to a phone through a temporary Cloudflare HTTPS tunnel.
+
 ## VPS deployment
 
-The current production-style layout is:
+Current production-style layout:
 
 ```text
-Internet
-  -> Caddy :80/:443
-  -> E-KAIWA 127.0.0.1:7860
+Internet :80/:443
+    -> Caddy
+    -> E-KAIWA 127.0.0.1:7860
 ```
 
-Recommended Ubuntu runtime:
+Recommended setup:
 
-- Python 3.12 virtualenv at `/home/ubuntu/e-kaiwa/.venv`;
-- `ekaiwa.service` under systemd;
-- Caddy as the only public reverse proxy;
-- `E_KAIWA_TRUST_PROXY=true` when the app is behind trusted localhost Caddy;
-- ports 80/443 public, port 7860 private;
-- `api.txt` mode `600`.
+- Ubuntu + Python 3.12 virtualenv;
+- one `ekaiwa.service` systemd process;
+- Caddy as the only Internet-facing app process;
+- `E_KAIWA_TRUST_PROXY=true` behind trusted localhost Caddy;
+- do not expose port `7860` publicly;
+- keep `api.txt` local with restrictive permissions.
 
-Typical explicit app command:
+Deployment assets live under `deploy/`.
 
-```bash
-cd /home/ubuntu/e-kaiwa
-E_KAIWA_TRUST_PROXY=true \
-/home/ubuntu/e-kaiwa/.venv/bin/python \
-/home/ubuntu/e-kaiwa/src/app.py --mode public
-```
+## VPS self-update
 
-Current public deployment uses HTTPS through Caddy at:
-
-```text
-https://ekaiwa.duckdns.org
-```
-
-Deployment templates and updater components live under `deploy/`.
-
-## Self-update on VPS
-
-The optional VPS updater is installed with:
+Install the updater once:
 
 ```bash
 sudo bash deploy/install_update.sh
 ```
 
-The public UI uses a **5-second long press** to trigger an update. The high-level flow is:
+Then the UI can trigger an update with a **5-second long press**:
 
 ```text
-hold Update 5s
--> request update
--> maintenance UI blocks normal interaction
--> stop app when required
+hold Update
+-> maintenance mode
 -> fetch/deploy Git revision
--> run regression / syntax checks
--> start app
+-> run regression + syntax checks
+-> restart app
 -> health check
--> finish
+-> success or warning result
 ```
 
-Result behavior:
+If the new app is healthy but a check reports warnings, the result remains visible until **Close** instead of disappearing immediately.
 
-```text
-all checks pass + health pass
--> brief success
--> automatic reload is allowed
-
-app is healthy but checks contain warnings
--> warning result stays visible
--> user presses Close
--> page reloads
-
-start / health / update fails
--> blocking error stays visible
-```
-
-The updater runs independently from the interactive user's NVM installation. Browser modules therefore declare ES-module behavior explicitly in the repository root `package.json`.
-
-## Logs and operations
-
-Application and privileged updater logs are intentionally separated:
-
-```text
-Conversation:
-/home/ubuntu/e-kaiwa/runtime_logs/YYYY-MM-DD/<session>/conversation.jsonl
-
-UI / realtime diagnostics:
-/home/ubuntu/e-kaiwa/runtime_logs/YYYY-MM-DD/ui_events.jsonl
-
-Updater history:
-/var/lib/ekaiwa-update/updater.jsonl
-
-Updater current status:
-/var/lib/ekaiwa-update/status.json
-```
-
-Useful VPS commands:
-
-```bash
-sudo journalctl -u ekaiwa.service -n 200 --no-pager
-sudo journalctl -u ekaiwa-update.service -n 200 --no-pager
-sudo tail -n 100 /var/lib/ekaiwa-update/updater.jsonl
-```
-
-See [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for operational details.
+Operational logs and updater paths are documented in [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md).
 
 ## Repository layout
 
 ```text
 src/
-  app.py                 application entrypoint
+  app.py                 app entrypoint
   e_kaiwa/               backend modules
-  web/                   public/dev browser UI and realtime modules
+  web/                   realtime/audio/UI browser modules
   scripts/               local setup/run helpers
   tests/
     python/               offline backend regression tests
     js/                   browser-module regression tests
-    system/               runnable local system smoke test
-  requirements.txt
+    system/               local system smoke test
 
-deploy/
-  caddy/                  maintenance / reverse-proxy deployment pieces
-  systemd/                app + updater service definitions
-  updater/                privileged updater implementation
-  install_update.sh
-  OPERATIONS.md
-
-archive/precode/          frozen pre-production experiments/reference
-.agent/                   engineering plans, notes and conversation summaries
-.github/                  CI
-package.json              explicit browser ES-module semantics for Node tests
-config.yaml               runtime/model policy
+deploy/                   Caddy/systemd/updater/operations
+archive/precode/           frozen pre-production experiments
+.agent/                    engineering plans, notes and chat summaries
+.github/                   CI
+config.yaml                runtime/model policy
+package.json               explicit ES-module semantics for Node tests
 ```
 
 `archive/precode/` is historical reference only. Production code and CI must not import from it.
 
-Local-only files remain outside Git:
+Local-only/gitignored files:
 
 ```text
 api.txt
@@ -314,81 +219,58 @@ runtime_logs/
 .venv/
 ```
 
-## Tests
+## Tests and CI
 
-### Python regression tests
-
-Offline and secret-free:
+Python regression tests:
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s src/tests/python -p "test_*.py"
 ```
 
-### Browser module tests
+Browser module tests:
 
 ```bash
 node --test src/tests/js/*.test.mjs
 ```
 
-On the VPS, also verify the exact system Node used by the updater:
+VPS updater-equivalent Node test:
 
 ```bash
 sudo /usr/bin/node --test src/tests/js/*.test.mjs
 ```
 
-### Syntax checks
+GitHub Actions currently verifies:
 
-```bash
-python -m compileall -q src/e_kaiwa src/app.py src/tests/system/check_system.py deploy/updater
-
-for file in src/web/*.js; do
-  node --input-type=module --check < "$file"
-done
-```
-
-### System smoke test
-
-The system test starts the real local server, checks HTTP/frontend assets, and requests a real Gemini ephemeral session token. It requires internet access and valid keys in `api.txt`.
-
-```bat
-src\tests\run_system.bat
-```
-
-The final browser microphone / Gemini Live audio path still requires a real browser/device test.
-
-## CI
-
-GitHub Actions currently runs:
-
-- Python 3.12;
-- Node 18.19.1;
-- Python core regression tests;
-- browser module tests;
+- Python 3.12 regression tests;
+- Node 18.19.1 browser-module tests;
 - Python compile checks;
 - JavaScript module syntax checks.
 
-CI intentionally avoids Gemini secrets and external realtime calls.
+CI is secret-free and does not make external Gemini realtime calls. The final microphone/Gemini Live path still needs a real browser/device test.
 
-## Manual mobile checks still worth doing
+## Current frontend ownership
 
-Automated tests cover the code paths, but the following remain important on real hardware:
-
-1. Leave Push-to-Talk idle for more than 10–15 minutes and confirm Live reconnect/resumption is transparent.
-2. Disable and re-enable Wi-Fi during a turn and confirm recovery without a page refresh.
-3. Stream a long reply and confirm no repeated scroll jumping or bottom-dock overlap.
-4. Verify replay / score interactions on iPhone and Android.
-5. On iPhone Chrome, approve the mic once, then change language / reconnect Gemini / speak again and confirm the same page session does not request mic permission again.
-6. Close and reopen the page and confirm the browser's saved site permission behaves as expected.
+```text
+live.js           realtime orchestration / PTT / turn lifecycle
+live_recovery.js  resumption / GoAway / watchdog timing
+audio.js          microphone capture + playback
+language_policy.js multilingual transcript/language policy
+ui.js             DOM updates / autoscroll / actions
+ui_render.js      conversation + Coach markup
+ui_overlay.js     Settings / Coach overlays
+maintenance.js    update frontend state machine
+public.css         public/mobile visual layer
+```
 
 ## Design principles
 
-Keep the project simple:
+Keep E-KAIWA simple and maintainable:
 
 - vanilla browser modules + Python;
 - one realtime pipeline;
 - one Coach service;
 - one language registry;
 - one recovery path;
-- one lightweight VPS process;
+- one lightweight VPS app process;
 - modular ownership instead of framework rewrites;
-- optimize for maintainability, mobile reliability, and low operational cost.
+- optimize for mobile reliability, low latency, and low operational cost.
