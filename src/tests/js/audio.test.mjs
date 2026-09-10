@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {PlaybackCoordinator} from '../../web/audio.js';
+import {
+  PlaybackCoordinator,
+  microphoneCaptureReusable,
+  pauseMicrophoneCapture,
+  releaseMicrophoneCapture,
+  resumeMicrophoneCapture
+} from '../../web/audio.js';
 
 function fakeAudioContext() {
   const sources = [];
@@ -30,9 +36,68 @@ function fakeAudioContext() {
   };
 }
 
+function fakeMicCapture() {
+  const calls = {resume: 0, suspend: 0, close: 0, stop: 0, sourceDisconnect: 0, processorDisconnect: 0};
+  const track = {
+    enabled: true,
+    readyState: 'live',
+    stop() { calls.stop += 1; track.readyState = 'ended'; }
+  };
+  const context = {
+    state: 'running',
+    async resume() { calls.resume += 1; context.state = 'running'; },
+    async suspend() { calls.suspend += 1; context.state = 'suspended'; },
+    async close() { calls.close += 1; context.state = 'closed'; }
+  };
+  const stream = {
+    getAudioTracks: () => [track],
+    getTracks: () => [track]
+  };
+  const source = {disconnect() { calls.sourceDisconnect += 1; }};
+  const processor = {disconnect() { calls.processorDisconnect += 1; }};
+  return {calls, track, context, stream, source, processor};
+}
+
 function pcmBase64() {
   return Buffer.from(new Uint8Array([0, 0, 0, 0])).toString('base64');
 }
+
+test('microphone pause keeps granted capture reusable without stopping tracks', async () => {
+  const capture = fakeMicCapture();
+  assert.equal(microphoneCaptureReusable(capture), true);
+
+  pauseMicrophoneCapture(capture);
+  assert.equal(capture.track.enabled, false);
+  assert.equal(capture.calls.suspend, 0);
+  assert.equal(capture.calls.stop, 0);
+  assert.equal(microphoneCaptureReusable(capture), true);
+
+  // If iOS suspends the context independently, reuse resumes that same
+  // capture instead of requesting a new MediaStream permission.
+  capture.context.state = 'suspended';
+  assert.equal(await resumeMicrophoneCapture(capture), true);
+  assert.equal(capture.track.enabled, true);
+  assert.equal(capture.calls.resume, 1);
+});
+
+test('microphone release is reserved for page teardown and destroys capture', async () => {
+  const capture = fakeMicCapture();
+  releaseMicrophoneCapture(capture);
+  await Promise.resolve();
+
+  assert.equal(capture.track.enabled, false);
+  assert.equal(capture.calls.stop, 1);
+  assert.equal(capture.calls.sourceDisconnect, 1);
+  assert.equal(capture.calls.processorDisconnect, 1);
+  assert.equal(capture.calls.close, 1);
+  assert.equal(microphoneCaptureReusable(capture), false);
+});
+
+test('ended microphone tracks are not reusable', () => {
+  const capture = fakeMicCapture();
+  capture.track.readyState = 'ended';
+  assert.equal(microphoneCaptureReusable(capture), false);
+});
 
 test('manual speech blocks microphone forwarding only for playback lifetime', async () => {
   const changes = [];
