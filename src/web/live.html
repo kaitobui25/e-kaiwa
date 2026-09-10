@@ -75,75 +75,93 @@
       </button>
     </div>
 
-    <div class="settings-release public-only">
-      <span id="app-version" class="app-version">E-KAIWA</span>
-      <button id="update-button" class="update-button" type="button" data-holding="false" aria-label="Hold for 5 seconds to update E-KAIWA" data-i18n-aria-label="updateHold" hidden>
-        <span data-i18n="updateHoldShort">Hold 5s to Update</span>
-      </button>
-    </div>
+    <div class="settings-scroll">
+      <section class="setting-section setting-section-primary">
+        <div class="setting-control-row setting-control-row-primary">
+          <label for="target-language" data-i18n="targetLanguage">Target language</label>
+          <select id="target-language"></select>
+        </div>
+        <span class="muted setting-note dev-only" data-i18n="targetLanguageDescription">Language to practice; changing it starts a new Live session.</span>
+      </section>
 
-    <section class="setting-section">
-      <div class="setting-control-row"><label for="feedback-language" data-i18n="language">Language</label><select id="feedback-language">
-        <option value="ja">日本語</option>
-        <option value="vi">Tiếng Việt</option>
-      </select></div>
-      <span class="muted setting-note dev-only">Used for Coach feedback and short non-English rescue.</span>
-    </section>
+      <section class="setting-section">
+        <div class="setting-control-row">
+          <label for="feedback-language" data-i18n="language">Language</label>
+          <select id="feedback-language">
+            <option value="ja">日本語</option>
+            <option value="vi">Tiếng Việt</option>
+          </select>
+        </div>
+        <span class="muted setting-note dev-only">Used for Coach feedback and short non-English rescue.</span>
+      </section>
 
-    <section class="setting-section">
-      <div class="setting-control-row"><label for="target-language" data-i18n="targetLanguage">Target language</label><select id="target-language"></select></div>
-      <span class="muted setting-note" data-i18n="targetLanguageDescription">Language to practice; changing it starts a new Live session.</span>
-    </section>
+      <section class="setting-section public-only">
+        <div class="setting-control-row">
+          <label for="theme" data-i18n="theme">Theme</label>
+          <select id="theme">
+            <option value="light" data-i18n="light">Light</option>
+            <option value="dark" data-i18n="dark">Dark</option>
+          </select>
+        </div>
+      </section>
 
-    <section class="setting-section public-only">
-      <div class="setting-control-row"><label for="theme" data-i18n="theme">Theme</label><select id="theme">
-        <option value="light" data-i18n="light">Light</option>
-        <option value="dark" data-i18n="dark">Dark</option>
-      </select></div>
-    </section>
+      <section class="setting-section">
+        <div class="setting-control-row">
+          <label for="ai-speed" data-i18n="speed">AI response speed</label>
+          <select id="ai-speed">
+            <option value="0.5">0.5×</option><option value="0.6">0.6×</option><option value="0.7">0.7×</option><option value="0.8" selected>0.8×</option><option value="0.9">0.9×</option><option value="1.0">1.0×</option><option value="1.1">1.1×</option><option value="1.2">1.2×</option><option value="1.3">1.3×</option><option value="1.4">1.4×</option><option value="1.5">1.5×</option>
+          </select>
+        </div>
+      </section>
 
-    <section class="setting-section">
-      <label class="switch-row public-only" for="talk-mode">
-        <span><strong data-i18n="talkMode">Talk</strong><small data-i18n="talkDescription">ON: hands-free / OFF: hold to talk</small></span>
-        <input id="talk-mode" class="switch-control" type="checkbox" role="switch" aria-label="Talk" data-i18n-aria-label="talkMode">
-      </label>
+      <section class="setting-section public-only">
+        <label class="switch-row" for="talk-mode">
+          <strong data-i18n="talkMode">Talk</strong>
+          <input id="talk-mode" class="switch-control" type="checkbox" role="switch" aria-label="Talk" data-i18n-aria-label="talkMode">
+        </label>
+      </section>
+
+      <section class="setting-section">
+        <label class="switch-row" for="pron">
+          <strong data-i18n="pronunciation">Pronunciation scoring</strong>
+          <input id="pron" class="switch-control" type="checkbox" role="switch" checked>
+        </label>
+      </section>
 
       <div class="dev-only">
-        <label for="teacher">Teacher</label>
-        <select id="teacher">
-          <option>Easy</option>
-          <option selected>Normal</option>
-          <option>Strict</option>
-        </select>
+        <section class="setting-section">
+          <label for="teacher">Teacher</label>
+          <select id="teacher">
+            <option>Easy</option>
+            <option selected>Normal</option>
+            <option>Strict</option>
+          </select>
 
-        <label for="realtime-model">Realtime model</label>
-        <select id="realtime-model"></select>
-        <span class="muted setting-note">Session-level change reconnects when safe.</span>
+          <label for="realtime-model">Realtime model</label>
+          <select id="realtime-model"></select>
+          <span class="muted setting-note">Session-level change reconnects when safe.</span>
 
-        <label for="coach-model">Coach model</label>
-        <select id="coach-model"></select>
-        <span class="muted setting-note">Auto rotates keys first, then models.</span>
+          <label for="coach-model">Coach model</label>
+          <select id="coach-model"></select>
+          <span class="muted setting-note">Auto rotates keys first, then models.</span>
+
+          <label for="silence-duration">Silence timeout</label>
+          <select id="silence-duration">
+            <option value="700">0.7 s</option>
+            <option value="1000" selected>1.0 s</option>
+            <option value="1200">1.2 s</option>
+            <option value="1500">1.5 s</option>
+          </select>
+          <span class="muted setting-note">Session-level change reconnects when safe.</span>
+        </section>
       </div>
 
-      <div class="setting-control-row"><label for="ai-speed" data-i18n="speed">AI response speed</label><select id="ai-speed">
-        <option value="0.5">0.5×</option><option value="0.6">0.6×</option><option value="0.7">0.7×</option><option value="0.8" selected>0.8×</option><option value="0.9">0.9×</option><option value="1.0">1.0×</option><option value="1.1">1.1×</option><option value="1.2">1.2×</option><option value="1.3">1.3×</option><option value="1.4">1.4×</option><option value="1.5">1.5×</option>
-      </select></div>
-
-      <label class="switch-row" for="pron">
-        <span><strong data-i18n="pronunciation">Pronunciation coaching</strong></span>
-        <input id="pron" class="switch-control" type="checkbox" role="switch" checked>
-      </label>
-    </section>
-
-    <div class="dev-only">
-      <label for="silence-duration">Silence timeout</label>
-      <select id="silence-duration">
-        <option value="700">0.7 s</option>
-        <option value="1000" selected>1.0 s</option>
-        <option value="1200">1.2 s</option>
-        <option value="1500">1.5 s</option>
-      </select>
-      <span class="muted setting-note">Session-level change reconnects when safe.</span>
+      <div class="settings-release public-only">
+        <span id="app-version" class="app-version">E-KAIWA</span>
+        <button id="update-button" class="update-button" type="button" data-holding="false" aria-label="Hold for 5 seconds to update E-KAIWA" data-i18n-aria-label="updateHold" hidden>
+          <span data-i18n="updateAction">Update</span>
+        </button>
+      </div>
     </div>
   </aside>
 </main>
