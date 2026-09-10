@@ -49,11 +49,15 @@ class MobileSettingsUiTests(unittest.TestCase):
 
     def test_settings_close_control_is_compact_and_right_aligned(self):
         css = CSS.read_text(encoding="utf-8")
-        self.assertIn('grid-template-columns: minmax(0, 1fr) 36px;', css)
         self.assertIn('.settings-head .overlay-icon {', css)
+        self.assertIn('position: absolute;', css)
+        self.assertIn('top: 50%;', css)
+        self.assertIn('right: 0;', css)
         self.assertIn('width: 36px;', css)
-        self.assertIn('justify-self: end;', css)
-        self.assertIn('transform: translateY(1px);', css)
+        self.assertIn('height: 36px;', css)
+        self.assertIn('transform: translateY(-50%);', css)
+        self.assertIn('.settings-head .overlay-icon svg', css)
+        self.assertIn('transform: translateY(2px);', css)
 
     def test_setting_selects_have_comfortable_mobile_height(self):
         css = CSS.read_text(encoding="utf-8")
