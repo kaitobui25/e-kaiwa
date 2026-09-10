@@ -24,36 +24,50 @@ function fakeTimers() {
   };
 }
 
-test('long press only completes after timer fires', () => {
+test('long press logs start, cancel duration, and five-second completion', () => {
   const button = new FakeTarget();
   const timers = fakeTimers();
+  const events = [];
+  let now = 1000;
   let completed = 0;
   new LongPressController(button, {
     durationMs: 5000,
     onComplete: () => completed++,
+    onEvent: event => events.push(event),
+    nowFn: () => now,
     setTimeoutFn: fn => timers.set(fn),
     clearTimeoutFn: id => timers.clear(id),
   });
 
   button.dispatch('pointerdown', {pointerId: 1});
+  now = 3134;
   button.dispatch('pointerup', {pointerId: 1});
   assert.equal(completed, 0);
   assert.equal(timers.ids().length, 0);
+  assert.deepEqual(events[0], {event: 'update_press_start', target: 'update_button', input: 'pointer'});
+  assert.equal(events[1].event, 'update_press_cancel');
+  assert.equal(events[1].reason, 'pointerup');
+  assert.equal(events[1].elapsed_ms, 2134);
 
+  now = 5000;
   button.dispatch('pointerdown', {pointerId: 2});
   const [timerId] = timers.ids();
+  now = 10004;
   timers.run(timerId);
   assert.equal(completed, 1);
   assert.equal(button.disabled, true);
+  assert.equal(events.at(-1).event, 'update_press_complete');
+  assert.equal(events.at(-1).elapsed_ms, 5004);
 });
 
 test('maintenance controller pauses on active update and reloads on complete', async () => {
   const statuses = [
     {update_id: 'old', state: 'complete', progress: 100},
     {update_id: 'new', state: 'testing', progress: 60, message: 'Testing'},
-    {update_id: 'new', state: 'complete', progress: 100, to_version: '0.3', failures: []},
+    {update_id: 'new', state: 'complete', progress: 100, to_version: '0.4', failures: []},
   ];
   const overlayCalls = [];
+  const events = [];
   let paused = 0;
   let reloaded = 0;
   const timers = fakeTimers();
@@ -65,6 +79,7 @@ test('maintenance controller pauses on active update and reloads on complete', a
       hide() {},
     },
     pauseForMaintenance: () => paused++,
+    logEvent: event => events.push(event),
     reload: () => reloaded++,
     fetchFn: async () => ({ok: true, status: 200, json: async () => statuses.shift()}),
     documentRef,
@@ -77,10 +92,44 @@ test('maintenance controller pauses on active update and reloads on complete', a
   await controller.checkNow();
   assert.equal(paused, 1);
   assert.deepEqual(overlayCalls.at(-1), ['progress', 60]);
+  assert.ok(events.some(event => event.event === 'maintenance_pause' && event.update_id === 'new'));
   await controller.checkNow();
   assert.deepEqual(overlayCalls.at(-1), ['result', 'complete']);
+  assert.ok(events.some(event => event.event === 'maintenance_result' && event.state === 'complete'));
   const ids = timers.ids();
   for (const id of ids) timers.run(id);
   assert.equal(reloaded, 1);
   controller.stop();
+});
+
+test('update request logs HTTP response and failure state', async () => {
+  const button = new FakeTarget();
+  const events = [];
+  const overlayCalls = [];
+  const timers = fakeTimers();
+  const controller = new MaintenanceController({
+    updateButton: button,
+    overlay: {
+      showResult: value => overlayCalls.push(value),
+      hide() {},
+    },
+    logEvent: event => events.push(event),
+    fetchFn: async url => {
+      if (url === '/api/update') {
+        return {ok: false, status: 503, json: async () => ({error: 'updater unavailable'})};
+      }
+      return {ok: true, status: 200, json: async () => ({state: 'idle'})};
+    },
+    documentRef: {hidden: false, addEventListener() {}, removeEventListener() {}},
+    setTimeoutFn: fn => timers.set(fn),
+    clearTimeoutFn: id => timers.clear(id),
+  });
+
+  await controller.triggerUpdate();
+  assert.equal(events[0].event, 'update_request_sent');
+  assert.equal(events[1].event, 'update_request_response');
+  assert.equal(events[1].http_status, 503);
+  assert.equal(events[2].event, 'update_request_failed');
+  assert.equal(button.disabled, false);
+  assert.equal(overlayCalls.at(-1).state, 'failed');
 });
