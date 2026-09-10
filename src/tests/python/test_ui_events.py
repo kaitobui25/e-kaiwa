@@ -25,6 +25,23 @@ class UiEventLoggingTests(unittest.TestCase):
         self.assertEqual(event["elapsed_ms"], 2134)
         self.assertNotIn("ignored", event)
 
+        debug = normalize_ui_event(
+            {
+                "event": "update_press_debug",
+                "client_id": "client-1",
+                "target": "update_button",
+                "phase": "pointercancel_received",
+                "pointer_id": 9,
+                "expected_pointer_id": 9,
+                "elapsed_ms": 1600,
+            }
+        )
+        self.assertEqual(debug["event"], "update_press_debug")
+        self.assertEqual(debug["phase"], "pointercancel_received")
+        self.assertEqual(debug["pointer_id"], 9)
+        self.assertEqual(debug["expected_pointer_id"], 9)
+        self.assertEqual(debug["elapsed_ms"], 1600)
+
         with self.assertRaises(ValueError):
             normalize_ui_event({"event": "arbitrary_click", "target": "anything"})
 
@@ -40,7 +57,7 @@ class UiEventLoggingTests(unittest.TestCase):
                     "input": "pointer",
                     "elapsed_ms": 5004,
                 },
-                app_version="0.4",
+                app_version="0.5",
                 revision="abcdef1234567890",
             )
 
@@ -49,7 +66,7 @@ class UiEventLoggingTests(unittest.TestCase):
             row = json.loads(path.read_text(encoding="utf-8").strip())
             self.assertEqual(row["event"], "update_press_complete")
             self.assertEqual(row["elapsed_ms"], 5004)
-            self.assertEqual(row["app_version"], "0.4")
+            self.assertEqual(row["app_version"], "0.5")
             self.assertEqual(row["revision"], "abcdef123456")
 
 
