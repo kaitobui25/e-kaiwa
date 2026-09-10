@@ -37,8 +37,10 @@ async function maintenanceTransportReady() {
 }
 
 function pauseRealtimeForMaintenance() {
-  // live.js owns realtime resources; invoke its dedicated maintenance boundary.
-  window.dispatchEvent(new CustomEvent('ekaiwa:maintenance-pause'));
+  // live.js owns all realtime resources and already centralizes their cleanup
+  // in its unload boundary. Dispatching the same event avoids reaching into
+  // its private state from the maintenance module.
+  window.dispatchEvent(new Event('beforeunload'));
 }
 
 const controller = new MaintenanceController({
