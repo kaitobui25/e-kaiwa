@@ -9,7 +9,7 @@ from e_kaiwa.ui_events import UiEventLog, normalize_ui_event
 
 
 class UiEventLoggingTests(unittest.TestCase):
-    def test_normalize_accepts_operational_update_events_only(self):
+    def test_normalize_accepts_safe_operational_events(self):
         event = normalize_ui_event(
             {
                 "event": "update_press_cancel",
@@ -41,6 +41,35 @@ class UiEventLoggingTests(unittest.TestCase):
         self.assertEqual(debug["pointer_id"], 9)
         self.assertEqual(debug["expected_pointer_id"], 9)
         self.assertEqual(debug["elapsed_ms"], 1600)
+
+        realtime = normalize_ui_event(
+            {
+                "event": "ws_close",
+                "client_id": "client-2",
+                "session_id": "session-123",
+                "active_turn": 3,
+                "code": 1006,
+                "reason": "network lost",
+                "was_ready": True,
+                "token": "must-not-be-persisted",
+            }
+        )
+        self.assertEqual(realtime["event"], "ws_close")
+        self.assertEqual(realtime["session_id"], "session-123")
+        self.assertEqual(realtime["code"], 1006)
+        self.assertTrue(realtime["was_ready"])
+        self.assertNotIn("token", realtime)
+
+        gemini_error = normalize_ui_event(
+            {
+                "event": "gemini_error",
+                "phase": "setup",
+                "reason": "initial",
+                "error": "setup rejected",
+            }
+        )
+        self.assertEqual(gemini_error["phase"], "setup")
+        self.assertEqual(gemini_error["error"], "setup rejected")
 
         with self.assertRaises(ValueError):
             normalize_ui_event({"event": "arbitrary_click", "target": "anything"})
