@@ -271,8 +271,10 @@ export class MaintenanceController {
       const reason = String(error.message || error).slice(0, 120);
       this._log({event: 'update_request_failed', target: 'update_button', reason});
       this.updateButton.disabled = false;
-      this.overlay?.showResult({state: 'failed', progress: 100, message: 'Update request failed', failures: [reason]}, {blocking: false});
-      this.setTimeoutFn(() => this.overlay?.hide(), 1800);
+      this.overlay?.showResult(
+        {state: 'failed', progress: 100, message: 'Update request failed', failures: [reason]},
+        {blocking: false, onClose: () => this.overlay?.hide()}
+      );
     }
   }
 
@@ -323,18 +325,22 @@ export class MaintenanceController {
 
     if (status.state === 'complete') {
       this._pauseOnce(updateId);
-      this.overlay?.showResult(status, {blocking: true});
-      this.setTimeoutFn(() => this.reload(), 1200);
+      const hasFailures = Array.isArray(status.failures) && status.failures.some(Boolean);
+      this.overlay?.showResult(status, {
+        blocking: true,
+        onClose: hasFailures ? () => this.reload() : null,
+      });
+      if (!hasFailures) this.setTimeoutFn(() => this.reload(), 1200);
       return;
     }
 
-    if (status.state === 'start_failed') {
+    if (status.state === 'failed' || status.state === 'start_failed') {
       this._pauseOnce(updateId);
       this.overlay?.showResult(status, {blocking: true});
       return;
     }
 
-    this.overlay?.showResult(status, {blocking: false});
+    this.overlay?.showResult(status, {blocking: false, onClose: () => this.overlay?.hide()});
     if (this.updateButton) this.updateButton.disabled = false;
     this.setTimeoutFn(() => this.overlay?.hide(), 1800);
   }
