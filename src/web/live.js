@@ -739,7 +739,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   }
 
   async function retryFreshAfterResume(socket, reason) {
-    if (!socket?.__ekaiwaResumeAttempted) return false;
+    if (!socket?.__ekaiwaResumeAttempted || socket.__ekaiwaSetupComplete) return false;
     state.connecting = false;
     state.recovery.clearHandle();
     emitUiEvent({event: 'reconnect_result', reason: socket.__ekaiwaReason || 'resume', ok: false, resumed: false, error: String(reason).slice(0, 120)});
@@ -789,6 +789,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'setupComplete')) {
+      socket.__ekaiwaSetupComplete = true;
       state.connecting = false;
       state.reconnectNeeded = false;
       state.setupReady = true;
@@ -896,6 +897,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     const resumeAttempted = Boolean(resumptionConfig.handle);
     const socket = new WebSocket(`${WS_BASE}?access_token=${encodeURIComponent(data.token)}`);
     socket.__ekaiwaResumeAttempted = resumeAttempted;
+    socket.__ekaiwaSetupComplete = false;
     socket.__ekaiwaReason = reason;
     state.ws = socket;
     socket.binaryType = 'arraybuffer';
@@ -916,7 +918,8 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
           },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          sessionResumption: resumptionConfig
+          sessionResumption: resumptionConfig,
+          contextWindowCompression: {slidingWindow: {}}
         }
       }));
     };
@@ -928,14 +931,15 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     };
     socket.onclose = async event => {
       if (state.ws !== socket) return;
+      const wasReady = state.setupReady;
       state.ws = null;
       state.connecting = false;
       state.setupReady = false;
       const detail = event.reason ? `: ${event.reason}` : '';
-      emitUiEvent({event: 'ws_close', code: event.code, reason: String(event.reason || '').slice(0, 120), was_ready: Boolean(state.ui)});
+      emitUiEvent({event: 'ws_close', code: event.code, reason: String(event.reason || '').slice(0, 120), was_ready: wasReady});
       if (!state.browserOnline) return;
       if (await retryFreshAfterResume(socket, `WebSocket closed ${event.code}${detail}`)) return;
-      if (!socket.__ekaiwaResumeAttempted && !state.reconnectNeeded && !state.sessionFallbackTried && !state.recovery.hasHandle() && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${detail}`)) return;
+      if (!wasReady && !socket.__ekaiwaResumeAttempted && !state.reconnectNeeded && !state.sessionFallbackTried && !state.recovery.hasHandle() && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${detail}`)) return;
       recoverLiveSession(`ws_close_${event.code}`, {resume: true, force: true});
     };
   }
