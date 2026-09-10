@@ -115,24 +115,33 @@ Gemini Live sockets are treated as finite-lived connections rather than permanen
 
 Streaming transcript chunks update the active turn in place instead of rebuilding the whole conversation DOM every time, reducing mobile scroll jitter and keeping replay/score targets stable.
 
-## Local setup
+## Local development
 
 `api.txt` must exist at repository root with one Gemini API key per non-empty line. It is gitignored and must never be committed.
 
-### Windows helper
+### App modes
 
-```bat
-src\scripts\setup.bat
-src\scripts\run.bat
+E-KAIWA supports two runtime modes:
+
+```text
+dev     local development; keeps engineering controls
+public  production/mobile UI; enables public endpoint hardening
 ```
 
-### Direct Python
+`dev` is the default. These are **app/UI access modes**, not Gemini model names; Gemini model selection still comes from `config.yaml`.
+
+### Run dev mode
+
+Direct Python:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-python -m pip install -r src/requirements.txt
-python src/app.py --mode public
+python src/app.py
+```
+
+or explicitly:
+
+```bash
+python src/app.py --mode dev
 ```
 
 Local address:
@@ -141,7 +150,44 @@ Local address:
 http://127.0.0.1:7860
 ```
 
-The Windows runner can expose the local app to a phone through a temporary Cloudflare HTTPS tunnel.
+Optional custom host/port:
+
+```bash
+python src/app.py --mode dev --host 127.0.0.1 --port 7860
+```
+
+### Run public mode locally
+
+Use this when checking the same mobile/public UI behavior used on VPS:
+
+```bash
+python src/app.py --mode public
+```
+
+### Windows helper
+
+One-time setup:
+
+```bat
+src\scripts\setup.bat
+```
+
+Run local dev mode and expose it to a phone through a temporary Cloudflare HTTPS tunnel:
+
+```bat
+src\scripts\run.bat
+```
+
+`run.bat` starts `src/app.py` without `--mode`, so it uses the default **dev mode**.
+
+### Manual virtualenv setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install -r src/requirements.txt
+python src/app.py --mode dev
+```
 
 ## VPS deployment
 
@@ -200,7 +246,6 @@ src/
     python/               offline backend regression tests
     js/                   browser-module regression tests
     system/               local system smoke test
-
 deploy/                   Caddy/systemd/updater/operations
 archive/precode/           frozen pre-production experiments
 .agent/                    engineering plans, notes and chat summaries
