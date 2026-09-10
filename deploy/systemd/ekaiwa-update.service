@@ -11,6 +11,7 @@ TimeoutStartSec=15min
 Environment=E_KAIWA_REPO=/home/ubuntu/e-kaiwa
 Environment=E_KAIWA_PYTHON=/home/ubuntu/e-kaiwa/.venv/bin/python
 Environment=E_KAIWA_UPDATE_STATUS=/var/lib/ekaiwa-update/status.json
+Environment=E_KAIWA_UPDATE_LOG=/var/lib/ekaiwa-update/updater.jsonl
 Environment=E_KAIWA_UPDATE_REQUEST=/home/ubuntu/.local/state/e-kaiwa/update-request
 Environment=E_KAIWA_USER=ubuntu
 Environment=E_KAIWA_SERVICE=ekaiwa.service
