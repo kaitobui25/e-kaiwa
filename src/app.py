@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from e_kaiwa.server import main
+from e_kaiwa.maintenance_server import main
 
 
 if __name__ == "__main__":
