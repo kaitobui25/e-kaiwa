@@ -24,7 +24,7 @@ function fakeTimers() {
   };
 }
 
-test('long press logs start, cancel duration, and five-second completion', () => {
+test('long press logs lifecycle, cancel duration, and five-second completion', () => {
   const button = new FakeTarget();
   const timers = fakeTimers();
   const events = [];
@@ -40,14 +40,21 @@ test('long press logs start, cancel duration, and five-second completion', () =>
   });
 
   button.dispatch('pointerdown', {pointerId: 1});
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'pointerdown_received'));
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'pointer_capture_set'));
+  assert.ok(events.some(event => event.event === 'update_press_start' && event.input === 'pointer'));
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_scheduled'));
+
   now = 3134;
   button.dispatch('pointerup', {pointerId: 1});
   assert.equal(completed, 0);
   assert.equal(timers.ids().length, 0);
-  assert.deepEqual(events[0], {event: 'update_press_start', target: 'update_button', input: 'pointer'});
-  assert.equal(events[1].event, 'update_press_cancel');
-  assert.equal(events[1].reason, 'pointerup');
-  assert.equal(events[1].elapsed_ms, 2134);
+  const cancel = events.find(event => event.event === 'update_press_cancel');
+  assert.equal(cancel.reason, 'pointerup');
+  assert.equal(cancel.elapsed_ms, 2134);
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'pointerup_received'));
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'cancel_enter' && event.state === 'active'));
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_cleared'));
 
   now = 5000;
   button.dispatch('pointerdown', {pointerId: 2});
@@ -56,8 +63,32 @@ test('long press logs start, cancel duration, and five-second completion', () =>
   timers.run(timerId);
   assert.equal(completed, 1);
   assert.equal(button.disabled, true);
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_fired' && event.elapsed_ms === 5004));
   assert.equal(events.at(-1).event, 'update_press_complete');
   assert.equal(events.at(-1).elapsed_ms, 5004);
+});
+
+test('pointer cancellation records the browser event that cleared the timer', () => {
+  const button = new FakeTarget();
+  const timers = fakeTimers();
+  const events = [];
+  let now = 1000;
+  new LongPressController(button, {
+    durationMs: 5000,
+    onEvent: event => events.push(event),
+    nowFn: () => now,
+    setTimeoutFn: fn => timers.set(fn),
+    clearTimeoutFn: id => timers.clear(id),
+  });
+
+  button.dispatch('pointerdown', {pointerId: 9});
+  now = 2600;
+  button.dispatch('pointercancel', {pointerId: 9});
+
+  assert.equal(timers.ids().length, 0);
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'pointercancel_received'));
+  assert.ok(events.some(event => event.event === 'update_press_debug' && event.phase === 'timer_cleared' && event.reason === 'pointercancel'));
+  assert.ok(events.some(event => event.event === 'update_press_cancel' && event.reason === 'pointercancel' && event.elapsed_ms === 1600));
 });
 
 test('maintenance controller pauses on active update and reloads on complete', async () => {
