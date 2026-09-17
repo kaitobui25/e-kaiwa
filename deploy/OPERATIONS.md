@@ -1,18 +1,44 @@
 # E-KAIWA VPS operations
 
-## Phone update trigger API
+## Phone update trigger
 
-The stable update trigger is:
+There are two update entry points. Both only create the fixed systemd update-request marker; Git/test/deploy logic stays inside the privileged updater.
+
+### One-link phone update
+
+The simple phone recovery flow is:
+
+```text
+GET /u/<token>
+```
+
+Opening the full HTTPS URL in a browser immediately requests an update, then redirects to:
+
+```text
+/maintenance/status.json
+```
+
+The plaintext token is not stored in the repository. The application stores only its SHA-256 hash and compares hashes in constant time. The built-in bootstrap token can later be rotated by setting `E_KAIWA_UPDATE_LINK_TOKEN_SHA256` to a new SHA-256 hash and restarting `ekaiwa.service`.
+
+Security/operational rules:
+
+- Treat the full `/u/<token>` URL like a password. Do not share it.
+- The application redacts the token from its own HTTP log.
+- The URL may still exist in browser history or reverse-proxy access logs if those logs are enabled.
+- Invalid tokens return `404` and do not create an update request.
+- Valid one-link requests use the same public update rate limit as the normal API.
+- The link cannot supply a Git URL, branch, command, or filesystem path.
+- This is a recovery path for a broken frontend. It still requires the E-KAIWA Python server process to be running.
+
+### Programmatic update API
+
+The existing API remains:
 
 ```text
 POST /api/update
 ```
 
-It has no request body and does not depend on the main frontend JavaScript. This makes it usable from a phone when the normal UI or Update button is broken, as long as the E-KAIWA server process itself is still running.
-
-This endpoint is not a fully independent rescue service. If `ekaiwa.service` is down or cannot start, `/api/update` is unavailable too. A future out-of-process rescue gateway should be implemented separately rather than adding more deployment logic to the application server.
-
-Successful responses use HTTP `202`:
+It has no request body. Successful responses use HTTP `202`:
 
 ```json
 {"ok":true,"state":"requested"}
@@ -24,16 +50,11 @@ If an update request is already waiting:
 {"ok":true,"state":"already_pending"}
 ```
 
-Operational rules:
+Public browser requests from a foreign `Origin` are rejected and public update requests are rate-limited. A native phone HTTP client may send no `Origin`.
 
-- Keep this endpoint `POST` only. Do not turn update into a `GET` link.
-- The endpoint can only create the fixed systemd update-request marker; it cannot accept a Git URL, branch, command, or arbitrary filesystem path.
-- The privileged updater still enforces `origin/main`, fast-forward-only Git updates, a single updater lock, tests, service restart, and health verification.
-- Public browser requests from a foreign `Origin` are rejected and public update requests are rate-limited.
-- A native phone HTTP client may send no `Origin`; this is intentionally supported for phone recovery when the frontend is broken.
-- Use the HTTPS public domain when calling it remotely.
+The route names, token validation, and update-request state mapping live in `src/e_kaiwa/update_request.py`. `maintenance_server.py` only handles HTTP validation/rate limiting and delegates the request. Keep Git/test/deploy logic inside the privileged updater, not inside the API handler.
 
-The route name and update-request state mapping live in `src/e_kaiwa/update_request.py`. `maintenance_server.py` only handles HTTP validation/rate limiting and delegates the request. Keep Git/test/deploy logic inside the privileged updater, not inside the API handler.
+The privileged updater still enforces `origin/main`, fast-forward-only Git updates, a single updater lock, tests, service restart, and health verification.
 
 ## Runtime logs
 
