@@ -13,8 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from e_kaiwa.access import AccessPolicy, SlidingWindowLimiter
 from e_kaiwa import maintenance_server
+from e_kaiwa.access import AccessPolicy, SlidingWindowLimiter
 from e_kaiwa.update_request import UPDATE_API_PATH, request_update
 
 
@@ -38,11 +38,17 @@ class UpdateRequestTests(unittest.TestCase):
 
 class UpdateApiContractTests(unittest.TestCase):
     @contextmanager
-    def running_server(self, *, state: str = "requested"):
+    def running_server(
+        self,
+        *,
+        state: str = "requested",
+        update_enabled: bool = True,
+        rate_limit: int = 100,
+    ):
         runtime = SimpleNamespace(access=AccessPolicy(mode="public"))
-        limiter = SlidingWindowLimiter(100, 60)
+        limiter = SlidingWindowLimiter(rate_limit, 60)
         with (
-            patch.object(maintenance_server, "updates_enabled", return_value=True),
+            patch.object(maintenance_server, "updates_enabled", return_value=update_enabled),
             patch.object(maintenance_server, "request_update", return_value=state) as request_mock,
             patch.object(maintenance_server, "_UPDATE_LIMITER", limiter),
             patch.object(maintenance_server, "git_revision", return_value="test-revision"),
@@ -87,12 +93,28 @@ class UpdateApiContractTests(unittest.TestCase):
         self.assertEqual(payload["state"], "already_pending")
         request_mock.assert_called_once_with()
 
+    def test_disabled_update_api_fails_closed(self) -> None:
+        with self.running_server(update_enabled=False) as (base_url, request_mock):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.post(base_url)
+        self.assertEqual(caught.exception.code, 503)
+        request_mock.assert_not_called()
+
     def test_foreign_browser_origin_is_rejected(self) -> None:
         with self.running_server() as (base_url, request_mock):
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 self.post(base_url, origin="https://evil.example")
         self.assertEqual(caught.exception.code, 403)
         request_mock.assert_not_called()
+
+    def test_public_update_api_is_rate_limited(self) -> None:
+        with self.running_server(rate_limit=1) as (base_url, request_mock):
+            status, _payload = self.post(base_url)
+            self.assertEqual(status, 202)
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.post(base_url)
+        self.assertEqual(caught.exception.code, 429)
+        request_mock.assert_called_once_with()
 
     def test_get_does_not_trigger_update(self) -> None:
         with self.running_server() as (base_url, request_mock):
