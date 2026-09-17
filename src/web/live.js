@@ -210,6 +210,13 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     });
   }
 
+  function clearConversationHistory() {
+    state.turns = [];
+    state.turnNo = 1;
+    state.activeTurn = null;
+    render();
+  }
+
   function updateStreamingTurn(turn) {
     if (!state.ui?.updateStreamingTurn(turn)) render();
   }
@@ -1170,9 +1177,13 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   });
 
   elements.targetLanguage.addEventListener('change', () => {
+    const previousTarget = state.selectedTargetLanguage;
     const target = normalizeTargetLanguage(elements.targetLanguage.value);
     elements.targetLanguage.value = target;
     syncLanguageDot(target);
+    if (target === previousTarget) return;
+    endInputBeforeModeChange();
+    clearConversationHistory();
     state.selectedTargetLanguage = target;
     if (state.appMode === 'public') state.preferences.setTargetLanguage(target);
     requestSessionReconnect(state.appMode === 'public' ? state.ui.t('language') : 'Target language changed.');
