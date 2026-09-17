@@ -219,6 +219,7 @@ export class UiOverlayController {
       const scrollTop = this.dynamic.querySelector('.overlay-scroll')?.scrollTop || 0;
       this.dynamic.innerHTML = markup;
       this.renderedMarkup = markup;
+      if (this.state.type === 'coach') this._animateScoreNumber();
       const scroll = this.dynamic.querySelector('.overlay-scroll');
       if (scroll && !initialFocus) scroll.scrollTop = scrollTop;
       if (focusedInside && !initialFocus) {
@@ -228,6 +229,25 @@ export class UiOverlayController {
       }
     }
     if (initialFocus) this.dynamic.querySelector('.overlay-icon')?.focus({preventScroll: true});
+  }
+
+  _animateScoreNumber() {
+    const el = this.dynamic?.querySelector('#score-number');
+    if (!el) return;
+    const target = Number(el.dataset.target || 0);
+    const reduceMotion = globalThis.window?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches || false;
+    if (reduceMotion || !target || typeof globalThis.requestAnimationFrame !== 'function') {
+      el.firstChild.textContent = String(target);
+      return;
+    }
+    const duration = 900;
+    const start = performance.now();
+    const step = now => {
+      const p = Math.min(1, (now - start) / duration);
+      el.firstChild.textContent = String(Math.round(target * p));
+      if (p < 1) globalThis.requestAnimationFrame(step);
+    };
+    globalThis.requestAnimationFrame(step);
   }
 
   refresh(turns) {

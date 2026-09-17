@@ -170,6 +170,7 @@ export class UiController {
     this.lastStatus = '';
     this.lastStatusError = false;
     this.replayEnabled = true;
+    this.lastRenderedTurnNo = null;
 
     this.overlay = new UiOverlayController({
       mode: this.mode,
@@ -367,12 +368,23 @@ export class UiController {
     const shouldScroll = this._isNearBottom();
     if (!this.turns.length) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(this.mode === 'public' ? this.t('noConversation') : 'No conversation yet.')}</div>`;
+      this.lastRenderedTurnNo = null;
       this.overlay.refresh(this.turns);
       return;
     }
+    const newestTurnNo = this.mode === 'public' ? Number(this.turns[this.turns.length - 1]?.no || 0) : null;
+    const shouldAnimateNewest = this.mode === 'public' && newestTurnNo && newestTurnNo !== this.lastRenderedTurnNo;
     target.innerHTML = this.mode === 'public'
       ? this.turns.map(turn => publicTurnHtml(turn, key => this.t(key), pronunciationEnabled, conversationMode)).join('')
       : this.turns.slice().reverse().map(turn => devTurnHtml(turn, pronunciationEnabled)).join('');
+    if (shouldAnimateNewest) {
+      const last = target.lastElementChild;
+      if (last) {
+        last.classList.add('turn-enter');
+        last.addEventListener('animationend', () => last.classList.remove('turn-enter'), {once: true});
+      }
+    }
+    this.lastRenderedTurnNo = newestTurnNo;
     this._applyReplayAvailability();
     this.overlay.refresh(this.turns);
     this._scrollLatest({shouldScroll});

@@ -141,6 +141,20 @@ function scoreBar(value) {
   return `<div class="score-track" aria-hidden="true"><span style="width:${normalized}%"></span></div>`;
 }
 
+function scoreRingSvg(value) {
+  const normalized = scoreValue(value);
+  if (normalized == null) return '';
+  const r = 52;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - normalized / 100);
+  return `<svg class="score-ring" width="112" height="112" viewBox="0 0 120 120" aria-hidden="true">
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--surface-soft)" stroke-width="10"/>
+    <circle class="score-ring-fg" cx="60" cy="60" r="${r}" fill="none" stroke="var(--primary)"
+      stroke-width="10" stroke-linecap="round" transform="rotate(-90 60 60)"
+      style="stroke-dasharray:${circumference};stroke-dashoffset:${offset}"/>
+  </svg>`;
+}
+
 function metricRow(label, value) {
   const normalized = scoreValue(value);
   if (normalized == null) return '';
@@ -195,9 +209,12 @@ export function coachOverviewHtml(turn, t) {
   const pronunciation = turn?.coach?.pronunciation;
   return `${overlayHeader(t('coach'), t)}
     <div class="overlay-scroll">
-      ${overall == null ? '' : `<section class="score-hero">
-        <div><span>${escapeHtml(t('score'))}</span><strong>${overall}<small>/100</small></strong></div>
-        ${scoreBar(overall)}
+      ${overall == null ? '' : `<section class="score-hero score-hero-ring">
+        ${scoreRingSvg(overall)}
+        <div class="score-hero-copy">
+          <span>${escapeHtml(t('score'))}</span>
+          <strong id="score-number" data-target="${overall}">0<small>/100</small></strong>
+        </div>
       </section>`}
       ${pronunciationMetrics(pronunciation, t)}
       ${problemCards(turn, t)}

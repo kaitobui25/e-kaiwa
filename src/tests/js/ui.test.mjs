@@ -68,8 +68,9 @@ test('hands-free hides manual replay but keeps coach score and problem highlight
 
 test('coach overview renders only real pronunciation metrics and drill-down actions', () => {
   const html = coachOverviewHtml(sampleTurn(), t);
-  assert.match(html, /score-hero/);
-  assert.match(html, />82<small>\/100<\/small>/);
+  assert.match(html, /score-hero-ring/);
+  assert.match(html, /class="score-ring"/);
+  assert.match(html, /id="score-number" data-target="82">0<small>\/100<\/small>/);
   assert.match(html, />accuracy<\/span><strong>80<\/strong>/);
   assert.match(html, />fluency<\/span><strong>85<\/strong>/);
   assert.match(html, />intonation<\/span><strong>82<\/strong>/);

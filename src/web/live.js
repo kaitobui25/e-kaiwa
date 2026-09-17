@@ -159,6 +159,10 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     element.value = selected || values[0] || '';
   }
 
+  function syncLanguageDot(value) {
+    document.body.dataset.targetLanguage = value;
+  }
+
   function setTargetLanguageChoices(choices, selected) {
     if (!elements.targetLanguage) return;
     const values = [...new Set((Array.isArray(choices) ? choices : [])
@@ -174,6 +178,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       return option;
     }));
     elements.targetLanguage.value = selectedValue;
+    syncLanguageDot(selectedValue);
   }
 
   function aiSpeedValue(value, fallback = DEFAULT_AI_SPEED) {
@@ -334,6 +339,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       elements.feedbackLanguage.value = preferences.appLanguage;
       elements.targetLanguage.value = preferences.targetLanguage;
       state.selectedTargetLanguage = preferences.targetLanguage;
+      syncLanguageDot(state.selectedTargetLanguage);
       elements.aiSpeed.value = aiSpeedValue(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
       state.conversationMode = preferences.conversationMode;
@@ -348,6 +354,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
         elements.targetLanguage.value || state.selectedTargetLanguage
       );
       state.selectedTargetLanguage = elements.targetLanguage.value;
+      syncLanguageDot(state.selectedTargetLanguage);
       elements.aiSpeed.value = aiSpeedValue(settings.ai_playback_rate);
       elements.pron.checked = settings.pronunciation_enabled !== false;
       state.conversationMode = CONVERSATION_MODES.HANDS_FREE;
@@ -1165,6 +1172,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   elements.targetLanguage.addEventListener('change', () => {
     const target = normalizeTargetLanguage(elements.targetLanguage.value);
     elements.targetLanguage.value = target;
+    syncLanguageDot(target);
     state.selectedTargetLanguage = target;
     if (state.appMode === 'public') state.preferences.setTargetLanguage(target);
     requestSessionReconnect(state.appMode === 'public' ? state.ui.t('language') : 'Target language changed.');

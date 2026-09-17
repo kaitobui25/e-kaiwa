@@ -8,16 +8,20 @@ body[data-app-mode="public"] {
   --text: #18212f;
   --text-muted: #5c6878;
   --border: #dfe3e8;
-  --primary: #2f6fed;
-  --primary-strong: #245ecf;
-  --primary-soft: #eaf1ff;
+  --primary: #0EA89A;
+  --primary-strong: #0C8F84;
+  --primary-soft: #E4F6F3;
   --ai-surface: transparent;
-  --user-surface: #eaf1ff;
+  --user-surface: color-mix(in srgb, var(--primary) 14%, var(--surface));
   --success: #13733a;
   --success-soft: #edf7f0;
   --warning: #805b00;
   --warning-soft: #fff6d9;
   --danger: #b73535;
+  --ember: #E85B44;
+  --ember-soft: #FCEAE6;
+  --sakura: #E85D89;
+  --gold: #C9932A;
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -33,16 +37,20 @@ body[data-app-mode="public"][data-theme="dark"] {
   --text: #f4f7fb;
   --text-muted: #a9b3c1;
   --border: #2a3440;
-  --primary: #75a4ff;
-  --primary-strong: #8bb2ff;
-  --primary-soft: #1d3154;
+  --primary: #2FD9C4;
+  --primary-strong: #3EE6D2;
+  --primary-soft: #14332F;
   --ai-surface: transparent;
-  --user-surface: #1d3154;
+  --user-surface: color-mix(in srgb, var(--primary) 22%, var(--surface));
   --success: #6bd28e;
   --success-soft: #193629;
   --warning: #efc65a;
   --warning-soft: #3b3119;
   --danger: #ff8585;
+  --ember: #FF6F5E;
+  --ember-soft: #3A211C;
+  --sakura: #FF8FB4;
+  --gold: #E8B33D;
 }
 
 body[data-app-mode="public"] .app-shell {
@@ -85,6 +93,14 @@ body[data-app-mode="public"] .empty-state {
 
 body[data-app-mode="public"] .turn {
   scroll-margin-bottom: var(--control-dock-safe-area);
+}
+
+body[data-app-mode="public"] .turn-enter {
+  animation: turn-in 280ms ease-out both;
+}
+
+@keyframes turn-in {
+  from { opacity: 0; transform: translateY(10px); }
 }
 
 body[data-app-mode="public"] .message-row {
@@ -184,7 +200,7 @@ body[data-app-mode="public"] .inline-action:disabled {
   transform: none;
 }
 
-/* Talk dock: one primary action, quiet status/meta, no decorative pseudo-waveform. */
+/* Talk dock: one primary action, quiet status/meta, stateful voice motion. */
 body[data-app-mode="public"] .control-dock {
   width: min(100%, 720px);
   padding: 7px 12px calc(8px + env(safe-area-inset-bottom));
@@ -201,8 +217,26 @@ body[data-app-mode="public"] .status {
 }
 
 body[data-app-mode="public"] .voice-waves {
-  display: none;
+  display: flex;
+  opacity: 0;
+  transition: opacity 160ms ease;
 }
+
+body[data-app-mode="public"] .voice-control-row:has(.talk-speaking) .voice-waves {
+  color: var(--ember);
+  opacity: 1;
+}
+
+body[data-app-mode="public"] .voice-control-row:has(.talk-speaking) .voice-waves span {
+  animation: talk-eq 0.9s ease-in-out infinite;
+}
+
+body[data-app-mode="public"] .voice-waves span:nth-child(2) { animation-delay: 0.15s; }
+body[data-app-mode="public"] .voice-waves span:nth-child(3) { animation-delay: 0.3s; }
+body[data-app-mode="public"] .voice-waves span:nth-child(4) { animation-delay: 0.45s; }
+body[data-app-mode="public"] .voice-waves span:nth-child(5) { animation-delay: 0.6s; }
+
+@keyframes talk-eq { 0%, 100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
 
 body[data-app-mode="public"] .voice-control-row {
   gap: 0;
@@ -212,23 +246,30 @@ body[data-app-mode="public"] .talk-button {
   width: 68px;
   height: 68px;
   border: 0;
-  background: var(--primary);
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--primary) 55%, white), var(--primary));
   color: #fff;
   box-shadow: none;
 }
 
 body[data-app-mode="public"] .talk-pressed,
 body[data-app-mode="public"] .talk-recording {
-  background: var(--primary-strong);
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--primary) 55%, white), var(--primary-strong));
   box-shadow: none;
 }
 
 body[data-app-mode="public"] .talk-waiting,
-body[data-app-mode="public"] .talk-speaking,
 body[data-app-mode="public"] .talk-connecting {
   border: 1px solid var(--border);
   background: var(--surface-soft);
   color: var(--text-muted);
+  filter: none;
+  box-shadow: none;
+}
+
+body[data-app-mode="public"] .talk-speaking {
+  border: 0;
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--ember) 55%, white), var(--ember));
+  color: #fff;
   filter: none;
   box-shadow: none;
 }
@@ -291,19 +332,25 @@ body[data-app-mode="public"] .compare-card h3 {
 }
 
 /* Coach: feedback hierarchy instead of card stack. */
-body[data-app-mode="public"] .score-hero {
+body[data-app-mode="public"] .score-hero-ring {
   padding: 2px 0 18px;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
 }
 
-body[data-app-mode="public"] .score-hero span {
+body[data-app-mode="public"] .score-ring {
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+}
+
+body[data-app-mode="public"] .score-hero-copy span {
   font-size: 13px;
   font-weight: 600;
 }
 
-body[data-app-mode="public"] .score-hero strong {
+body[data-app-mode="public"] .score-hero-copy strong {
   font-size: 38px;
 }
 
@@ -508,6 +555,8 @@ body[data-app-mode="public"] .setting-control-row-primary {
 }
 
 body[data-app-mode="public"] .setting-control-row-primary > label {
+  display: inline-flex;
+  align-items: center;
   font-size: 16px;
   font-weight: 700;
 }
@@ -630,6 +679,10 @@ body[data-app-mode="public"] .settings-release .update-button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body[data-app-mode="public"] .turn-enter {
+    animation: none;
+  }
+
   body[data-app-mode="public"] .inline-action:active,
   body[data-app-mode="public"] .score-button:active,
   body[data-app-mode="public"] .problem-card:active,
