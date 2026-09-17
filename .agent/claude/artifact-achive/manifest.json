@@ -1,0 +1,96 @@
+{
+  "title": "Kế hoạch làm mới giao diện E-KAIWA",
+  "source": "https://claude.ai/artifact/Rrks2wMGh9mEf3HAF2RgjY",
+  "format": "offline sanitized artifact export",
+  "entrypoint": "index.html",
+  "files": [
+    {
+      "path": "artifact-text.md",
+      "bytes": 9464,
+      "sha256": "9f2be20f5c136c9e57b2318cd7f40bb0bb6490a33921a0eb7136570f92f7efc1"
+    },
+    {
+      "path": "index.html",
+      "bytes": 37503,
+      "sha256": "9548f28349b2a00a1263a5b67801f122fd74e6802b55c74e109beac8a56a4726"
+    },
+    {
+      "path": "assets/fonts.css",
+      "bytes": 20356,
+      "sha256": "c0c4673da860a8f9dd0d8fc80de31596757d6a5e4b09a7adeaaaff41a752683a"
+    },
+    {
+      "path": "assets/fonts/3y9U6as8bTXq_nANBjzKo3IeZx8z6up5BeSl5jBNz_19PpbpMXuECpwUxJBOm_OJWiaaD30YfKfjZZoLvcXl-Molsg.woff2",
+      "bytes": 22456,
+      "sha256": "b34fc8c1ef0ac8798455ac2979eae4b4f90f0d327e3584d1032fa77a8a9a66ca"
+    },
+    {
+      "path": "assets/fonts/3y9U6as8bTXq_nANBjzKo3IeZx8z6up5BeSl5jBNz_19PpbpMXuECpwUxJBOm_OJWiaaD30YfKfjZZoLvfzl-MQlstwJ.woff2",
+      "bytes": 10632,
+      "sha256": "25d714d702deab603819c7fbc619d6d63d86a0d055fa61b3b9f0453f9d5e697a"
+    },
+    {
+      "path": "assets/fonts/3y9U6as8bTXq_nANBjzKo3IeZx8z6up5BeSl5jBNz_19PpbpMXuECpwUxJBOm_OJWiaaD30YfKfjZZoLvfzl-MUlstwJ.woff2",
+      "bytes": 5108,
+      "sha256": "075e3b10dc50614faa1e36207a4afcd4eaa8320fe8bf697485b3a7fac9fecd19"
+    },
+    {
+      "path": "assets/fonts/3y9U6as8bTXq_nANBjzKo3IeZx8z6up5BeSl5jBNz_19PpbpMXuECpwUxJBOm_OJWiaaD30YfKfjZZoLvfzl-Molsg.woff2",
+      "bytes": 22384,
+      "sha256": "4c373ce3c1cca41c864eb3e27c059a59fc6310547ab9c9b6cd780d387ba24206"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYAZ9hiA.woff2",
+      "bytes": 24356,
+      "sha256": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYAZBhiI2B.woff2",
+      "bytes": 5104,
+      "sha256": "5fafa3829a16d9ea5ac3a67c51e54186353122790b604a3e361f96cab188da8b"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYAZFhiI2B.woff2",
+      "bytes": 36244,
+      "sha256": "143f9504f1377012aa3e39c90c4354ef429cb0494b9ac0e1437f1a81e5412236"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuGKYAZ9hiA.woff2",
+      "bytes": 24452,
+      "sha256": "f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuGKYAZBhiI2B.woff2",
+      "bytes": 5100,
+      "sha256": "1aeb94ae9db052a4a2fe6f3046f928cff1fdbd7abdf870a9a01c13cae6faeba5"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuGKYAZFhiI2B.woff2",
+      "bytes": 36260,
+      "sha256": "e4bdf67b0cd15ca9e184509275be95db942195d3cc2b17f6a0452f2adf75d0bf"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hiA.woff2",
+      "bytes": 23664,
+      "sha256": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZBhiI2B.woff2",
+      "bytes": 4972,
+      "sha256": "547ad9fdaeb0ae43487f4b8a02e47c36553c0c0cb73c8aa98f93b7b615f6b55d"
+    },
+    {
+      "path": "assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZFhiI2B.woff2",
+      "bytes": 35000,
+      "sha256": "6744a7f509ebc6ab220a6cd4ea77e898adf014f03d88dcda5d45d8a9feefb4e9"
+    }
+  ],
+  "sanitization": {
+    "claude_frame_runtime_removed": true,
+    "claude_api_responses_excluded": true,
+    "warc_request_records_excluded": true,
+    "cookies_tokens_account_org_data_excluded": true,
+    "google_fonts_localized": true,
+    "artifact_inline_css_js_preserved": true
+  }
+}

@@ -1,0 +1,722 @@
+<!doctype html>
+<!DOCTYPE html>
+
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>Kế hoạch làm mới giao diện E-KAIWA</title>
+
+
+
+<style>
+/* ===== Tokens ===== */
+:root{
+  --bg:#F5F6FB;
+  --surface:#FFFFFF;
+  --surface-soft:#EEF0F8;
+  --text:#16203A;
+  --text-muted:#5C6B8A;
+  --border:rgba(15,23,42,0.10);
+  --teal:#0EA89A;
+  --ember:#E85B44;
+  --sakura:#E85D89;
+  --gold:#C9932A;
+  --accent:var(--teal);
+  --radius-sm:12px;
+  --radius-md:18px;
+  --radius-lg:28px;
+  --shadow-sm:0 4px 16px rgba(22,32,58,0.08);
+  --shadow-md:0 20px 48px rgba(22,32,58,0.14);
+  --font-display:"Bricolage Grotesque", "Inter", system-ui, sans-serif;
+  --font-body:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1120;
+    --surface:#131B2C;
+    --surface-soft:#1B2540;
+    --text:#EEF2FC;
+    --text-muted:#93A0C2;
+    --border:rgba(255,255,255,0.10);
+    --teal:#2FD9C4;
+    --ember:#FF6F5E;
+    --sakura:#FF8FB4;
+    --gold:#E8B33D;
+    --shadow-sm:0 4px 18px rgba(0,0,0,0.30);
+    --shadow-md:0 24px 60px rgba(0,0,0,0.45);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1120;
+  --surface:#131B2C;
+  --surface-soft:#1B2540;
+  --text:#EEF2FC;
+  --text-muted:#93A0C2;
+  --border:rgba(255,255,255,0.10);
+  --teal:#2FD9C4;
+  --ember:#FF6F5E;
+  --sakura:#FF8FB4;
+  --gold:#E8B33D;
+  --shadow-sm:0 4px 18px rgba(0,0,0,0.30);
+  --shadow-md:0 24px 60px rgba(0,0,0,0.45);
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+img,svg{display:block;max-width:100%;}
+h1,h2,h3{font-family:var(--font-display);margin:0;color:var(--text);}
+p{margin:0;}
+a{color:inherit;}
+.wrap{width:min(100%,880px);margin:0 auto;padding:0 20px;}
+
+/* ===== Top nav ===== */
+.topnav{
+  position:sticky;top:0;z-index:40;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+}
+.topnav-inner{
+  width:min(100%,880px);margin:0 auto;padding:12px 20px;
+  display:flex;align-items:center;gap:14px;justify-content:space-between;
+}
+.topnav-brand{font-family:var(--font-display);font-weight:700;font-size:15px;letter-spacing:0.01em;white-space:nowrap;}
+.topnav-links{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;}
+.topnav-links::-webkit-scrollbar{display:none;}
+.topnav-links a{
+  flex:0 0 auto;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
+  color:var(--text-muted);text-decoration:none;white-space:nowrap;
+}
+.topnav-links a:hover{background:var(--surface-soft);color:var(--text);}
+.theme-toggle{
+  flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--border);
+  background:var(--surface);cursor:pointer;font-size:15px;display:grid;place-items:center;
+  color:var(--text);
+}
+
+/* ===== Hero ===== */
+.hero{padding:56px 0 40px;}
+.eyebrow-free-title{
+  font-size:clamp(2rem,5.6vw,3.1rem);
+  font-weight:700;line-height:1.08;letter-spacing:-0.01em;
+  max-width:15ch;
+}
+.hero-sub{
+  margin-top:16px;max-width:56ch;color:var(--text-muted);font-size:1.02rem;line-height:1.65;
+}
+.hero-lead{margin-top:10px;max-width:60ch;color:var(--text-muted);font-size:0.96rem;}
+.hero-grid{
+  margin-top:38px;display:grid;grid-template-columns:1fr;gap:28px;align-items:center;
+}
+@media (min-width:720px){ .hero-grid{grid-template-columns:1.1fr 1fr;} }
+
+/* orb demo */
+.orb-stage{
+  border-radius:var(--radius-lg);
+  background:var(--surface);
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-sm);
+  padding:40px 20px 26px;
+  display:grid;justify-items:center;gap:14px;
+}
+.orb-wrap{position:relative;width:130px;height:130px;display:grid;place-items:center;}
+.orb{
+  --glow:var(--teal);
+  width:92px;height:92px;border-radius:50%;position:relative;z-index:2;
+  display:grid;place-items:center;color:#fff;
+  background:radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--glow) 60%, white), var(--glow) 72%);
+  box-shadow:0 10px 30px color-mix(in srgb, var(--glow) 45%, transparent);
+  animation:orb-breathe 3.4s ease-in-out infinite;
+}
+.orb svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+@keyframes orb-breathe{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.055);}
+}
+.orb-ring{
+  position:absolute;inset:0;border-radius:50%;border:2px solid var(--teal);opacity:0;
+}
+.orb-wrap[data-orb-state="idle"] .orb-ring{display:none;}
+.orb-wrap[data-orb-state="recording"] .orb{--glow:var(--teal);animation:orb-pulse-fast 1.6s ease-in-out infinite;}
+.orb-wrap[data-orb-state="recording"] .orb-ring{
+  animation:orb-ripple 1.8s cubic-bezier(.24,.72,.4,1) infinite;
+}
+.orb-wrap[data-orb-state="recording"] .orb-ring:nth-child(3){animation-delay:0.6s;}
+@keyframes orb-pulse-fast{0%,100%{transform:scale(1);}50%{transform:scale(1.09);}}
+@keyframes orb-ripple{
+  0%{opacity:0.55;transform:scale(0.72);}
+  100%{opacity:0;transform:scale(1.55);}
+}
+.orb-wrap[data-orb-state="speaking"] .orb{--glow:var(--ember);animation:orb-breathe 2.1s ease-in-out infinite;}
+.orb-wrap[data-orb-state="speaking"] .orb-ring{display:none;}
+.orb-eq{position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);display:none;gap:3px;align-items:flex-end;height:16px;}
+.orb-wrap[data-orb-state="speaking"] .orb-eq{display:flex;}
+.orb-eq span{width:3px;border-radius:2px;background:var(--ember);animation:eq 0.9s ease-in-out infinite;}
+.orb-eq span:nth-child(1){height:6px;animation-delay:0s;}
+.orb-eq span:nth-child(2){height:14px;animation-delay:0.15s;}
+.orb-eq span:nth-child(3){height:9px;animation-delay:0.3s;}
+.orb-eq span:nth-child(4){height:16px;animation-delay:0.45s;}
+.orb-eq span:nth-child(5){height:7px;animation-delay:0.6s;}
+@keyframes eq{0%,100%{transform:scaleY(0.5);}50%{transform:scaleY(1);}}
+.orb-label{font-size:13px;font-weight:600;color:var(--text-muted);min-height:18px;}
+.orb-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
+.orb-btn{
+  padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface-soft);
+  color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;
+}
+.orb-btn.is-active{background:var(--text);color:var(--bg);border-color:var(--text);}
+.demo-caption{font-size:11.5px;color:var(--text-muted);text-align:center;}
+
+/* ===== Sections ===== */
+section{padding:52px 0;border-top:1px solid var(--border);}
+section:first-of-type{border-top:0;}
+.section-head{max-width:62ch;margin-bottom:28px;}
+.section-head h2{font-size:clamp(1.35rem,3vw,1.7rem);font-weight:700;letter-spacing:-0.005em;}
+.section-head p{margin-top:10px;color:var(--text-muted);font-size:0.98rem;}
+
+/* current-state list */
+.audit-list{display:grid;gap:14px;}
+.audit-item{
+  display:grid;grid-template-columns:26px 1fr;gap:12px;padding:16px 0;border-bottom:1px solid var(--border);
+}
+.audit-item:last-child{border-bottom:0;}
+.audit-mark{width:26px;height:26px;border-radius:50%;background:var(--surface-soft);display:grid;place-items:center;font-size:13px;color:var(--text-muted);}
+.audit-item h3{font-size:0.98rem;font-weight:700;margin-bottom:4px;}
+.audit-item p{color:var(--text-muted);font-size:0.92rem;}
+
+/* principle cards */
+.principle-grid{display:grid;gap:16px;grid-template-columns:1fr;}
+@media (min-width:680px){ .principle-grid{grid-template-columns:repeat(3,1fr);} }
+.principle-card{
+  border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;background:var(--surface);
+}
+.principle-card .dot{width:34px;height:34px;border-radius:50%;margin-bottom:14px;}
+.principle-card h3{font-size:1.02rem;margin-bottom:8px;line-height:1.3;}
+.principle-card p{color:var(--text-muted);font-size:0.9rem;}
+
+/* swatches */
+.swatch-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;}
+.swatch{
+  flex:1 1 130px;min-width:120px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);
+}
+.swatch-color{height:64px;}
+.swatch-info{padding:9px 11px;background:var(--surface);}
+.swatch-info strong{display:block;font-size:12.5px;}
+.swatch-info span{display:block;font-size:11px;color:var(--text-muted);margin-top:2px;}
+
+.type-specimen{margin-top:26px;display:grid;gap:18px;}
+.type-block{border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;background:var(--surface);}
+.type-block .tag{font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:10px;}
+.type-block .big{font-family:var(--font-display);font-size:clamp(1.6rem,4vw,2.1rem);font-weight:700;}
+.type-block .body-sample{font-size:1rem;color:var(--text);max-width:52ch;}
+.type-block .num-sample{font-family:var(--font-display);font-size:3.2rem;font-weight:700;font-variant-numeric:tabular-nums;}
+
+/* lang tabs */
+.lang-tabs{display:flex;gap:6px;margin:22px 0 4px;flex-wrap:wrap;}
+.lang-tab{
+  padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface-soft);
+  font-size:12.5px;font-weight:700;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+}
+.lang-tab .lang-dot{width:9px;height:9px;border-radius:50%;}
+.lang-tab.is-active{background:var(--text);color:var(--bg);border-color:var(--text);}
+.lang-tab.is-active .lang-dot{outline:2px solid color-mix(in srgb, var(--bg) 70%, transparent);}
+
+/* phone frame */
+.screens-grid{display:grid;gap:32px;grid-template-columns:1fr;}
+@media (min-width:760px){ .screens-grid{grid-template-columns:1fr 1fr;} }
+.screen-block h3{font-size:1rem;margin-bottom:6px;}
+.screen-block .desc{color:var(--text-muted);font-size:0.88rem;margin-bottom:16px;max-width:46ch;}
+.phone{
+  width:min(100%,300px);margin:0 auto;border-radius:34px;padding:14px;
+  background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);
+}
+.phone-screen{
+  border-radius:22px;background:var(--bg);padding:18px 14px;min-height:300px;display:flex;flex-direction:column;
+}
+
+/* chat mockup */
+.chat-mini{flex:1;display:flex;flex-direction:column;gap:10px;justify-content:flex-end;}
+.row-ai,.row-user{display:flex;align-items:flex-end;gap:8px;}
+.row-user{justify-content:flex-end;}
+.mini-avatar{width:26px;height:26px;border-radius:50%;flex:0 0 26px;display:grid;place-items:center;font-size:12px;color:#fff;}
+.mini-avatar.ai{background:transparent;border:1.5px solid var(--ember);color:var(--ember);}
+.mini-bubble{max-width:76%;padding:9px 12px;border-radius:15px;font-size:13px;line-height:1.5;}
+.mini-bubble.ai{background:transparent;border-top-left-radius:4px;color:var(--text);padding-left:0;}
+.mini-bubble.user{background:color-mix(in srgb, var(--teal) 16%, var(--surface));border-top-right-radius:4px;}
+.mini-dock{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:grid;justify-items:center;gap:6px;}
+.mini-orb{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--teal) 60%, white), var(--teal));box-shadow:0 6px 18px color-mix(in srgb, var(--teal) 45%, transparent);}
+.mini-meta{font-size:10px;color:var(--text-muted);display:flex;gap:10px;}
+
+/* coach mockup */
+.coach-mini{display:flex;flex-direction:column;gap:14px;}
+.ring-wrap{display:flex;align-items:center;gap:14px;}
+.ring-num{font-family:var(--font-display);font-size:2rem;font-weight:700;}
+.ring-num small{font-size:0.9rem;color:var(--text-muted);font-weight:600;}
+.metric-mini{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-muted);padding:8px 0;border-bottom:1px solid var(--border);}
+.metric-mini strong{color:var(--text);}
+.metric-bar{flex:1;margin:0 10px;height:4px;border-radius:4px;background:var(--surface-soft);overflow:hidden;}
+.metric-bar span{display:block;height:100%;background:var(--teal);}
+.card-mini{display:flex;gap:9px;align-items:center;padding:10px 0;font-size:12.5px;border-top:1px solid var(--border);}
+.card-mini .ic{width:24px;height:24px;border-radius:50%;background:color-mix(in srgb, var(--gold) 22%, var(--surface));color:var(--gold);display:grid;place-items:center;flex:0 0 24px;font-size:12px;}
+.reveal-btn{
+  margin-top:4px;padding:9px 14px;border-radius:999px;border:0;background:var(--teal);color:#06231f;
+  font-weight:700;font-size:12.5px;cursor:pointer;justify-self:start;
+}
+
+/* settings mockup */
+.settings-mini{display:flex;flex-direction:column;}
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
+.set-row strong{font-weight:600;}
+.chip-row{display:flex;gap:6px;}
+.chip{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:2px solid transparent;font-size:10px;color:#fff;font-weight:700;}
+.chip.is-selected{outline:2px solid var(--text);outline-offset:2px;}
+.switch-mini{width:36px;height:20px;border-radius:999px;background:var(--surface-soft);position:relative;border:1px solid var(--border);}
+.switch-mini.on{background:var(--teal);border-color:var(--teal);}
+.switch-mini::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--surface);transition:transform .15s;}
+.switch-mini.on::after{transform:translateX(16px);background:#fff;}
+
+/* motion list */
+.motion-list{display:grid;gap:16px;margin-top:6px;}
+.motion-item{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--border);}
+.motion-item:last-child{border-bottom:0;}
+.motion-item .tag2{font-size:11.5px;font-weight:700;color:var(--text-muted);}
+.motion-item p{font-size:0.92rem;color:var(--text-muted);}
+@media (max-width:560px){ .motion-item{grid-template-columns:1fr;} }
+
+/* roadmap */
+.roadmap{display:grid;gap:0;counter-reset:phase;margin-top:8px;}
+.phase{
+  display:grid;grid-template-columns:44px 1fr;gap:16px;padding:18px 0;border-bottom:1px solid var(--border);
+  counter-increment:phase;
+}
+.phase:last-child{border-bottom:0;}
+.phase-num{
+  width:34px;height:34px;border-radius:50%;background:var(--surface-soft);color:var(--text);
+  display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:14px;
+}
+.phase h3{font-size:1rem;margin-bottom:5px;}
+.phase p{color:var(--text-muted);font-size:0.9rem;}
+.phase code{background:var(--surface-soft);padding:1px 6px;border-radius:6px;font-size:0.82rem;}
+
+/* tech notes */
+.tech-list{display:grid;gap:12px;margin-top:6px;}
+.tech-list li{list-style:none;padding-left:20px;position:relative;color:var(--text-muted);font-size:0.92rem;}
+.tech-list li::before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;border-radius:50%;background:var(--teal);}
+.tech-list strong{color:var(--text);}
+
+footer{padding:44px 0 64px;color:var(--text-muted);font-size:0.86rem;max-width:60ch;}
+footer p+p{margin-top:10px;}
+</style>
+<link href="assets/fonts.css" rel="stylesheet"/><meta content="sanitized from WACZ; Claude session/API data excluded" name="offline-export"/></head>
+<body>
+<nav class="topnav">
+<div class="topnav-inner">
+<span class="topnav-brand">E‑KAIWA · UI Plan</span>
+<div class="topnav-links">
+<a href="#hien-trang">Hiện trạng</a>
+<a href="#dinh-huong">Định hướng</a>
+<a href="#mau-sac">Màu &amp; chữ</a>
+<a href="#man-hinh">Màn hình</a>
+<a href="#chuyen-dong">Chuyển động</a>
+<a href="#lo-trinh">Lộ trình</a>
+</div>
+<button aria-label="Đổi giao diện sáng/tối" class="theme-toggle" id="theme-toggle" type="button">🌙</button>
+</div>
+</nav>
+<header class="hero">
+<div class="wrap">
+<h1 class="eyebrow-free-title">Làm giao diện E‑KAIWA lung linh như chính trải nghiệm luyện nói</h1>
+<p class="hero-sub">Nền tảng UX của repo đã đúng hướng: bong bóng hội thoại, nút giữ để nói, bottom sheet cho Coach và Settings, hai theme sáng/tối. Cái còn thiếu là một bản sắc thị giác riêng — nơi âm thanh thật sự "nhìn thấy được".</p>
+<p class="hero-lead">Bản kế hoạch này dựa trên mã nguồn thật của <code>src/web/</code> (public.css, live.css, ui.js…), giữ đúng triết lý "vanilla, nhẹ, chạy tốt trên VPS rẻ" mà README đã đề ra — không đề xuất viết lại bằng framework nào cả.</p>
+<div class="hero-grid">
+<div>
+<p style="color:var(--text-muted);font-size:0.9rem;">Ý tưởng cốt lõi: nút Talk không còn là một hình tròn đổi màu — nó thở, gợn sóng và đổi sắc theo đúng lượt nói của bạn hay của AI. Bấm thử bên dưới.</p>
+</div>
+<div class="orb-stage">
+<div class="orb-wrap" data-orb-state="idle" id="hero-orb-wrap">
+<span class="orb-ring"></span>
+<span class="orb-ring"></span>
+<div class="orb">
+<svg viewbox="0 0 24 24"><rect height="11" rx="3" width="6" x="9" y="3"></rect><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"></path></svg>
+</div>
+<div class="orb-eq"><span></span><span></span><span></span><span></span><span></span></div>
+</div>
+<div class="orb-label" id="hero-orb-label">Sẵn sàng — đang thở nhẹ</div>
+<div class="orb-btns">
+<button class="orb-btn is-active" data-orb-btn="idle" type="button">Đang chờ</button>
+<button class="orb-btn" data-orb-btn="recording" type="button">Bạn đang nói</button>
+<button class="orb-btn" data-orb-btn="speaking" type="button">AI đang nói</button>
+</div>
+<div class="demo-caption">Bản xem trước dựng bằng CSS thuần — đúng cách sẽ triển khai trong live.css</div>
+</div>
+</div>
+</div>
+</header>
+<section id="hien-trang">
+<div class="wrap">
+<div class="section-head">
+<h2>Hiện trạng: đúng nhưng chưa cuốn</h2>
+<p>Đọc qua public.css, live.css và live.html, đây là bốn điểm đáng chú ý nhất.</p>
+</div>
+<div class="audit-list">
+<div class="audit-item">
+<div class="audit-mark">1</div>
+<div>
+<h3>Cấu trúc UX đã hợp lý</h3>
+<p>Header gọn, khung hội thoại cuộn riêng, dock điều khiển cố định đáy màn hình, overlay dạng bottom sheet cho Coach/Settings — đúng mẫu hình một app thoại trên di động cần có.</p>
+</div>
+</div>
+<div class="audit-item">
+<div class="audit-mark">2</div>
+<div>
+<h3>Bản sắc thị giác còn chung chung</h3>
+<p>Nền trắng/xám nhạt, một màu xanh dương <code style="background:var(--surface-soft);padding:1px 6px;border-radius:6px;">#2f6fed</code> lặp lại ở nút, avatar, liên kết — đúng công thức "SaaS xanh dương" mà rất nhiều app quản lý công việc cũng dùng. Không có gì gợi nhắc đây là app luyện nói.</p>
+</div>
+</div>
+<div class="audit-item">
+<div class="audit-mark">3</div>
+<div>
+<h3>Chuyển động gần như vắng mặt</h3>
+<p>Nút Talk đổi màu tức thì giữa các trạng thái, sóng âm hai bên chỉ là 5 vạch tĩnh. Phần lẽ ra sống động nhất — hành động "nói" — lại là phần tĩnh nhất của toàn bộ giao diện.</p>
+</div>
+</div>
+<div class="audit-item">
+<div class="audit-mark">4</div>
+<div>
+<h3>Khoảnh khắc thưởng bị đánh giá thấp</h3>
+<p>Sau mỗi lượt nói, Coach chấm điểm — đây là phần thưởng cảm xúc lớn nhất cho người học. Nhưng hiện tại nó chỉ là một con số và một thanh tiến trình mỏng 4px, chưa xứng với công sức người dùng vừa bỏ ra.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="dinh-huong">
+<div class="wrap">
+<div class="section-head">
+<h2>Định hướng: giọng nói hoá thành ánh sáng</h2>
+<p>Ba nguyên tắc dẫn dắt mọi quyết định thiết kế tiếp theo, thay vì làm lại từng màn hình rời rạc.</p>
+</div>
+<div class="principle-grid">
+<div class="principle-card">
+<div class="dot" style="background:radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--teal) 60%, white), var(--teal));"></div>
+<h3>Giọng nói hoá thành ánh sáng</h3>
+<p>Nút Talk thở nhẹ khi chờ, gợn sóng khi bạn nói, đổi sắc khi AI trả lời. Người dùng nhìn cuộc trò chuyện thay vì chỉ nghe nó.</p>
+</div>
+<div class="principle-card">
+<div class="dot" style="background:linear-gradient(135deg, var(--teal), var(--ember));"></div>
+<h3>Hai giọng, hai sắc</h3>
+<p>Xanh ngọc cho giọng của bạn, cam san hô cho giọng AI — dùng nhất quán ở nút Talk, viền avatar, điểm nhấn bong bóng chat. Nhìn màu là biết ai đang nói.</p>
+</div>
+<div class="principle-card">
+<div class="dot" style="background:var(--surface-soft);border:2px solid var(--teal);"></div>
+<h3>Một điểm sáng, phần còn lại yên tĩnh</h3>
+<p>Sự lung linh dồn hết vào nút Talk và khoảnh khắc chấm điểm. Bong bóng chat, danh sách cài đặt vẫn sạch, phẳng, ít viền — để ánh sáng kia không phải cạnh tranh sự chú ý.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="mau-sac">
+<div class="wrap">
+<div class="section-head">
+<h2>Bảng màu &amp; chữ</h2>
+<p>Bốn màu có vai trò rõ ràng thay vì một xanh dương dùng cho mọi thứ. Mỗi ngôn ngữ luyện tập được gắn một sắc phụ, dùng tiết chế ở chấm nhỏ và viền — không đổi toàn bộ theme.</p>
+</div>
+<div class="swatch-row">
+<div class="swatch">
+<div class="swatch-color" style="background:var(--teal);"></div>
+<div class="swatch-info"><strong>Voice Teal</strong><span>Giọng của bạn · English</span></div>
+</div>
+<div class="swatch">
+<div class="swatch-color" style="background:var(--ember);"></div>
+<div class="swatch-info"><strong>Ember Coral</strong><span>Giọng AI · ăn mừng điểm cao</span></div>
+</div>
+<div class="swatch">
+<div class="swatch-color" style="background:var(--sakura);"></div>
+<div class="swatch-info"><strong>Sakura</strong><span>Điểm nhấn · 日本語</span></div>
+</div>
+<div class="swatch">
+<div class="swatch-color" style="background:var(--gold);"></div>
+<div class="swatch-info"><strong>Imperial Gold</strong><span>Điểm nhấn · 中文</span></div>
+</div>
+</div>
+<div class="lang-tabs lang-scope" data-active-lang="en">
+<button class="lang-tab is-active" data-lang-tab="en" type="button"><span class="lang-dot" style="background:var(--teal);"></span>English</button>
+<button class="lang-tab" data-lang-tab="ja" type="button"><span class="lang-dot" style="background:var(--sakura);"></span>日本語</button>
+<button class="lang-tab" data-lang-tab="zh" type="button"><span class="lang-dot" style="background:var(--gold);"></span>中文</button>
+</div>
+<p style="font-size:12px;color:var(--text-muted);margin-top:6px;">Đổi ngôn ngữ ở đây, quan sát viền avatar và chấm điểm nhấn trong hai mockup bên dưới đổi theo.</p>
+<div class="type-specimen">
+<div class="type-block">
+<div class="tag">Display — Bricolage Grotesque · tiêu đề, số điểm, nhãn trạng thái nút Talk</div>
+<div class="big">Nói tự nhiên hơn mỗi ngày.</div>
+</div>
+<div class="type-block">
+<div class="tag">Body — Inter · toàn bộ giao diện, hội thoại, cài đặt</div>
+<div class="body-sample">Giữ mic, nói một câu tiếng Anh hoặc tiếng Nhật, thả tay ra và nghe Coach nhận xét về phát âm ngay sau đó.</div>
+</div>
+<div class="type-block">
+<div class="tag">Số liệu — Inter tabular figures, không dùng font monospace cho nhãn nhỏ</div>
+<div class="num-sample">87<small style="font-size:1.1rem;color:var(--text-muted);"> / 100</small></div>
+</div>
+</div>
+</div>
+</section>
+<section id="man-hinh">
+<div class="wrap">
+<div class="section-head">
+<h2>Thiết kế lại từng màn hình</h2>
+<p>Bốn mockup dựng bằng đúng CSS sẽ đưa vào repo — không phải ảnh tĩnh.</p>
+</div>
+<div class="screens-grid">
+<div class="screen-block">
+<h3>Hội thoại &amp; nút Talk</h3>
+<p class="desc">Avatar AI chỉ còn viền cam san hô mảnh thay vì khối gradient đặc; bong bóng của bạn nhuốm sắc teal rất nhẹ.</p>
+<div class="phone">
+<div class="phone-screen">
+<div class="chat-mini lang-scope" data-active-lang="en">
+<div class="row-ai">
+<div class="mini-avatar ai">AI</div>
+<div class="mini-bubble ai">How was your weekend?</div>
+</div>
+<div class="row-user">
+<div class="mini-bubble user">I went hiking with my sister.</div>
+</div>
+<div class="row-ai">
+<div class="mini-avatar ai">AI</div>
+<div class="mini-bubble ai">Nice! What trail did you take?</div>
+</div>
+</div>
+<div class="mini-dock">
+<div class="mini-orb"></div>
+<div class="mini-meta"><span>English</span><span>0.8×</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="screen-block">
+<h3>Coach &amp; điểm số</h3>
+<p class="desc">Vòng tiến trình thay cho thanh mỏng 4px, số điểm chạy lên khi xuất hiện — bấm nút bên dưới để xem.</p>
+<div class="phone">
+<div class="phone-screen">
+<div class="coach-mini">
+<div class="ring-wrap">
+<svg height="74" viewbox="0 0 120 120" width="74">
+<circle cx="60" cy="60" fill="none" r="52" stroke="var(--surface-soft)" stroke-width="10"></circle>
+<circle cx="60" cy="60" fill="none" id="score-ring-fg" r="52" stroke="var(--teal)" stroke-linecap="round" stroke-width="10" transform="rotate(-90 60 60)"></circle>
+</svg>
+<div class="ring-num"><span id="score-number">0</span><small> / 100</small></div>
+</div>
+<button class="reveal-btn" id="score-reveal-btn" type="button">Xem điểm</button>
+<div>
+<div class="metric-mini"><span>Phát âm</span><span class="metric-bar"><span style="width:82%;"></span></span><strong>82</strong></div>
+<div class="metric-mini"><span>Ngữ pháp</span><span class="metric-bar"><span style="width:90%;"></span></span><strong>90</strong></div>
+<div class="metric-mini" style="border-bottom:0;"><span>Từ vựng</span><span class="metric-bar"><span style="width:88%;"></span></span><strong>88</strong></div>
+</div>
+<div class="card-mini"><span class="ic">!</span><span>Âm cuối "-ed" trong "hiked" bị nuốt mất</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="screen-block">
+<h3>Cài đặt</h3>
+<p class="desc">Ba ngôn ngữ luyện tập hiện thành chấm màu thay vì chữ trong dropdown — nhận diện nhanh hơn bằng mắt.</p>
+<div class="phone">
+<div class="phone-screen">
+<div class="settings-mini lang-scope" data-active-lang="en">
+<div class="set-row">
+<strong>Ngôn ngữ luyện tập</strong>
+<div class="chip-row">
+<div class="chip is-selected" style="background:var(--teal);">EN</div>
+<div class="chip" style="background:var(--sakura);">JA</div>
+<div class="chip" style="background:var(--gold);">ZH</div>
+</div>
+</div>
+<div class="set-row"><strong>Giao diện</strong><span style="color:var(--text-muted);">Sáng</span></div>
+<div class="set-row"><strong>Tốc độ AI trả lời</strong><span style="color:var(--text-muted);">0.8×</span></div>
+<div class="set-row"><strong>Chấm điểm phát âm</strong><div class="switch-mini on"></div></div>
+<div class="set-row" style="border-bottom:0;"><strong>Chế độ rảnh tay</strong><div class="switch-mini"></div></div>
+</div>
+</div>
+</div>
+</div>
+<div class="screen-block">
+<h3>Trạng thái Talk chi tiết</h3>
+<p class="desc">Cùng một hình tròn, ba câu chuyện khác nhau — dùng lại demo ở đầu trang cho ba trạng thái chờ / ghi / AI nói.</p>
+<div class="phone">
+<div class="phone-screen" style="justify-content:center;align-items:center;">
+<div class="orb-wrap" data-orb-state="recording" style="transform:scale(0.9);">
+<span class="orb-ring"></span><span class="orb-ring"></span>
+<div class="orb">
+<svg viewbox="0 0 24 24"><rect height="11" rx="3" width="6" x="9" y="3"></rect><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"></path></svg>
+</div>
+</div>
+<div class="orb-label" style="margin-top:30px;">Đang nghe bạn nói…</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id="chuyen-dong">
+<div class="wrap">
+<div class="section-head">
+<h2>Chuyển động &amp; vi tương tác</h2>
+<p>Chỉ dùng transform/opacity/box-shadow — không filter:blur() chạy liên tục, để không tốn pin khi một phiên nói kéo dài nhiều phút trên điện thoại tầm trung.</p>
+</div>
+<div class="motion-list">
+<div class="motion-item"><div class="tag2">Nút Talk — chờ</div><p>Thở nhẹ, scale 1 → 1.055, chu kỳ 3.4s, dùng để báo "sẵn sàng" mà không gây phân tâm.</p></div>
+<div class="motion-item"><div class="tag2">Nút Talk — đang nói</div><p>Hai vòng gợn sóng nở ra rồi mờ dần liên tục, lệch nhịp 0.6s, mô phỏng sóng âm thật thay vì chỉ đổi màu tức thì.</p></div>
+<div class="motion-item"><div class="tag2">AI đang nói</div><p>Sắc chuyển sang cam san hô, năm vạch cân bằng nhỏ nhấp nháy phía dưới nút — phân biệt rõ với lượt nói của người dùng.</p></div>
+<div class="motion-item"><div class="tag2">Điểm số hiện ra</div><p>Vòng tiến trình vẽ dần trong 1.1s, số điểm đếm lên cùng lúc — một chuyển động duy nhất, đúng lúc người học vừa nói xong.</p></div>
+<div class="motion-item"><div class="tag2">Tin nhắn mới</div><p>Chỉ tin nhắn mới nhất trượt nhẹ lên khi xuất hiện; lịch sử cũ giữ nguyên, tránh hiệu ứng "mọi thứ đều fade-in" khi cuộn.</p></div>
+<div class="motion-item"><div class="tag2">prefers-reduced-motion</div><p>Toàn bộ animation trên tắt về trạng thái tĩnh cuối cùng; vòng điểm và số vẫn cập nhật, chỉ bỏ phần chuyển động.</p></div>
+</div>
+</div>
+</section>
+<section id="lo-trinh">
+<div class="wrap">
+<div class="section-head">
+<h2>Lộ trình triển khai</h2>
+<p>Sáu giai đoạn, mỗi giai đoạn động vào đúng một nhóm file — để đi qua bộ test Python/JS hiện có mà không phải sửa lại toàn bộ ui.js hay live.js.</p>
+</div>
+<div class="roadmap">
+<div class="phase">
+<div class="phase-num">1</div>
+<div><h3>Token màu &amp; chữ nền tảng</h3><p>Thêm biến mới vào <code>public.css</code>/<code>live.css</code> (<code>--teal</code>, <code>--ember</code>, <code>--sakura</code>, <code>--gold</code>), giữ nguyên biến cũ song song để dev mode không vỡ trong lúc chuyển đổi.</p></div>
+</div>
+<div class="phase">
+<div class="phase-num">2</div>
+<div><h3>Nút Talk &amp; sóng âm</h3><p>Chỉnh <code>.talk-button</code>, <code>.voice-waves</code> trong <code>live.css</code>. <code>data-state</code> đã tồn tại sẵn trên nút nên phần lớn chỉ là CSS, gần như không đụng <code>live.js</code>.</p></div>
+</div>
+<div class="phase">
+<div class="phase-num">3</div>
+<div><h3>Bong bóng hội thoại &amp; avatar</h3><p>Sửa <code>.bubble</code>, <code>.avatar</code>, <code>.ai-avatar</code> trong <code>public.css</code>; nếu cần thêm class ngữ nghĩa "giọng ai" thì chỉnh nhỏ trong <code>ui_render.js</code>.</p></div>
+</div>
+<div class="phase">
+<div class="phase-num">4</div>
+<div><h3>Coach &amp; điểm số</h3><p>Thêm SVG vòng tiến trình vào markup do <code>ui_overlay.js</code> sinh ra, style trong <code>live.css</code> (<code>.score-hero</code>, <code>.score-track</code>).</p></div>
+</div>
+<div class="phase">
+<div class="phase-num">5</div>
+<div><h3>Cài đặt &amp; overlay</h3><p>Thêm chấm màu ngôn ngữ vào <code>#target-language</code> trong <code>live.html</code>/<code>ui_overlay.js</code>, restyle danh sách trong <code>.settings-panel</code>.</p></div>
+</div>
+<div class="phase">
+<div class="phase-num">6</div>
+<div><h3>Rà soát &amp; kiểm thử</h3><p>Kiểm tra <code>prefers-reduced-motion</code>, độ tương phản hai theme, chạy lại <code>unittest</code> + <code>node --test</code>, thử trên Android tầm trung qua Chrome remote debugging trước khi lên VPS.</p></div>
+</div>
+</div>
+</div>
+</section>
+<section id="ky-thuat">
+<div class="wrap">
+<div class="section-head">
+<h2>Ghi chú kỹ thuật cho codebase hiện tại</h2>
+</div>
+<ul class="tech-list">
+<li><strong>Giữ triết lý "vanilla, nhẹ, rẻ"</strong> mà README đã nêu — mọi hiệu ứng trong bản này chỉ dùng CSS thuần, không thêm thư viện animation nào.</li>
+<li><strong>Dùng thuộc tính data trên <code>&lt;body&gt;</code></strong> — có thể thêm <code>data-target-lang="en|ja|zh-Hans"</code> theo đúng cách <code>data-theme</code> đang hoạt động, rồi định nghĩa <code>--accent</code> theo ngôn ngữ một lần, thay vì viết lại từng component.</li>
+<li><strong>Ưu tiên không đổi cấu trúc DOM/class hiện có</strong> — chỉ đổi biến số và thêm vài class trạng thái, để giảm rủi ro hồi quy trên bộ test Python + JS đã khá đầy đủ của repo.</li>
+<li><strong>Đo hiệu năng trên thiết bị thật</strong> — nút Talk có thể "thở" liên tục trong nhiều phút một phiên nói, nên cần theo dõi ảnh hưởng lên pin và tốc độ khung hình trên Android tầm trung, không chỉ desktop.</li>
+</ul>
+</div>
+</section>
+<footer>
+<div class="wrap">
+<p>Bản kế hoạch này ưu tiên một thay đổi thị giác lớn duy nhất — nút Talk hoá thành ánh sáng sống — rồi giữ mọi thứ khác gọn và yên tĩnh xung quanh nó. Cách này vừa tạo cảm giác "lung linh" mà bạn muốn, vừa không đòi hỏi viết lại kiến trúc vanilla JS/CSS đang chạy ổn của E‑KAIWA.</p>
+<p>Toàn bộ màu sắc, chữ và mockup trên trang này đều dựng bằng CSS thật — có thể copy thẳng token và cấu trúc vào <code>public.css</code>/<code>live.css</code> để bắt đầu giai đoạn 1.</p>
+</div>
+</footer>
+<script>
+(function(){
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Theme toggle
+  var themeBtn = document.getElementById('theme-toggle');
+  function currentTheme(){
+    var attr = document.documentElement.getAttribute('data-theme');
+    if(attr) return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function syncThemeIcon(){ themeBtn.textContent = currentTheme() === 'dark' ? '☀️' : '🌙'; }
+  syncThemeIcon();
+  themeBtn.addEventListener('click', function(){
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    syncThemeIcon();
+  });
+
+  // Hero orb state demo
+  var orbLabels = { idle: 'Sẵn sàng — đang thở nhẹ', recording: 'Đang nghe bạn nói…', speaking: 'AI đang trả lời…' };
+  var orbWrap = document.getElementById('hero-orb-wrap');
+  var orbLabelEl = document.getElementById('hero-orb-label');
+  document.querySelectorAll('[data-orb-btn]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var state = btn.getAttribute('data-orb-btn');
+      orbWrap.setAttribute('data-orb-state', state);
+      orbLabelEl.textContent = orbLabels[state];
+      document.querySelectorAll('[data-orb-btn]').forEach(function(b){ b.classList.toggle('is-active', b === btn); });
+    });
+  });
+
+  // Language accent demo
+  document.querySelectorAll('[data-lang-tab]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var lang = btn.getAttribute('data-lang-tab');
+      document.querySelectorAll('[data-lang-tab]').forEach(function(b){ b.classList.toggle('is-active', b === btn); });
+      var accentVar = lang === 'ja' ? 'var(--sakura)' : lang === 'zh' ? 'var(--gold)' : 'var(--teal)';
+      document.querySelectorAll('.lang-scope').forEach(function(el){ el.style.setProperty('--accent', accentVar); });
+      document.querySelectorAll('.lang-scope .chip').forEach(function(chip){ chip.classList.remove('is-selected'); });
+      document.querySelectorAll('.lang-scope .chip').forEach(function(chip){
+        var text = chip.textContent.trim().toLowerCase();
+        var match = (lang === 'en' && text === 'en') || (lang === 'ja' && text === 'ja') || (lang === 'zh' && text === 'zh');
+        if(match) chip.classList.add('is-selected');
+      });
+    });
+  });
+
+  // Score ring reveal
+  var ring = document.getElementById('score-ring-fg');
+  var scoreNumEl = document.getElementById('score-number');
+  var revealBtn = document.getElementById('score-reveal-btn');
+  var r = 52, circumference = 2 * Math.PI * r, target = 87;
+  ring.style.strokeDasharray = circumference;
+  ring.style.strokeDashoffset = circumference;
+
+  function playScore(){
+    if(reduceMotion){
+      ring.style.transition = 'none';
+      ring.style.strokeDashoffset = circumference * (1 - target/100);
+      scoreNumEl.textContent = target;
+      return;
+    }
+    ring.style.transition = 'none';
+    ring.style.strokeDashoffset = circumference;
+    scoreNumEl.textContent = '0';
+    void ring.getBoundingClientRect();
+    requestAnimationFrame(function(){
+      ring.style.transition = 'stroke-dashoffset 1.1s cubic-bezier(.22,.9,.3,1)';
+      ring.style.strokeDashoffset = circumference * (1 - target/100);
+    });
+    var start = null, duration = 1100;
+    function step(ts){
+      if(!start) start = ts;
+      var p = Math.min(1, (ts - start) / duration);
+      scoreNumEl.textContent = Math.round(target * p);
+      if(p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  revealBtn.addEventListener('click', playScore);
+})();
+</script>
+</body>
+</html>
