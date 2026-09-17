@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+UPDATE_API_PATH = "/api/update"
 DEFAULT_UPDATE_REQUEST_PATH = Path(
     os.environ.get(
         "E_KAIWA_UPDATE_REQUEST_PATH",
@@ -29,3 +30,11 @@ def create_update_request(path: Path = DEFAULT_UPDATE_REQUEST_PATH) -> bool:
     finally:
         os.close(fd)
     return True
+
+
+def request_update(path: Path = DEFAULT_UPDATE_REQUEST_PATH) -> str:
+    """Request the privileged updater and return the public request state."""
+    if not updates_enabled():
+        raise RuntimeError("self-update is not enabled on this host")
+    created = create_update_request(path)
+    return "requested" if created else "already_pending"

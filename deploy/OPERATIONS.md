@@ -1,5 +1,38 @@
 # E-KAIWA VPS operations
 
+## Rescue update API
+
+The stable update trigger is:
+
+```text
+POST /api/update
+```
+
+It has no request body and does not depend on the main frontend JavaScript. This is the recovery path to use from a phone when the normal UI or Update button is broken.
+
+Successful responses use HTTP `202`:
+
+```json
+{"ok":true,"state":"requested"}
+```
+
+If an update request is already waiting:
+
+```json
+{"ok":true,"state":"already_pending"}
+```
+
+Operational rules:
+
+- Keep this endpoint `POST` only. Do not turn update into a `GET` link.
+- The endpoint can only create the fixed systemd update-request marker; it cannot accept a Git URL, branch, command, or arbitrary filesystem path.
+- The privileged updater still enforces `origin/main`, fast-forward-only Git updates, a single updater lock, tests, service restart, and health verification.
+- Public browser requests from a foreign `Origin` are rejected and public update requests are rate-limited.
+- A native phone HTTP client may send no `Origin`; this is intentionally supported so the recovery API remains usable when the frontend is broken.
+- Use the HTTPS public domain when calling it remotely.
+
+The route name is defined once as `UPDATE_API_PATH` in `src/e_kaiwa/update_request.py`; frontend code and tests should treat it as a stable API contract.
+
 ## Runtime logs
 
 E-KAIWA intentionally keeps application-session logs and privileged updater logs in different locations.

@@ -9,7 +9,7 @@ from .config import DEFAULT_HOST, DEFAULT_PORT, WEB_DIR
 from .server import Runtime, _client_settings_payload, build_runtime, parse_args
 from .server import make_handler as make_base_handler
 from .ui_events import UiEventLog
-from .update_request import create_update_request, updates_enabled
+from .update_request import UPDATE_API_PATH, request_update, updates_enabled
 from .version import app_version, git_revision
 
 _UPDATE_LIMITER = SlidingWindowLimiter(3, 3600)
@@ -91,7 +91,7 @@ def make_handler(runtime: Runtime) -> Type:
                     self.send_json(400, {"error": str(exc)[:160]})
                 return
 
-            if path != "/api/update":
+            if path != UPDATE_API_PATH:
                 super().do_POST()
                 return
 
@@ -106,11 +106,11 @@ def make_handler(runtime: Runtime) -> Type:
                     self.send_json(429, {"error": "update rate limit exceeded"})
                     return
             try:
-                created = create_update_request()
+                state = request_update()
             except Exception as exc:
                 self.send_json(503, {"error": str(exc)[:160]})
                 return
-            self.send_json(202, {"ok": True, "state": "requested" if created else "already_pending"})
+            self.send_json(202, {"ok": True, "state": state})
 
     return MaintenanceRequestHandler
 
