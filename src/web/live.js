@@ -26,6 +26,7 @@ import {
 } from './audio.js';
 import {UiController} from './ui.js';
 import {LiveRecoveryCoordinator} from './live_recovery.js';
+import {hasPlayableReplay} from './replay_policy.js';
 
 (() => {
   'use strict';
@@ -574,14 +575,14 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
   }
 
   function boundReplayHistory() {
-    const withAudio = state.turns.filter(turn => turn.replayPcm?.length);
+    const withAudio = state.turns.filter(turn => hasPlayableReplay(turn));
     for (const oldTurn of withAudio.slice(0, Math.max(0, withAudio.length - REPLAY_TURN_LIMIT))) {
       oldTurn.replayPcm = null;
     }
   }
 
   async function runCoach(turn) {
-    if (!isCoachEligible(turn) || turn.coachSent || !turn.userText.trim() || !turn.replayPcm?.length) return;
+    if (!isCoachEligible(turn) || turn.coachSent || !turn.userText.trim() || !hasPlayableReplay(turn)) return;
     turn.coachSent = true;
     try {
       const response = await fetch('/api/coach', {
@@ -1176,7 +1177,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     }
 
     let played = true;
-    if (action === 'replay-user' && turn.replayPcm?.length) {
+    if (action === 'replay-user' && hasPlayableReplay(turn)) {
       played = await state.playback.playUserPcm(turn.replayPcm, 16000);
     } else if (action === 'speak-correction') {
       played = await state.playback.speak(turn.coach?.correction || turn.userText, {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {CONVERSATION_MODES} from '../../web/preferences.js';
+import {hasPlayableReplay} from '../../web/replay_policy.js';
 import {
   coachOverviewHtml,
   correctionOverlayHtml,
@@ -118,4 +119,26 @@ test('replay overlay uses local PCM for waveform and duration without extra data
   assert.match(html, /--wave:/);
   assert.match(html, /data-audio-action="replay-user"/);
   assert.match(html, />0:02<\/span>/);
+});
+
+test('replay button hides when audio is not ready/playable', () => {
+  const base = sampleTurn();
+  assert.equal(hasPlayableReplay(base), true);
+  assert.match(publicTurnHtml(base, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+
+  const empty = {...base, replayPcm: new Int16Array(0)};
+  assert.equal(hasPlayableReplay(empty), false);
+  assert.doesNotMatch(publicTurnHtml(empty, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+
+  const short = {...base, replayPcm: new Int16Array(10)};
+  assert.equal(hasPlayableReplay(short), false);
+  assert.doesNotMatch(publicTurnHtml(short, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+
+  const wrongType = {...base, replayPcm: [1,2,3]};
+  assert.equal(hasPlayableReplay(wrongType), false);
+  assert.doesNotMatch(publicTurnHtml(wrongType, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+
+  const nullPcm = {...base, replayPcm: null};
+  assert.equal(hasPlayableReplay(nullPcm), false);
+  assert.doesNotMatch(publicTurnHtml(nullPcm, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
 });

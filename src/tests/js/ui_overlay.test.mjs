@@ -91,7 +91,7 @@ function sampleTurn() {
   return {
     no: 7,
     userText: 'I went to Kyoto with my friends.',
-    replayPcm: new Int16Array([10, 20, 30]),
+    replayPcm: new Int16Array(1600).fill(1200),
     coach: {
       correction: 'I went to Kyoto with my friends.',
       explanation: 'Good sentence.',
@@ -334,4 +334,20 @@ test('replay overlay stays unavailable when manual audio is disabled', () => {
   controller.openReplay(sampleTurn());
   assert.equal(controller.state.type, null);
   assert.equal(root.hidden, true);
+});
+
+test('replay overlay stays unavailable when PCM is not playable', () => {
+  const {controller, root} = makeController({allowAudio: true});
+  const short = {...sampleTurn(), replayPcm: new Int16Array(10)};
+  controller.openReplay(short);
+  assert.equal(controller.state.type, null);
+  assert.equal(root.hidden, true);
+
+  const empty = {...sampleTurn(), replayPcm: new Int16Array(0)};
+  controller.openReplay(empty);
+  assert.equal(controller.state.type, null);
+
+  const wrong = {...sampleTurn(), replayPcm: [1,2,3]};
+  controller.openReplay(wrong);
+  assert.equal(controller.state.type, null);
 });

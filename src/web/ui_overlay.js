@@ -4,6 +4,7 @@ import {
   replayOverlayHtml,
   wordOverlayHtml
 } from './ui_render.js';
+import {hasPlayableReplay} from './replay_policy.js';
 
 const DYNAMIC_OVERLAYS = new Set(['coach', 'correction', 'word', 'replay']);
 const FOCUSABLE = 'button, select, input, textarea, a[href], [tabindex]';
@@ -200,7 +201,7 @@ export class UiOverlayController {
   }
 
   openReplay(turn) {
-    if (!turn?.replayPcm?.length || !this.audioActionsAllowed()) return;
+    if (!hasPlayableReplay(turn) || !this.audioActionsAllowed()) return;
     this._showDynamic('replay', turn);
   }
 

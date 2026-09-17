@@ -1,4 +1,5 @@
 import {isHandsFreeMode} from './preferences.js';
+import {hasPlayableReplay} from './replay_policy.js';
 import {icon} from './ui_icons.js';
 
 export function escapeHtml(value) {
@@ -72,7 +73,7 @@ export function turnScore(turn) {
 }
 
 function inlineReplay(turn, t, allowAudioActions) {
-  if (!allowAudioActions || !turn?.replayPcm?.length) return '';
+  if (!allowAudioActions || !hasPlayableReplay(turn)) return '';
   return `<button class="inline-action replay-inline" type="button" data-ui-action="open-replay" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}">${icon('play')}</button>`;
 }
 

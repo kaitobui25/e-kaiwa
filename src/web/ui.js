@@ -5,6 +5,7 @@ import {
   normalizeConversationMode,
   normalizeTheme
 } from './preferences.js';
+import {hasPlayableReplay} from './replay_policy.js';
 import {icon} from './ui_icons.js';
 import {devTurnHtml, escapeHtml, publicTurnHtml} from './ui_render.js';
 import {UiOverlayController} from './ui_overlay.js';
@@ -227,8 +228,14 @@ export class UiController {
     const target = this.elements.conversation;
     if (!target?.querySelectorAll) return;
     for (const button of target.querySelectorAll('[data-ui-action="open-replay"]')) {
-      button.disabled = !this.replayEnabled;
-      button.setAttribute?.('aria-disabled', String(!this.replayEnabled));
+      const turnNo = Number(button.dataset.turn || 0);
+      const turn = this.turns.find(item => item.no === turnNo);
+      const playable = hasPlayableReplay(turn);
+      const shouldShow = Boolean(this.replayEnabled && playable);
+      button.hidden = !shouldShow;
+      button.disabled = !shouldShow;
+      button.setAttribute?.('aria-disabled', String(!shouldShow));
+      if (button.style) button.style.display = shouldShow ? '' : 'none';
     }
   }
 
