@@ -9,10 +9,18 @@ from .config import DEFAULT_HOST, DEFAULT_PORT, WEB_DIR
 from .server import Runtime, _client_settings_payload, build_runtime, parse_args
 from .server import make_handler as make_base_handler
 from .ui_events import UiEventLog
-from .update_request import UPDATE_API_PATH, request_update, updates_enabled
+from .update_request import (
+    UPDATE_API_PATH,
+    UPDATE_LINK_PREFIX,
+    is_update_link,
+    request_update,
+    update_link_authorized,
+    updates_enabled,
+)
 from .version import app_version, git_revision
 
 _UPDATE_LIMITER = SlidingWindowLimiter(3, 3600)
+_UPDATE_STATUS_PATH = "/maintenance/status.json"
 
 
 def make_handler(runtime: Runtime) -> Type:
@@ -24,6 +32,15 @@ def make_handler(runtime: Runtime) -> Type:
 
     class MaintenanceRequestHandler(base_handler):
         server_version = f"EKaiwaLive/{version}"
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            if is_update_link(urlparse(self.path).path):
+                print(
+                    f'[HTTP] {self.address_string()} - '
+                    f'"{self.command} {UPDATE_LINK_PREFIX}<redacted> {self.request_version}"'
+                )
+                return
+            super().log_message(fmt, *args)
 
         def _allow_ui_event(self) -> bool:
             if not runtime.access.is_public:
@@ -39,8 +56,43 @@ def make_handler(runtime: Runtime) -> Type:
         def _write_ui_event(self, payload: object) -> None:
             ui_events.write(payload, app_version=version, revision=revision)
 
+        def _request_update(self, *, require_same_origin: bool) -> str | None:
+            if not update_enabled:
+                self.send_json(503, {"error": "self-update is not enabled on this host"})
+                return None
+            if runtime.access.is_public:
+                if require_same_origin and not runtime.access.origin_allowed(self.headers):
+                    self.send_json(403, {"error": "origin not allowed"})
+                    return None
+                if not _UPDATE_LIMITER.allow(self.client_key()):
+                    self.send_json(429, {"error": "update rate limit exceeded"})
+                    return None
+            try:
+                return request_update()
+            except Exception as exc:
+                self.send_json(503, {"error": str(exc)[:160]})
+                return None
+
+        def _redirect_to_update_status(self) -> None:
+            self.send_response(303)
+            self.send_header("Location", _UPDATE_STATUS_PATH)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Robots-Tag", "noindex, nofollow, noarchive")
+            self.end_headers()
+
         def do_GET(self) -> None:
             path = urlparse(self.path).path
+
+            if is_update_link(path):
+                if not update_link_authorized(path):
+                    self.send_error(404)
+                    return
+                state = self._request_update(require_same_origin=False)
+                if state is not None:
+                    self._redirect_to_update_status()
+                return
+
             static_routes = {
                 "/live_recovery.js": (WEB_DIR / "live_recovery.js", "text/javascript; charset=utf-8"),
                 "/replay_policy.js": (WEB_DIR / "replay_policy.js", "text/javascript; charset=utf-8"),
@@ -95,22 +147,9 @@ def make_handler(runtime: Runtime) -> Type:
                 super().do_POST()
                 return
 
-            if not update_enabled:
-                self.send_json(503, {"error": "self-update is not enabled on this host"})
-                return
-            if runtime.access.is_public:
-                if not runtime.access.origin_allowed(self.headers):
-                    self.send_json(403, {"error": "origin not allowed"})
-                    return
-                if not _UPDATE_LIMITER.allow(self.client_key()):
-                    self.send_json(429, {"error": "update rate limit exceeded"})
-                    return
-            try:
-                state = request_update()
-            except Exception as exc:
-                self.send_json(503, {"error": str(exc)[:160]})
-                return
-            self.send_json(202, {"ok": True, "state": state})
+            state = self._request_update(require_same_origin=True)
+            if state is not None:
+                self.send_json(202, {"ok": True, "state": state})
 
     return MaintenanceRequestHandler
 
