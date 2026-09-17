@@ -239,19 +239,9 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 try:
                     token = create_ephemeral_token(runtime.keys[0][1])
                     session_id, session_dir = runtime.sessions.create(mode="live", model=effective_model)
-                    runtime.sessions.log(
-                        session_dir,
-                        "realtime_model",
-                        requested_model=requested_model,
-                        effective_model=effective_model,
-                        fallback_model=fallback_model,
-                        fallback_used=use_fallback,
-                        fallback_reason=("client_setup_retry" if use_fallback else None),
-                        support_language=persisted["support_language"],
-                        silence_duration_ms=persisted["silence_duration_ms"],
-                        echo_guard_ms=persisted["echo_guard_ms"],
-                        public_mode=runtime.access.is_public,
-                    )
+                    # Do not create conversation log folder here. The folder is
+                    # reserved in memory and created lazily on first real turn
+                    # (coach/metric) to avoid spam from idle Live connections.
                     self.send_json(
                         200,
                         {
@@ -265,7 +255,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                             "echo_guard_ms": persisted["echo_guard_ms"],
                         },
                     )
-                    print(f"LIVE : model={effective_model} fallback={use_fallback} log={session_dir}")
+                    print(f"LIVE : model={effective_model} fallback={use_fallback} token_session={session_id[:8]}... dir={session_dir} (lazy)")
                 except Exception as exc:
                     print(f"[TOKEN ERROR] {exc}")
                     self.send_json(502, {"error": "could not create live session" if runtime.access.is_public else str(exc)})

@@ -203,6 +203,18 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     return state.conversationActive || state.pushToTalkPressed || state.pushActivityOpen;
   }
 
+  function shouldAutoReconnect() {
+    return Boolean(
+      state.activeTurn ||
+      state.conversationActive ||
+      state.pushToTalkPressed ||
+      state.pushActivityOpen ||
+      state.reconnectPending ||
+      state.recovery.waitingTurnNo != null ||
+      state.resumeHandsFreeAfterReconnect
+    );
+  }
+
   function render() {
     state.ui?.render(state.turns, {
       pronunciationEnabled: elements.pron.checked,
@@ -764,6 +776,15 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       state.reconnectPending = true;
       return;
     }
+    if (!shouldAutoReconnect()) {
+      state.reconnectNeeded = true;
+      state.recovery.clearTimers();
+      state.ui?.setSetupReady(false);
+      state.ui?.setTalkState('reconnect');
+      state.ui?.setStatus(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
+      emitUiEvent({event: 'ws_close', code: 0, reason: 'go_away_idle_deferred', was_ready: false});
+      return;
+    }
     recoverLiveSession('go_away', {resume: true, force: true});
   }
 
@@ -998,7 +1019,16 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
       state.setupReady = false;
       const detail = event.reason ? `: ${event.reason}` : '';
       emitUiEvent({event: 'ws_close', code: event.code, reason: String(event.reason || '').slice(0, 120), was_ready: wasReady});
-      if (!state.browserOnline) return;
+      if (!state.browserOnline) {
+        showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
+        return;
+      }
+      // Idle tabs must not auto-reconnect in a tight loop; require explicit
+      // user action or an active conversation to resume.
+      if (!shouldAutoReconnect()) {
+        showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
+        return;
+      }
       if (await retryFreshAfterResume(socket, `WebSocket closed ${event.code}${detail}`)) return;
       if (!wasReady && !socket.__ekaiwaResumeAttempted && !state.reconnectNeeded && !state.sessionFallbackTried && !state.recovery.hasHandle() && await retryWithRealtimeFallback(`WebSocket closed ${event.code}${detail}`)) return;
       recoverLiveSession(`ws_close_${event.code}`, {resume: true, force: true});
@@ -1336,6 +1366,7 @@ import {LiveRecoveryCoordinator} from './live_recovery.js';
     if (state.browserOnline && state.setupReady && state.ws?.readyState === WebSocket.OPEN) return;
     state.browserOnline = true;
     emitUiEvent({event: 'browser_online'});
+    if (!shouldAutoReconnect()) return;
     recoverLiveSession('browser_online', {resume: true, force: true});
   }
 

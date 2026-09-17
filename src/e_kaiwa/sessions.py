@@ -62,12 +62,12 @@ class SessionStore:
 
         with self._registry_lock:
             self._prune_locked(now_mono)
+            reserved_dirs = {record.directory for record in self._sessions.values()}
             session_dir = day_dir / base
             suffix = 2
-            while session_dir.exists():
+            while session_dir.exists() or session_dir in reserved_dirs:
                 session_dir = day_dir / f"{base}_{suffix}"
                 suffix += 1
-            session_dir.mkdir(parents=True, exist_ok=False)
 
             public_id = secrets.token_urlsafe(24)
             while public_id in self._sessions:
@@ -77,7 +77,9 @@ class SessionStore:
                 expires_at=now_mono + self.ttl_s,
             )
 
-        self.log(session_dir, "session_start", mode=mode, model=model)
+        # Folder and conversation.jsonl are created lazily on first real log
+        # (coach/metric) so an idle Gemini Live token does not spam runtime_logs.
+        # Keep directory allocation reserved in memory without touching disk.
         return public_id, session_dir
 
     def get(self, session_id: object) -> Path | None:
@@ -100,5 +102,6 @@ class SessionStore:
         row = {"ts": now_iso(), "event": event, **data}
         log_path = Path(session_dir) / "conversation.jsonl"
         with self._log_lock:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")

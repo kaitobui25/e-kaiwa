@@ -52,8 +52,22 @@ class SessionTests(unittest.TestCase):
             self.assertTrue(valid_session_id(session_id))
             self.assertNotEqual(session_id, session_dir.name)
             self.assertEqual(store.get(session_id), session_dir)
+            # Lazy creation: folder only materializes on first real log
+            self.assertFalse((session_dir / "conversation.jsonl").exists())
+            store.log(session_dir, "live_turn", turn=1, user_text="hello")
             self.assertTrue((session_dir / "conversation.jsonl").is_file())
             self.assertIsNone(store.get("../bad"))
+
+    def test_lazy_folder_not_created_for_idle_live_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SessionStore(Path(tmp))
+            _, session_dir = store.create(mode="live", model="test-model")
+            self.assertFalse(session_dir.exists())
+            self.assertFalse((session_dir / "conversation.jsonl").exists())
+            # multiple idle tokens in same second must not collide
+            _, second_dir = store.create(mode="live", model="test-model")
+            self.assertNotEqual(session_dir, second_dir)
+            self.assertFalse(second_dir.exists())
 
     def test_pcm_writer_creates_mono_pcm16_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
