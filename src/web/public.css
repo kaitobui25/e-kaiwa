@@ -22,6 +22,8 @@ body[data-app-mode="public"] {
   --ember-soft: #FCEAE6;
   --sakura: #E85D89;
   --gold: #C9932A;
+  --font-display: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --lang-accent: var(--primary);
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -29,6 +31,9 @@ body[data-app-mode="public"] {
   --shadow-md: 0 18px 44px rgba(24, 33, 47, 0.16);
   --control-dock-safe-area: 156px;
 }
+
+body[data-app-mode="public"][data-target-language="ja"] { --lang-accent: var(--sakura); }
+body[data-app-mode="public"][data-target-language="zh-Hans"] { --lang-accent: var(--gold); }
 
 body[data-app-mode="public"][data-theme="dark"] {
   --bg: #0f141b;
@@ -51,7 +56,11 @@ body[data-app-mode="public"][data-theme="dark"] {
   --ember-soft: #3A211C;
   --sakura: #FF8FB4;
   --gold: #E8B33D;
+  --lang-accent: var(--primary);
 }
+
+body[data-app-mode="public"][data-theme="dark"][data-target-language="ja"] { --lang-accent: var(--sakura); }
+body[data-app-mode="public"][data-theme="dark"][data-target-language="zh-Hans"] { --lang-accent: var(--gold); }
 
 body[data-app-mode="public"] .app-shell {
   width: min(100%, 720px);
@@ -67,9 +76,10 @@ body[data-app-mode="public"] .app-header {
 }
 
 body[data-app-mode="public"] h1 {
+  font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.055em;
+  font-weight: 750;
+  letter-spacing: 0.035em;
 }
 
 body[data-app-mode="public"] .header-icon {
@@ -125,9 +135,9 @@ body[data-app-mode="public"] .avatar .ui-svg {
 }
 
 body[data-app-mode="public"] .ai-avatar {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--ember) 26%, var(--border));
+  background: color-mix(in srgb, var(--ember) 10%, var(--surface));
+  color: var(--ember);
 }
 
 body[data-app-mode="public"] .user-avatar {
@@ -277,8 +287,10 @@ body[data-app-mode="public"] .talk-speaking {
 body[data-app-mode="public"] .talk-label {
   margin-top: 5px;
   color: var(--text);
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.015em;
 }
 
 body[data-app-mode="public"] .dock-meta {
@@ -346,12 +358,17 @@ body[data-app-mode="public"] .score-ring {
 }
 
 body[data-app-mode="public"] .score-hero-copy span {
+  font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
 }
 
 body[data-app-mode="public"] .score-hero-copy strong {
+  font-family: var(--font-display);
   font-size: 38px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
 }
 
 body[data-app-mode="public"] .score-track {
@@ -587,6 +604,14 @@ body[data-app-mode="public"] .setting-control-row-primary select {
   min-height: 52px;
   font-size: 16px;
   font-weight: 600;
+}
+
+body[data-app-mode="public"] #target-language {
+  border-color: color-mix(in srgb, var(--lang-accent) 30%, var(--border));
+}
+
+body[data-app-mode="public"] #target-language:focus-visible {
+  outline-color: color-mix(in srgb, var(--lang-accent) 58%, transparent);
 }
 
 body[data-app-mode="public"] .setting-control-row select option {
