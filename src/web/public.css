@@ -33,7 +33,7 @@ body[data-app-mode="public"] {
   --shadow-sm: 0 4px 14px rgba(24, 33, 47, 0.07);
   --shadow-md: 0 18px 44px rgba(24, 33, 47, 0.16);
   --shadow-card: 0 2px 12px rgba(24, 33, 47, 0.06), 0 1px 3px rgba(24, 33, 47, 0.04);
-  --control-dock-safe-area: 200px;
+  --control-dock-safe-area: 176px;
   font-family: var(--font-display);
 }
 
@@ -97,7 +97,7 @@ body[data-app-mode="public"] .header-icon {
 body[data-app-mode="public"] .header-icon .icon-mask { width: 20px; height: 20px; }
 
 body[data-app-mode="public"] .conversation-card {
-  min-height: 58dvh;
+  min-height: 61dvh;
   padding: 10px 12px 14px;
   margin: 0 -4px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
@@ -339,11 +339,14 @@ body[data-app-mode="public"] .control-dock:has(.talk-pressed)::before {
 }
 
 body[data-app-mode="public"] .status {
-  min-height: 16px;
-  margin-bottom: 4px;
+  min-height: 0;
+  margin-bottom: 2px;
+  color: var(--text-muted);
   font-size: 12px;
   font-family: var(--font-display);
+  opacity: 0.78;
 }
+body[data-app-mode="public"] .status:empty { display: none; }
 
 body[data-app-mode="public"] .voice-waves {
   display: flex;
@@ -406,16 +409,19 @@ body[data-app-mode="public"] .talk-speaking {
 
 body[data-app-mode="public"] .talk-label {
   margin-top: 6px;
-  color: var(--text);
+  color: var(--text-muted);
   font-family: var(--font-display);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.015em;
+  opacity: 0.78;
 }
 
 body[data-app-mode="public"] .dock-meta {
-  gap: 18px;
-  margin-top: 4px;
+  width: 100%;
+  justify-content: center;
+  gap: 0;
+  margin-top: 5px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -615,6 +621,146 @@ body[data-app-mode="public"] .replay-note {
   background: transparent;
 }
 
+/* Coach interactions: disclosure, learner replay and natural-expression playback. */
+body[data-app-mode="public"] .coach-score-toggle {
+  width: 100%;
+  min-height: 112px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  appearance: none;
+}
+
+body[data-app-mode="public"] .coach-score-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 160ms ease;
+}
+
+body[data-app-mode="public"] .coach-score-toggle[aria-expanded="true"] .coach-score-chevron {
+  transform: rotate(90deg);
+}
+
+body[data-app-mode="public"] .coach-pronunciation-details { margin-top: 12px; }
+body[data-app-mode="public"] .coach-replay-section { margin-top: 14px; }
+
+body[data-app-mode="public"] .coach-replay-row {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+body[data-app-mode="public"] .coach-replay-progress {
+  position: relative;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+}
+
+body[data-app-mode="public"] .coach-replay-progress svg {
+  position: absolute;
+  inset: 0;
+  width: 48px;
+  height: 48px;
+  transform: rotate(-90deg);
+}
+
+body[data-app-mode="public"] .coach-replay-progress-track,
+body[data-app-mode="public"] .coach-replay-progress-ring {
+  fill: none;
+  stroke-width: 4;
+}
+
+body[data-app-mode="public"] .coach-replay-progress-track { stroke: var(--border); }
+body[data-app-mode="public"] .coach-replay-progress-ring {
+  stroke: var(--primary);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 70ms linear;
+}
+
+body[data-app-mode="public"] .coach-replay-mic {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+}
+body[data-app-mode="public"] .coach-replay-mic .icon-mask { width: 21px; height: 21px; }
+
+body[data-app-mode="public"] .coach-replay-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+body[data-app-mode="public"] .coach-replay-copy strong { font-size: 14px; font-weight: 600; }
+body[data-app-mode="public"] .coach-replay-copy small {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+body[data-app-mode="public"] .natural-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+body[data-app-mode="public"] .natural-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+body[data-app-mode="public"] .natural-main > span:first-child {
+  min-width: 0;
+  flex: 1;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+body[data-app-mode="public"] .natural-audio {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+body[data-app-mode="public"] .coach-score-toggle:focus-visible,
+body[data-app-mode="public"] .coach-replay-row:focus-visible,
+body[data-app-mode="public"] .natural-main:focus-visible {
+  outline: 3px solid var(--primary-strong);
+  outline-offset: 2px;
+}
+
+body[data-app-mode="public"] .coach-score-toggle:active,
+body[data-app-mode="public"] .coach-replay-row:active,
+body[data-app-mode="public"] .natural-main:active {
+  opacity: 0.78;
+}
+
 /* Round audio uses mask for volume icon */
 body[data-app-mode="public"] .round-audio .icon-mask { width: 19px; height: 19px; }
 body[data-app-mode="public"] .replay-main .icon-mask { width: 24px; height: 24px; }
@@ -803,7 +949,7 @@ body[data-app-mode="public"] .settings-release .update-button {
 
 @media (max-width: 380px) {
   body[data-app-mode="public"] {
-    --control-dock-safe-area: 190px;
+    --control-dock-safe-area: 170px;
   }
 
   body[data-app-mode="public"] .app-shell {
