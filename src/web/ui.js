@@ -1,8 +1,10 @@
 import {
   CONVERSATION_MODES,
+  TARGET_LANGUAGE,
   isHandsFreeMode,
   normalizeAppLanguage,
   normalizeConversationMode,
+  normalizeTargetLanguage,
   normalizeTheme
 } from './preferences.js';
 import {hasPlayableReplay} from './replay_policy.js';
@@ -142,6 +144,17 @@ const DEV_TALK_LABELS = Object.freeze({
   reconnect: '↻ Reconnect'
 });
 
+const TARGET_LANGUAGE_LABELS = Object.freeze({
+  en: 'English',
+  ja: '日本語',
+  'zh-Hans': '中文'
+});
+
+export function targetLanguageLabel(value) {
+  const normalized = normalizeTargetLanguage(value, TARGET_LANGUAGE);
+  return TARGET_LANGUAGE_LABELS[normalized] || normalized;
+}
+
 export {publicTurnHtml};
 
 function resolveUiElements(elements) {
@@ -162,6 +175,7 @@ export class UiController {
     this.elements = resolveUiElements(elements);
     this.onAction = onAction;
     this.language = 'ja';
+    this.targetLanguage = TARGET_LANGUAGE;
     this.theme = 'light';
     this.playbackRate = 0.8;
     this.turns = [];
@@ -170,6 +184,7 @@ export class UiController {
       : CONVERSATION_MODES.HANDS_FREE;
     this.lastStatus = '';
     this.lastStatusError = false;
+    this.currentTalkLabel = '';
     this.replayEnabled = true;
     this.lastRenderedTurnNo = null;
 
@@ -183,7 +198,7 @@ export class UiController {
       settingsOpen: this.elements.settingsOpen,
       settingsClose: this.elements.settingsClose,
       translate: key => this.t(key),
-      audioActionsAllowed: () => !isHandsFreeMode(this.conversationMode),
+      audioActionsAllowed: () => this.replayEnabled && !isHandsFreeMode(this.conversationMode),
       onAudioAction: (action, detail) => this.onAction(action, detail)
     });
 
@@ -272,9 +287,15 @@ export class UiController {
       if (key) node.setAttribute('aria-label', this.t(key));
     }
     if (this.elements.feedbackLanguage) this.elements.feedbackLanguage.value = this.language;
-    if (this.elements.quickLanguage) this.elements.quickLanguage.textContent = this.t(this.language === 'vi' ? 'appLanguageVi' : 'appLanguageJa');
     if (this.lastStatus) this.setStatus(this.lastStatus, {error: this.lastStatusError});
     this.overlay.refresh(this.turns);
+  }
+
+  setTargetLanguage(targetLanguage) {
+    this.targetLanguage = normalizeTargetLanguage(targetLanguage, this.targetLanguage);
+    if (this.elements.quickLanguage) {
+      this.elements.quickLanguage.textContent = targetLanguageLabel(this.targetLanguage);
+    }
   }
 
   setTheme(theme) {
@@ -289,12 +310,20 @@ export class UiController {
     if (this.elements.quickSpeed) this.elements.quickSpeed.textContent = `${this.playbackRate.toFixed(1)}×`;
   }
 
+  _renderStatus() {
+    if (!this.elements.status) return;
+    const duplicateTalkLabel = this.mode === 'public'
+      && !this.lastStatusError
+      && this.lastStatus
+      && this.lastStatus === this.currentTalkLabel;
+    this.elements.status.textContent = duplicateTalkLabel ? '' : this.lastStatus;
+    this.elements.status.className = this.lastStatusError ? 'status error' : 'status';
+  }
+
   setStatus(text, {error = false} = {}) {
     this.lastStatus = String(text || '');
     this.lastStatusError = error;
-    if (!this.elements.status) return;
-    this.elements.status.textContent = this.lastStatus;
-    this.elements.status.className = error ? 'status error' : 'status';
+    this._renderStatus();
   }
 
   setSetupReady(ready) {
@@ -310,6 +339,7 @@ export class UiController {
     button.disabled = ['connecting', 'waiting', 'speaking'].includes(state);
     this.replayEnabled = !['connecting', 'pressed', 'recording', 'waiting', 'speaking'].includes(state);
     this._applyReplayAvailability();
+    this.overlay.refresh(this.turns);
 
     if (this.mode === 'dev') {
       const label = DEV_TALK_LABELS[state] || DEV_TALK_LABELS.ready;
@@ -338,9 +368,15 @@ export class UiController {
         };
 
     const label = labels[state] || labels.ready;
+    this.currentTalkLabel = label;
     button.innerHTML = state === 'reconnect' ? '<span class="reconnect-glyph">↻</span>' : icon('mic', 'talk-icon');
     button.setAttribute('aria-label', label);
     if (this.elements.talkLabel) this.elements.talkLabel.textContent = label;
+    this._renderStatus();
+  }
+
+  setReplayProgress(turnNo, progress, playing = false) {
+    this.overlay.setReplayProgress(turnNo, progress, playing);
   }
 
   openSettings() {
