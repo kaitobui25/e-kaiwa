@@ -6,9 +6,9 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2]
 HTML = SRC / "web" / "live.html"
-JS = SRC / "web" / "live.js"
-POLICY = SRC / "web" / "language_policy.js"
-PREFERENCES = SRC / "web" / "preferences.js"
+JS = SRC / "web" / "live" / "main.js"
+POLICY = SRC / "web" / "shared" / "language_policy.js"
+PREFERENCES = SRC / "web" / "shared" / "preferences.js"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
 
@@ -18,10 +18,10 @@ class LanguageRescueUiTests(unittest.TestCase):
         js = JS.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
         server = SERVER.read_text(encoding="utf-8")
-        self.assertIn('<script type="module" src="/live.js"></script>', html)
-        self.assertIn("from './language_policy.js';", js)
+        self.assertIn('<script type="module" src="/live/main.js"></script>', html)
+        self.assertIn("from '../shared/language_policy.js';", js)
         self.assertIn("export const LANGUAGE_POLICY_VERSION", policy)
-        self.assertIn('"/language_policy.js"', server)
+        self.assertIn('"/shared/language_policy.js"', server)
 
     def test_live_collects_language_codes_and_gates_coach(self):
         js = JS.read_text(encoding="utf-8")

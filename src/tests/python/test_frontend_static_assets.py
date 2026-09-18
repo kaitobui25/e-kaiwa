@@ -47,8 +47,10 @@ class FrontendStaticAssetTests(unittest.TestCase):
 
     def test_all_browser_js_and_css_files_are_served(self) -> None:
         assets = sorted(
-            path for path in WEB_DIR.iterdir()
-            if path.is_file() and path.suffix in {".js", ".css"}
+            path for path in WEB_DIR.rglob("*")
+            if path.is_file()
+            and path.suffix in {".js", ".css"}
+            and "assets" not in path.relative_to(WEB_DIR).parts
         )
         self.assertTrue(assets, "no frontend assets found")
 
@@ -56,20 +58,21 @@ class FrontendStaticAssetTests(unittest.TestCase):
         for asset in assets:
             expected_type = "text/javascript" if asset.suffix == ".js" else "text/css"
             try:
-                with urllib.request.urlopen(f"{self.base_url}/{asset.name}", timeout=2) as response:
+                url = f"{self.base_url}/{asset.relative_to(WEB_DIR).as_posix()}"
+                with urllib.request.urlopen(url, timeout=2) as response:
                     status = response.status
                     content_type = response.headers.get("Content-Type", "")
             except urllib.error.HTTPError as exc:
-                failures.append(f"{asset.name}: HTTP {exc.code}")
+                failures.append(f"{asset.relative_to(WEB_DIR).as_posix()}: HTTP {exc.code}")
                 continue
             except Exception as exc:
-                failures.append(f"{asset.name}: {exc}")
+                failures.append(f"{asset.relative_to(WEB_DIR).as_posix()}: {exc}")
                 continue
 
             if status != 200:
-                failures.append(f"{asset.name}: HTTP {status}")
+                failures.append(f"{asset.relative_to(WEB_DIR).as_posix()}: HTTP {status}")
             elif expected_type not in content_type:
-                failures.append(f"{asset.name}: unexpected Content-Type {content_type!r}")
+                failures.append(f"{asset.relative_to(WEB_DIR).as_posix()}: unexpected Content-Type {content_type!r}")
 
         self.assertEqual(
             failures,

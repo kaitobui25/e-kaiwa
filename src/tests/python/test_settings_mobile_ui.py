@@ -5,9 +5,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 HTML = WEB / "live.html"
-CSS = WEB / "public.css"
-UI = WEB / "ui.js"
-LIVE = WEB / "live.js"
+CSS = WEB / "ui" / "public.css"
+UI = WEB / "ui" / "controller.js"
+LIVE = WEB / "live" / "main.js"
 
 
 class MobileSettingsUiTests(unittest.TestCase):

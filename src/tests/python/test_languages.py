@@ -115,7 +115,7 @@ class LanguageProfileTests(unittest.TestCase):
                         self.assertEqual(set(result["pronunciation"]), {"problems", "summary", "feedback_language"})
 
     def test_frontend_and_backend_alias_contracts_match(self):
-        policy_path = (ROOT / "src" / "web" / "language_policy.js").as_posix()
+        policy_path = (ROOT / "src" / "web" / "shared" / "language_policy.js").as_posix()
         script = (
             "const fs=require('fs'); (async()=>{const source=fs.readFileSync(process.argv[1],'utf8');"
             "const policy=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));"

@@ -37,6 +37,8 @@ jobs:
 
       - name: Browser JavaScript syntax check
         run: |
-          for file in src/web/*.js; do
-            node --input-type=module --check < "$file"
-          done
+          find src/web -type f -name '*.js' -exec sh -c '
+            for file do
+              node --input-type=module --check < "$file" || exit 1
+            done
+          ' sh {} +

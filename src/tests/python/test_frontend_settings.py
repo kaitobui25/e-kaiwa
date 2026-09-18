@@ -6,10 +6,10 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2]
 HTML = SRC / "web" / "live.html"
-JS = SRC / "web" / "live.js"
-AUDIO = SRC / "web" / "audio.js"
-PREFERENCES = SRC / "web" / "preferences.js"
-UI = SRC / "web" / "ui.js"
+JS = SRC / "web" / "live" / "main.js"
+AUDIO = SRC / "web" / "live" / "audio.js"
+PREFERENCES = SRC / "web" / "shared" / "preferences.js"
+UI = SRC / "web" / "ui" / "controller.js"
 SERVER = SRC / "e_kaiwa" / "server.py"
 
 
@@ -35,7 +35,7 @@ class FrontendSettingsTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         js = JS.read_text(encoding="utf-8")
         self.assertIn('"live_idle_timeout_seconds": settings["live_idle_timeout_seconds"]', server)
-        self.assertIn('"/live_idle.js"', server)
+        self.assertIn('"/live/idle.js"', server)
         self.assertIn("new LiveIdleCoordinator", js)
         self.assertIn("settings.live_idle_timeout_seconds", js)
         self.assertIn("reason: 'push_to_talk_reconnect'", js)

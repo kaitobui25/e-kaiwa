@@ -6,14 +6,14 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2]
 WEB = SRC / "web"
-UI = WEB / "ui.js"
-RENDER = WEB / "ui_render.js"
-OVERLAY = WEB / "ui_overlay.js"
-ICONS = WEB / "ui_icons.js"
-LIVE = WEB / "live.js"
-RECOVERY = WEB / "live_recovery.js"
-CSS = WEB / "live.css"
-PUBLIC_CSS = WEB / "public.css"
+UI = WEB / "ui" / "controller.js"
+RENDER = WEB / "ui" / "render.js"
+OVERLAY = WEB / "ui" / "overlay.js"
+ICONS = WEB / "ui" / "icons.js"
+LIVE = WEB / "live" / "main.js"
+RECOVERY = WEB / "live" / "recovery.js"
+CSS = WEB / "ui" / "base.css"
+PUBLIC_CSS = WEB / "ui" / "public.css"
 HTML = WEB / "live.html"
 SERVER = SRC / "e_kaiwa" / "server.py"
 MAINTENANCE_SERVER = SRC / "e_kaiwa" / "maintenance_server.py"
@@ -25,9 +25,9 @@ class ReferenceUiTests(unittest.TestCase):
         render = RENDER.read_text(encoding="utf-8")
         overlay = OVERLAY.read_text(encoding="utf-8")
         icons = ICONS.read_text(encoding="utf-8")
-        self.assertIn("from './ui_render.js'", ui)
-        self.assertIn("from './ui_overlay.js'", ui)
-        self.assertIn("from './ui_icons.js'", ui)
+        self.assertIn("from './render.js'", ui)
+        self.assertIn("from './overlay.js'", ui)
+        self.assertIn("from './icons.js'", ui)
         self.assertIn("export function publicTurnHtml", render)
         self.assertIn("export class UiOverlayController", overlay)
         self.assertIn("export function icon", icons)
@@ -36,18 +36,18 @@ class ReferenceUiTests(unittest.TestCase):
 
     def test_server_serves_every_plan06_browser_module(self):
         server = SERVER.read_text(encoding="utf-8")
-        for module in ("ui.js", "ui_icons.js", "ui_render.js", "ui_overlay.js"):
-            self.assertIn(f'"/{module}"', server)
-            self.assertIn(f'WEB_DIR / "{module}"', server)
+        for module in ("controller.js", "icons.js", "render.js", "overlay.js"):
+            self.assertIn(f'"/ui/{module}"', server)
+            self.assertIn(f'WEB_DIR / "ui/{module}"', server)
 
     def test_live_recovery_module_is_wired_through_production_server(self):
         live = LIVE.read_text(encoding="utf-8")
         recovery = RECOVERY.read_text(encoding="utf-8")
-        maintenance_server = MAINTENANCE_SERVER.read_text(encoding="utf-8")
-        self.assertIn("from './live_recovery.js'", live)
+        server = SERVER.read_text(encoding="utf-8")
+        self.assertIn("from './recovery.js'", live)
         self.assertIn("export class LiveRecoveryCoordinator", recovery)
-        self.assertIn('"/live_recovery.js"', maintenance_server)
-        self.assertIn('WEB_DIR / "live_recovery.js"', maintenance_server)
+        self.assertIn('"/live/recovery.js"', server)
+        self.assertIn('WEB_DIR / "live/recovery.js"', server)
         self.assertIn("sessionResumption: resumptionConfig", live)
         self.assertIn("contextWindowCompression: {slidingWindow: {}}", live)
         self.assertIn("socket.__ekaiwaSetupComplete = true", live)
@@ -56,9 +56,9 @@ class ReferenceUiTests(unittest.TestCase):
         html = HTML.read_text(encoding="utf-8")
         server = SERVER.read_text(encoding="utf-8")
         public_css = PUBLIC_CSS.read_text(encoding="utf-8")
-        self.assertIn('href="/public.css"', html)
-        self.assertIn('"/public.css"', server)
-        self.assertIn('WEB_DIR / "public.css"', server)
+        self.assertIn('href="/ui/public.css"', html)
+        self.assertIn('"/ui/public.css"', server)
+        self.assertIn('WEB_DIR / "ui/public.css"', server)
         self.assertIn('body[data-app-mode="public"]', public_css)
 
     def test_conversation_keeps_ai_left_user_right_and_score_only_action(self):
