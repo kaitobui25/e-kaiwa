@@ -61,12 +61,12 @@ class ReferenceUiTests(unittest.TestCase):
         self.assertIn('WEB_DIR / "public.css"', server)
         self.assertIn('body[data-app-mode="public"]', public_css)
 
-    def test_conversation_keeps_ai_left_user_right_and_inline_actions(self):
+    def test_conversation_keeps_ai_left_user_right_and_score_only_action(self):
         render = RENDER.read_text(encoding="utf-8")
         css = CSS.read_text(encoding="utf-8")
         self.assertIn('class="message-row user-row"', render)
         self.assertIn('class="message-row ai-row"', render)
-        self.assertIn('data-ui-action="open-replay"', render)
+        self.assertNotIn('data-ui-action="open-replay"', render)
         self.assertIn('data-ui-action="open-coach"', render)
         self.assertIn('class="avatar user-avatar"', render)
         self.assertIn('class="avatar ai-avatar"', render)
@@ -109,7 +109,8 @@ class ReferenceUiTests(unittest.TestCase):
         self.assertIn("event.key === 'Escape'", overlay)
         self.assertIn("this.state.open(type", overlay)
         self.assertIn("this.state.close()", overlay)
-        self.assertIn("openCoach(turn)", overlay)
+        self.assertIn("openCoach(turn, {resetMetrics", overlay)
+        self.assertIn("toggle-coach-metrics", overlay)
         self.assertIn("openCorrection(turn)", overlay)
         self.assertIn("openWord(turn", overlay)
         self.assertIn("openReplay(turn)", overlay)
