@@ -360,6 +360,7 @@ import {hasPlayableReplay} from './replay_policy.js';
       elements.targetLanguage.value = preferences.targetLanguage;
       state.selectedTargetLanguage = preferences.targetLanguage;
       syncLanguageDot(state.selectedTargetLanguage);
+      state.ui.setTargetLanguage(state.selectedTargetLanguage);
       elements.aiSpeed.value = aiSpeedValue(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
       state.conversationMode = preferences.conversationMode;
@@ -1165,6 +1166,32 @@ import {hasPlayableReplay} from './replay_policy.js';
     pauseMicCapture();
   }
 
+  let replayProgressFrame = 0;
+  let replayProgressTurnNo = null;
+
+  function resetReplayProgress(turnNo = replayProgressTurnNo) {
+    if (replayProgressFrame) globalThis.cancelAnimationFrame?.(replayProgressFrame);
+    replayProgressFrame = 0;
+    if (turnNo != null) state.ui?.setReplayProgress(turnNo, 0, false);
+    replayProgressTurnNo = null;
+  }
+
+  function startReplayProgress(turn) {
+    resetReplayProgress();
+    const durationMs = Math.max(1, ((turn?.replayPcm?.length || 0) / 16000) * 1000);
+    const startedAt = performance.now();
+    replayProgressTurnNo = turn.no;
+    state.ui?.setReplayProgress(turn.no, 0, true);
+
+    const tick = now => {
+      if (replayProgressTurnNo !== turn.no || !state.playback?.manualPlaying) return;
+      const progress = Math.min(100, ((now - startedAt) / durationMs) * 100);
+      state.ui?.setReplayProgress(turn.no, progress, true);
+      replayProgressFrame = globalThis.requestAnimationFrame?.(tick) || 0;
+    };
+    replayProgressFrame = globalThis.requestAnimationFrame?.(tick) || 0;
+  }
+
   async function handleUiAction(action, detail) {
     if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) {
       state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
@@ -1178,7 +1205,18 @@ import {hasPlayableReplay} from './replay_policy.js';
 
     let played = true;
     if (action === 'replay-user' && hasPlayableReplay(turn)) {
-      played = await state.playback.playUserPcm(turn.replayPcm, 16000);
+      if (state.playback.manualPlaying && replayProgressTurnNo === turn.no) {
+        state.playback.stopManual();
+        resetReplayProgress(turn.no);
+        return;
+      }
+      const replayPromise = state.playback.playUserPcm(turn.replayPcm, 16000);
+      startReplayProgress(turn);
+      try {
+        played = await replayPromise;
+      } finally {
+        resetReplayProgress(turn.no);
+      }
     } else if (action === 'speak-correction') {
       played = await state.playback.speak(turn.coach?.correction || turn.userText, {
         lang: targetSpeechLocale(turn.targetLanguage),
@@ -1216,7 +1254,10 @@ import {hasPlayableReplay} from './replay_policy.js';
     endInputBeforeModeChange();
     clearConversationHistory();
     state.selectedTargetLanguage = target;
-    if (state.appMode === 'public') state.preferences.setTargetLanguage(target);
+    if (state.appMode === 'public') {
+      state.preferences.setTargetLanguage(target);
+      state.ui.setTargetLanguage(target);
+    }
     requestSessionReconnect(state.appMode === 'public' ? state.ui.t('language') : 'Target language changed.');
   });
 
