@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import {CONVERSATION_MODES} from '../../web/preferences.js';
 import {hasPlayableReplay} from '../../web/replay_policy.js';
-import {targetLanguageLabel} from '../../web/ui.js';
+import {targetLanguageLabel, UiController} from '../../web/ui.js';
 import {
   coachOverviewHtml,
   correctionOverlayHtml,
@@ -183,5 +183,57 @@ test('score pill renders tiered SVG ring with correct stroke math and aria label
     assert.match(html, /stroke-dasharray:94\./);
     assert.match(html, /stroke-dashoffset:/);
     assert.match(html, new RegExp(`aria-label="score ${score}"`));
+  }
+});
+
+test('changing UI language via setLanguage re-translates talk label and updates talk button aria-label', () => {
+  const prevDoc = globalThis.document;
+  const elementsById = new Map();
+  const doc = {
+    body: {dataset: {}},
+    documentElement: {lang: ''},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll: () => [],
+    getElementById: id => elementsById.get(id) || null
+  };
+  globalThis.document = doc;
+  try {
+    const talkBtn = {
+      dataset: {},
+      setAttribute(name, val) { this[name] = val; },
+      getAttribute(name) { return this[name]; }
+    };
+    const talkLabel = {textContent: ''};
+    const status = {textContent: '', className: ''};
+
+    const ui = new UiController({
+      mode: 'public',
+      elements: {
+        talk: talkBtn,
+        talkLabel,
+        status
+      }
+    });
+
+    ui.setLanguage('vi');
+    ui.setTalkState('ready');
+    assert.equal(talkLabel.textContent, 'Chạm và giữ để nói');
+    assert.equal(talkBtn['aria-label'], 'Chạm và giữ để nói');
+
+    ui.setLanguage('ja');
+    assert.equal(talkLabel.textContent, '長押しして話す');
+    assert.equal(talkBtn['aria-label'], '長押しして話す');
+
+    ui.setStatus('長押しして話す');
+    assert.equal(status.textContent, ''); // hidden because duplicate with talkLabel
+
+    ui.setLanguage('vi');
+    assert.equal(talkLabel.textContent, 'Chạm và giữ để nói');
+    assert.equal(talkBtn['aria-label'], 'Chạm và giữ để nói');
+    assert.equal(status.textContent, ''); // updated duplicate remains hidden
+  } finally {
+    if (prevDoc === undefined) delete globalThis.document;
+    else globalThis.document = prevDoc;
   }
 });

@@ -33,7 +33,7 @@ body[data-app-mode="public"] {
   --shadow-sm: 0 4px 14px rgba(24, 33, 47, 0.07);
   --shadow-md: 0 18px 44px rgba(24, 33, 47, 0.16);
   --shadow-card: 0 2px 12px rgba(24, 33, 47, 0.06), 0 1px 3px rgba(24, 33, 47, 0.04);
-  --control-dock-safe-area: 176px;
+  --control-dock-safe-area: 156px;
   font-family: var(--font-display);
 }
 
@@ -214,7 +214,7 @@ body[data-app-mode="public"] .message-actions {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-height: 52px;
+  min-height: 48px;
   margin: 6px -2px -2px 0;
 }
 
@@ -420,7 +420,7 @@ body[data-app-mode="public"] .talk-label {
 body[data-app-mode="public"] .dock-meta {
   width: 100%;
   justify-content: center;
-  gap: 0;
+  gap: 10px;
   margin-top: 5px;
   color: var(--text-muted);
   font-size: 12px;
@@ -432,9 +432,13 @@ body[data-app-mode="public"] .dock-meta svg {
   display: none;
 }
 
+body[data-app-mode="public"] .dock-meta-item {
+  gap: 0;
+}
+
 body[data-app-mode="public"] .dock-meta-item + .dock-meta-item::before {
   content: "·";
-  margin-right: 18px;
+  margin-right: 10px;
   color: var(--border);
 }
 
@@ -949,7 +953,7 @@ body[data-app-mode="public"] .settings-release .update-button {
 
 @media (max-width: 380px) {
   body[data-app-mode="public"] {
-    --control-dock-safe-area: 170px;
+    --control-dock-safe-area: 148px;
   }
 
   body[data-app-mode="public"] .app-shell {

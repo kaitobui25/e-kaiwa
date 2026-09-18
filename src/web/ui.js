@@ -185,6 +185,7 @@ export class UiController {
     this.lastStatus = '';
     this.lastStatusError = false;
     this.currentTalkLabel = '';
+    this.talkState = this.elements.talk?.dataset?.state || 'ready';
     this.replayEnabled = true;
     this.lastRenderedTurnNo = null;
 
@@ -272,6 +273,14 @@ export class UiController {
       : CONVERSATION_MODES.HANDS_FREE;
     document.body.dataset.conversationMode = this.conversationMode;
     if (this.elements.talkMode) this.elements.talkMode.checked = isHandsFreeMode(this.conversationMode);
+    const previousTalkLabel = this.currentTalkLabel;
+    const currentState = this.talkState || this.elements.talk?.dataset?.state;
+    if (currentState && this.elements.talk) {
+      this.setTalkState(currentState);
+      if (this.lastStatus && this.lastStatus === previousTalkLabel) {
+        this.lastStatus = this.currentTalkLabel;
+      }
+    }
     this.overlay.refresh(this.turns);
   }
 
@@ -287,6 +296,14 @@ export class UiController {
       if (key) node.setAttribute('aria-label', this.t(key));
     }
     if (this.elements.feedbackLanguage) this.elements.feedbackLanguage.value = this.language;
+    const previousTalkLabel = this.currentTalkLabel;
+    const currentState = this.talkState || this.elements.talk?.dataset?.state;
+    if (currentState && this.elements.talk) {
+      this.setTalkState(currentState);
+      if (this.lastStatus && this.lastStatus === previousTalkLabel) {
+        this.lastStatus = this.currentTalkLabel;
+      }
+    }
     if (this.lastStatus) this.setStatus(this.lastStatus, {error: this.lastStatusError});
     this.overlay.refresh(this.turns);
   }
@@ -332,6 +349,7 @@ export class UiController {
   }
 
   setTalkState(state) {
+    this.talkState = state;
     const button = this.elements.talk;
     if (!button) return;
     button.dataset.state = state;
