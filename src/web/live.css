@@ -27,7 +27,7 @@
   --font-body: 1rem;
   --font-label: 0.875rem;
   --font-meta: 0.8125rem;
-  --font-display: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Be Vietnam Pro", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lang-accent: var(--primary);
   --shadow-sm: 0 4px 14px rgba(23, 62, 117, 0.07);
   --shadow-md: 0 18px 50px rgba(25, 55, 105, 0.16);
@@ -96,6 +96,23 @@ svg { display: block; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+.icon-mask {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: var(--icon-url) center / contain no-repeat;
+  mask: var(--icon-url) center / contain no-repeat;
+}
+.icon-mask--settings { --icon-url: url("/assets/icons/settings.svg"); }
+.icon-mask--mic { --icon-url: url("/assets/icons/mic.svg"); }
+.icon-mask--x { --icon-url: url("/assets/icons/x.svg"); }
+.icon-mask--volume { --icon-url: url("/assets/icons/volume-2.svg"); }
+.icon-mask--chevron { --icon-url: url("/assets/icons/chevron-down.svg"); }
+.icon-mask--info { --icon-url: url("/assets/icons/info.svg"); }
+.icon-mask--rotate { --icon-url: url("/assets/icons/rotate-ccw.svg"); }
 
 .app-shell {
   width: min(100%, 760px);
