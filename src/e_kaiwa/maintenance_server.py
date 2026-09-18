@@ -94,12 +94,10 @@ def make_handler(runtime: Runtime) -> Type:
                 return
 
             static_routes = {
-                "/live_recovery.js": (WEB_DIR / "live_recovery.js", "text/javascript; charset=utf-8"),
-                "/replay_policy.js": (WEB_DIR / "replay_policy.js", "text/javascript; charset=utf-8"),
-                "/maintenance.js": (WEB_DIR / "maintenance.js", "text/javascript; charset=utf-8"),
-                "/ui_maintenance.js": (WEB_DIR / "ui_maintenance.js", "text/javascript; charset=utf-8"),
-                "/maintenance_bootstrap.js": (WEB_DIR / "maintenance_bootstrap.js", "text/javascript; charset=utf-8"),
-                "/maintenance.css": (WEB_DIR / "maintenance.css", "text/css; charset=utf-8"),
+                "/maintenance/controller.js": (WEB_DIR / "maintenance/controller.js", "text/javascript; charset=utf-8"),
+                "/maintenance/bootstrap.js": (WEB_DIR / "maintenance/bootstrap.js", "text/javascript; charset=utf-8"),
+                "/maintenance/overlay.js": (WEB_DIR / "maintenance/overlay.js", "text/javascript; charset=utf-8"),
+                "/maintenance/style.css": (WEB_DIR / "maintenance/style.css", "text/css; charset=utf-8"),
             }
             static = static_routes.get(path)
             if static:
