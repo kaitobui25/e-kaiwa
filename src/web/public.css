@@ -97,7 +97,7 @@ body[data-app-mode="public"] .header-icon {
 body[data-app-mode="public"] .header-icon .icon-mask { width: 20px; height: 20px; }
 
 body[data-app-mode="public"] .conversation-card {
-  min-height: 61dvh;
+  min-height: calc(100dvh - var(--control-dock-safe-area) - 96px);
   padding: 10px 12px 14px;
   margin: 0 -4px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
