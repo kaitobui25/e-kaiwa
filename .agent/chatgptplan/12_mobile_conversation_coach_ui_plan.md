@@ -1,7 +1,7 @@
 # E-KAIWA Mobile Conversation + Coach UI Plan
 
-Status: **waiting for user approval**.  
-Implementation must not start until this plan is approved.
+Status: **approved and implemented**.  
+Implementation follows the approved scope below; verification is tracked by repository CI.
 
 ## Goal
 
