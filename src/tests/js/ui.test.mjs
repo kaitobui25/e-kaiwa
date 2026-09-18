@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {CONVERSATION_MODES} from '../../web/preferences.js';
-import {hasPlayableReplay} from '../../web/replay_policy.js';
-import {targetLanguageLabel, UiController} from '../../web/ui.js';
+import {CONVERSATION_MODES} from '../../web/shared/preferences.js';
+import {hasPlayableReplay} from '../../web/shared/replay_policy.js';
+import {targetLanguageLabel, UiController} from '../../web/ui/controller.js';
 import {
   coachOverviewHtml,
   correctionOverlayHtml,
@@ -13,7 +13,7 @@ import {
   replayOverlayHtml,
   scoreTier,
   wordOverlayHtml
-} from '../../web/ui_render.js';
+} from '../../web/ui/render.js';
 
 const translations = new Proxy({}, {get: (_target, key) => String(key)});
 const t = key => translations[key];

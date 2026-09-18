@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {OverlayState, UiOverlayController} from '../../web/ui_overlay.js';
+import {OverlayState, UiOverlayController} from '../../web/ui/overlay.js';
 
 class FakeElement {
   constructor({hidden = true} = {}) {

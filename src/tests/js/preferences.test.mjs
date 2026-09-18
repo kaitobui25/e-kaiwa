@@ -13,7 +13,7 @@ import {
   normalizeTargetLanguage,
   normalizeTheme,
   targetSpeechLocale
-} from '../../web/preferences.js';
+} from '../../web/shared/preferences.js';
 
 function memoryStorage() {
   const values = new Map();

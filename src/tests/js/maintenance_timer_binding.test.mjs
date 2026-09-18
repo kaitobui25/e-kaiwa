@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LongPressController, MaintenanceController} from '../../web/maintenance.js';
+import {LongPressController, MaintenanceController} from '../../web/maintenance/controller.js';
 
 class FakeTarget {
   constructor() {
