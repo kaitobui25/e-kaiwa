@@ -293,6 +293,58 @@ test('detached dynamic opener restores to the matching replacement action', () =
   assert.equal(settingsOpen.focused, false);
 });
 
+test('coach score disclosure toggles pronunciation details in the same overlay', () => {
+  const {controller, dynamic} = makeController();
+  controller.openCoach(sampleTurn());
+  assert.equal(controller.coachMetricsExpanded, false);
+  assert.equal(controller.state.type, 'coach');
+
+  const trigger = new FakeElement({hidden: false});
+  trigger.dataset.uiAction = 'toggle-coach-metrics';
+  dynamic.emit('click', {
+    target: {
+      closest: selector => selector === '[data-ui-action]' ? trigger : null
+    }
+  });
+
+  assert.equal(controller.coachMetricsExpanded, true);
+  assert.equal(controller.state.type, 'coach');
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+
+  dynamic.emit('click', {
+    target: {
+      closest: selector => selector === '[data-ui-action]' ? trigger : null
+    }
+  });
+  assert.equal(controller.coachMetricsExpanded, false);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+});
+
+test('coach replay progress updates the ring and pressed state', () => {
+  const {controller, dynamic} = makeController();
+  controller.openCoach(sampleTurn());
+  const ring = new FakeElement({hidden: false});
+  ring.style = {};
+  const button = new FakeElement({hidden: false});
+  button.dataset.audioAction = 'replay-user';
+  button.dataset.turn = '7';
+  dynamic.querySelector = selector => {
+    if (selector.includes('data-replay-progress-ring')) return ring;
+    if (selector.includes('data-audio-action="replay-user"')) return button;
+    return null;
+  };
+
+  controller.setReplayProgress(7, 25, true);
+  assert.equal(ring.style.strokeDashoffset, '75');
+  assert.equal(button.dataset.playing, 'true');
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+
+  controller.setReplayProgress(7, 0, false);
+  assert.equal(ring.style.strokeDashoffset, '100');
+  assert.equal(button.dataset.playing, 'false');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+});
+
 test('coach navigation reuses the overlay instead of stacking panels', () => {
   const {controller, root, dynamic} = makeController();
   const turn = sampleTurn();
