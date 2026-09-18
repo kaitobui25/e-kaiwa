@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {CONVERSATION_MODES} from '../../web/preferences.js';
 import {hasPlayableReplay} from '../../web/replay_policy.js';
+import {targetLanguageLabel} from '../../web/ui.js';
 import {
   coachOverviewHtml,
   correctionOverlayHtml,
@@ -45,18 +46,17 @@ function sampleTurn() {
   };
 }
 
-test('push-to-talk keeps learner actions in a stable row below speech text', () => {
+test('push-to-talk learner message keeps only the coach score action', () => {
   const html = publicTurnHtml(sampleTurn(), t, true, CONVERSATION_MODES.PUSH_TO_TALK);
   assert.match(html, /class="turn public-turn" data-turn="1"/);
   assert.match(html, /class="message-text user-message-text" data-turn-text="user"/);
   assert.match(html, /data-turn-text="ai"/);
   assert.match(html, /class="message-actions"/);
-  assert.match(html, /data-ui-action="open-replay"/);
+  assert.doesNotMatch(html, /data-ui-action="open-replay"/);
   assert.match(html, /data-ui-action="open-coach"/);
-  assert.ok(html.indexOf('data-ui-action="open-replay"') < html.indexOf('data-ui-action="open-coach"'));
   assert.ok(html.indexOf('class="message-actions"') > html.indexOf('data-turn-text="user"'));
   assert.match(html, /class="score-pill score-button"/);
-  assert.match(html, /<svg class="ui-svg"/);
+  assert.doesNotMatch(html, /replay-inline/);
   assert.doesNotMatch(html, />YOU</);
 });
 
@@ -71,21 +71,32 @@ test('hands-free hides manual replay but keeps coach score and problem highlight
   assert.match(html, /class="score-pill-arc"/);
 });
 
-test('coach overview renders only real pronunciation metrics and drill-down actions', () => {
-  const html = coachOverviewHtml(sampleTurn(), t);
-  assert.match(html, /score-hero-ring/);
-  assert.match(html, /class="score-ring"/);
+test('coach overview starts collapsed and follows score, replay, natural expression, problem words order', () => {
+  const html = coachOverviewHtml(sampleTurn(), t, {allowAudioActions: true});
+  assert.match(html, /score-hero-ring coach-score-toggle/);
+  assert.match(html, /data-ui-action="toggle-coach-metrics"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /id="coach-pronunciation-details" class="overlay-section coach-pronunciation-details" hidden/);
   assert.match(html, /id="score-number" data-target="82">0<small>\/100<\/small>/);
-  assert.match(html, />accuracy<\/span><strong>80<\/strong>/);
-  assert.match(html, />fluency<\/span><strong>85<\/strong>/);
-  assert.match(html, />intonation<\/span><strong>82<\/strong>/);
-  assert.match(html, /data-ui-action="open-word"/);
+  assert.match(html, /data-audio-action="replay-user"/);
+  assert.match(html, /class="coach-replay-progress-ring"/);
   assert.match(html, /data-ui-action="open-correction"/);
+  assert.match(html, /data-audio-action="speak-correction"/);
+  assert.match(html, /data-ui-action="open-word"/);
+  assert.ok(html.indexOf('coach-replay-row') < html.indexOf('natural-expression-section'));
+  assert.ok(html.indexOf('natural-expression-section') < html.indexOf('problemWords'));
   assert.match(html, /Clear and easy to understand\./);
+
+  const expanded = coachOverviewHtml(sampleTurn(), t, {metricsExpanded: true, allowAudioActions: true});
+  assert.match(expanded, /aria-expanded="true"/);
+  assert.doesNotMatch(expanded, /coach-pronunciation-details" hidden/);
+  assert.match(expanded, />accuracy<\/span><strong>80<\/strong>/);
+  assert.match(expanded, />fluency<\/span><strong>85<\/strong>/);
+  assert.match(expanded, />intonation<\/span><strong>82<\/strong>/);
 
   const sparse = sampleTurn();
   delete sparse.coach.pronunciation.fluency_score;
-  const sparseHtml = coachOverviewHtml(sparse, t);
+  const sparseHtml = coachOverviewHtml(sparse, t, {metricsExpanded: true});
   assert.doesNotMatch(sparseHtml, />fluency<\/span>/);
 });
 
@@ -125,26 +136,24 @@ test('replay overlay uses local PCM for waveform and duration without extra data
   assert.match(html, />0:02<\/span>/);
 });
 
-test('replay button hides when audio is not ready/playable', () => {
+test('coach learner replay only renders when PCM is playable and manual audio is allowed', () => {
   const base = sampleTurn();
   assert.equal(hasPlayableReplay(base), true);
-  assert.match(publicTurnHtml(base, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+  assert.match(coachOverviewHtml(base, t, {allowAudioActions: true}), /data-audio-action="replay-user"/);
+  assert.doesNotMatch(coachOverviewHtml(base, t, {allowAudioActions: false}), /data-audio-action="replay-user"/);
+  assert.doesNotMatch(publicTurnHtml(base, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
 
-  const empty = {...base, replayPcm: new Int16Array(0)};
-  assert.equal(hasPlayableReplay(empty), false);
-  assert.doesNotMatch(publicTurnHtml(empty, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+  for (const replayPcm of [new Int16Array(0), new Int16Array(10), [1,2,3], null]) {
+    const turn = {...base, replayPcm};
+    assert.equal(hasPlayableReplay(turn), false);
+    assert.doesNotMatch(coachOverviewHtml(turn, t, {allowAudioActions: true}), /data-audio-action="replay-user"/);
+  }
+});
 
-  const short = {...base, replayPcm: new Int16Array(10)};
-  assert.equal(hasPlayableReplay(short), false);
-  assert.doesNotMatch(publicTurnHtml(short, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
-
-  const wrongType = {...base, replayPcm: [1,2,3]};
-  assert.equal(hasPlayableReplay(wrongType), false);
-  assert.doesNotMatch(publicTurnHtml(wrongType, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
-
-  const nullPcm = {...base, replayPcm: null};
-  assert.equal(hasPlayableReplay(nullPcm), false);
-  assert.doesNotMatch(publicTurnHtml(nullPcm, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+test('target-language dock labels are independent from UI language', () => {
+  assert.equal(targetLanguageLabel('en'), 'English');
+  assert.equal(targetLanguageLabel('ja'), '日本語');
+  assert.equal(targetLanguageLabel('zh-Hans'), '中文');
 });
 
 test('score tier boundaries match 70/90 spec and ring renders accessible markup', () => {
