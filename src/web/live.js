@@ -26,6 +26,7 @@ import {
 } from './audio.js';
 import {UiController} from './ui.js';
 import {LiveRecoveryCoordinator} from './live_recovery.js';
+import {LiveIdleCoordinator} from './live_idle.js';
 import {hasPlayableReplay} from './replay_policy.js';
 
 (() => {
@@ -80,11 +81,13 @@ import {hasPlayableReplay} from './replay_policy.js';
     selectedTargetLanguage: TARGET_LANGUAGE,
     targetLanguage: TARGET_LANGUAGE,
     sessionSilenceDurationMs: 1000,
+    liveIdleTimeoutSeconds: 180,
     echoGuardMs: 250,
     setupReady: false,
     reconnectNeeded: false,
     reconnectAfterConnect: false,
     reconnectPending: false,
+    pushReconnectPending: false,
     resumeHandsFreeAfterReconnect: false,
     connecting: false,
     browserOnline: navigator.onLine !== false,
@@ -102,13 +105,18 @@ import {hasPlayableReplay} from './replay_policy.js';
     ui: null,
     playback: null,
     preferences: null,
-    recovery: null
+    recovery: null,
+    idle: null
   };
 
   state.recovery = new LiveRecoveryCoordinator({
     responseTimeoutMs: RESPONSE_TIMEOUT_MS,
     onResponseTimeout: turnNo => handleResponseTimeout(turnNo),
     onReconnectDue: () => handleScheduledReconnect()
+  });
+  state.idle = new LiveIdleCoordinator({
+    timeoutSeconds: state.liveIdleTimeoutSeconds,
+    onTimeout: () => handleLiveIdleTimeout()
   });
 
   function emitUiEvent(payload) {
@@ -214,6 +222,89 @@ import {hasPlayableReplay} from './replay_policy.js';
       state.recovery.waitingTurnNo != null ||
       state.resumeHandsFreeAfterReconnect
     );
+  }
+
+  function liveIdleEligible() {
+    return Boolean(
+      state.setupReady &&
+      !state.connecting &&
+      !state.pushReconnectPending &&
+      state.ws?.readyState === WebSocket.OPEN &&
+      !inputBusy() &&
+      !state.activeTurn &&
+      !state.playback?.busy &&
+      !state.reconnectPending
+    );
+  }
+
+  function armLiveIdleIfEligible() {
+    if (!liveIdleEligible()) {
+      state.idle?.cancel();
+      return false;
+    }
+    return state.idle?.arm() || false;
+  }
+
+  function noteUserActivity() {
+    if (liveIdleEligible()) armLiveIdleIfEligible();
+    else state.idle?.cancel();
+  }
+
+  function handleLiveIdleTimeout() {
+    if (!liveIdleEligible()) return;
+
+    const socket = state.ws;
+    if (!socket) return;
+
+    socket.__ekaiwaIdleClose = true;
+    state.recovery.clearTimers();
+    pauseMicCapture();
+    state.setupReady = false;
+    state.reconnectNeeded = true;
+    state.connecting = false;
+    state.ui?.setSetupReady(false);
+    state.ui?.setTalkState('ready');
+    state.ui?.setStatus(
+      state.appMode === 'public'
+        ? (handsFree() ? state.ui.t('ready') : state.ui.t('holdToTalk'))
+        : 'Live session paused after inactivity.'
+    );
+    emitUiEvent({
+      event: 'idle_timeout',
+      timeout_seconds: state.liveIdleTimeoutSeconds
+    });
+
+    try {
+      socket.close(1000, 'idle_timeout');
+    } catch {
+      if (state.ws === socket) state.ws = null;
+    }
+  }
+
+  async function beginPushToTalkInteraction() {
+    if (handsFree() || state.appMode !== 'public') return false;
+    state.idle?.cancel();
+
+    if (state.reconnectNeeded || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) {
+      if (state.connecting || state.pushReconnectPending) return false;
+      state.pushReconnectPending = true;
+      try {
+        await newLiveSession({
+          resume: state.recovery.hasHandle(),
+          reason: 'push_to_talk_reconnect'
+        });
+      } catch (error) {
+        state.pushReconnectPending = false;
+        showReconnect(`Connection error: ${error.message}.`);
+      }
+      return true;
+    }
+
+    return beginPushToTalk();
+  }
+
+  function cancelPushReconnectIntent() {
+    state.pushReconnectPending = false;
   }
 
   function render() {
@@ -345,6 +436,11 @@ import {hasPlayableReplay} from './replay_policy.js';
     elements.teacher.value = settings.teacher || 'Normal';
     elements.silenceDuration.value = String(settings.silence_duration_ms || 1000);
     state.sessionSilenceDurationMs = Number(elements.silenceDuration.value);
+    const liveIdleTimeoutSeconds = Number(settings.live_idle_timeout_seconds);
+    state.liveIdleTimeoutSeconds = Number.isFinite(liveIdleTimeoutSeconds) && liveIdleTimeoutSeconds >= 0
+      ? liveIdleTimeoutSeconds
+      : 180;
+    state.idle?.setTimeoutSeconds(state.liveIdleTimeoutSeconds);
     const echoGuardMs = Number(settings.echo_guard_ms);
     state.echoGuardMs = Number.isFinite(echoGuardMs) && echoGuardMs >= 0 ? echoGuardMs : 250;
 
@@ -390,6 +486,7 @@ import {hasPlayableReplay} from './replay_policy.js';
 
     state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
     render();
+    if (state.setupReady) armLiveIdleIfEligible();
   }
 
   async function loadSettings() {
@@ -672,6 +769,7 @@ import {hasPlayableReplay} from './replay_policy.js';
       if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN || state.activeTurn) return;
       state.ui.setTalkState('ready');
       state.ui.setStatus(state.ui.t('holdToTalk'));
+      armLiveIdleIfEligible();
     });
     state.ui.setTalkState(delay > 0 ? 'speaking' : 'ready');
     if (delay > 0) setStatus('aiSpeaking', 'AI speaking…');
@@ -736,6 +834,8 @@ import {hasPlayableReplay} from './replay_policy.js';
 
   function showReconnect(message) {
     state.recovery.clearTimers();
+    state.idle?.cancel();
+    state.pushReconnectPending = false;
     resetInputState();
     state.playback?.clear();
     pauseMicCapture();
@@ -781,6 +881,7 @@ import {hasPlayableReplay} from './replay_policy.js';
     if (!shouldAutoReconnect()) {
       state.reconnectNeeded = true;
       state.recovery.clearTimers();
+      state.idle?.cancel();
       state.ui?.setSetupReady(false);
       state.ui?.setTalkState('reconnect');
       state.ui?.setStatus(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
@@ -892,10 +993,17 @@ import {hasPlayableReplay} from './replay_policy.js';
         newLiveSession({reason: 'settings_change_after_connect'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
         return;
       }
+      if (state.pushReconnectPending && !handsFree()) {
+        state.pushReconnectPending = false;
+        beginPushToTalk().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+        return;
+      }
       if (state.resumeHandsFreeAfterReconnect && handsFree()) {
         state.resumeHandsFreeAfterReconnect = false;
         startHandsFreeConversation().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+        return;
       }
+      armLiveIdleIfEligible();
       return;
     }
 
@@ -936,6 +1044,7 @@ import {hasPlayableReplay} from './replay_policy.js';
   async function newLiveSession({fallback = false, resume = false, reason = 'initial'} = {}) {
     if (state.connecting) return;
     if (!state.browserOnline) throw new Error('Browser is offline');
+    state.idle?.cancel();
     state.connecting = true;
     state.reconnectNeeded = false;
     state.reconnectPending = false;
@@ -1016,11 +1125,13 @@ import {hasPlayableReplay} from './replay_policy.js';
     socket.onclose = async event => {
       if (state.ws !== socket) return;
       const wasReady = state.setupReady;
+      state.idle?.cancel();
       state.ws = null;
       state.connecting = false;
       state.setupReady = false;
       const detail = event.reason ? `: ${event.reason}` : '';
       emitUiEvent({event: 'ws_close', code: event.code, reason: String(event.reason || '').slice(0, 120), was_ready: wasReady});
+      if (socket.__ekaiwaIdleClose) return;
       if (!state.browserOnline) {
         showReconnect(publicOrDev('reconnect', 'Live session ended. Tap Reconnect.'));
         return;
@@ -1039,7 +1150,11 @@ import {hasPlayableReplay} from './replay_policy.js';
 
   async function startHandsFreeConversation() {
     if (!handsFree() || !state.setupReady || state.conversationActive) return;
-    if (!await ensureMicReady()) return;
+    state.idle?.cancel();
+    if (!await ensureMicReady()) {
+      armLiveIdleIfEligible();
+      return;
+    }
     elements.metric.textContent = '';
     state.conversationActive = true;
     createTurn();
@@ -1076,6 +1191,7 @@ import {hasPlayableReplay} from './replay_policy.js';
     } else {
       state.ui.setTalkState('ready');
       setStatus('stopped', 'Conversation stopped.');
+      armLiveIdleIfEligible();
     }
   }
 
@@ -1084,6 +1200,7 @@ import {hasPlayableReplay} from './replay_policy.js';
     if (state.reconnectNeeded || !state.setupReady || state.ws?.readyState !== WebSocket.OPEN) return false;
     if (state.activeTurn || state.playback.livePlaying) return false;
 
+    state.idle?.cancel();
     state.playback.stopManual();
     const holdGeneration = ++state.pushHoldGeneration;
     state.pushToTalkPressed = true;
@@ -1193,6 +1310,7 @@ import {hasPlayableReplay} from './replay_policy.js';
   }
 
   async function handleUiAction(action, detail) {
+    state.idle?.cancel();
     if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) {
       state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
       return;
@@ -1208,6 +1326,7 @@ import {hasPlayableReplay} from './replay_policy.js';
       if (state.playback.manualPlaying && replayProgressTurnNo === turn.no) {
         state.playback.stopManual();
         resetReplayProgress(turn.no);
+        armLiveIdleIfEligible();
         return;
       }
       const replayPromise = state.playback.playUserPcm(turn.replayPcm, 16000);
@@ -1229,6 +1348,7 @@ import {hasPlayableReplay} from './replay_policy.js';
     }
 
     if (!played) state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
+    armLiveIdleIfEligible();
   }
 
   elements.feedbackLanguage.addEventListener('change', async () => {
@@ -1339,12 +1459,13 @@ import {hasPlayableReplay} from './replay_policy.js';
     if (state.appMode !== 'public' || handsFree() || elements.talk.disabled) return;
     event.preventDefault();
     try { elements.talk.setPointerCapture?.(event.pointerId); } catch {}
-    beginPushToTalk().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+    beginPushToTalkInteraction().catch(error => showReconnect(`Microphone error: ${error.message}.`));
   });
 
   elements.talk.addEventListener('pointerup', event => {
     if (state.appMode !== 'public' || handsFree()) return;
     event.preventDefault();
+    cancelPushReconnectIntent();
     endPushToTalk();
     try { elements.talk.releasePointerCapture?.(event.pointerId); } catch {}
   });
@@ -1352,22 +1473,27 @@ import {hasPlayableReplay} from './replay_policy.js';
   elements.talk.addEventListener('pointercancel', event => {
     if (state.appMode !== 'public' || handsFree()) return;
     event.preventDefault();
+    cancelPushReconnectIntent();
     endPushToTalk();
   });
 
   elements.talk.addEventListener('lostpointercapture', () => {
-    if (state.appMode === 'public' && !handsFree()) endPushToTalk();
+    if (state.appMode === 'public' && !handsFree()) {
+      cancelPushReconnectIntent();
+      endPushToTalk();
+    }
   });
 
   elements.talk.addEventListener('keydown', event => {
     if (state.appMode !== 'public' || handsFree() || event.repeat || ![' ', 'Enter'].includes(event.key)) return;
     event.preventDefault();
-    beginPushToTalk().catch(error => showReconnect(`Microphone error: ${error.message}.`));
+    beginPushToTalkInteraction().catch(error => showReconnect(`Microphone error: ${error.message}.`));
   });
 
   elements.talk.addEventListener('keyup', event => {
     if (state.appMode !== 'public' || handsFree() || ![' ', 'Enter'].includes(event.key)) return;
     event.preventDefault();
+    cancelPushReconnectIntent();
     endPushToTalk();
   });
 
@@ -1393,6 +1519,8 @@ import {hasPlayableReplay} from './replay_policy.js';
   function handleBrowserOffline() {
     if (!state.browserOnline) return;
     state.browserOnline = false;
+    state.idle?.cancel();
+    state.pushReconnectPending = false;
     emitUiEvent({event: 'browser_offline'});
     state.recovery.clearTimers();
     abortActiveTurn('browser_offline');
@@ -1414,10 +1542,14 @@ import {hasPlayableReplay} from './replay_policy.js';
 
   window.addEventListener('offline', handleBrowserOffline);
   window.addEventListener('online', handleBrowserOnline);
+  window.addEventListener('pointerdown', noteUserActivity, {capture: true, passive: true});
+  window.addEventListener('keydown', noteUserActivity, {capture: true});
 
   window.addEventListener('beforeunload', () => {
     state.inputForwarding = false;
     state.recovery.clearTimers();
+    state.idle?.dispose();
+    state.pushReconnectPending = false;
     state.playback?.clear();
     releaseMicCapture();
     try { state.ws?.close(); } catch {}

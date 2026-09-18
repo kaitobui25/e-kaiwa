@@ -4,6 +4,7 @@ settings:
   support_language: vi
   pronunciation_enabled: true
   silence_duration_ms: 1000
+  live_idle_timeout_seconds: 180
   ai_playback_rate: 0.8
   echo_guard_ms: 250
 models:

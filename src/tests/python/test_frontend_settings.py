@@ -31,6 +31,16 @@ class FrontendSettingsTests(unittest.TestCase):
         self.assertIn("e-kaiwa.theme", prefs)
         self.assertIn("if (state.appMode === 'public')", js)
 
+    def test_live_idle_timeout_is_server_configured_and_frontend_coordinated(self):
+        server = SERVER.read_text(encoding="utf-8")
+        js = JS.read_text(encoding="utf-8")
+        self.assertIn('"live_idle_timeout_seconds": settings["live_idle_timeout_seconds"]', server)
+        self.assertIn('"/live_idle.js"', server)
+        self.assertIn("new LiveIdleCoordinator", js)
+        self.assertIn("settings.live_idle_timeout_seconds", js)
+        self.assertIn("reason: 'push_to_talk_reconnect'", js)
+        self.assertIn("socket.__ekaiwaIdleClose", js)
+
     def test_playback_is_owned_by_coordinator(self):
         js = JS.read_text(encoding="utf-8")
         audio = AUDIO.read_text(encoding="utf-8")

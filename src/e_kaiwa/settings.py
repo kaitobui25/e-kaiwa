@@ -26,6 +26,9 @@ ALLOWED_TEACHERS = tuple(mode.name for mode in TEACHER_MODES.values())
 DEFAULT_ECHO_GUARD_MS = 250
 MIN_ECHO_GUARD_MS = 0
 MAX_ECHO_GUARD_MS = 2000
+DEFAULT_LIVE_IDLE_TIMEOUT_SECONDS = 180
+MIN_LIVE_IDLE_TIMEOUT_SECONDS = 30
+MAX_LIVE_IDLE_TIMEOUT_SECONDS = 1800
 
 
 def default_config() -> dict:
@@ -36,6 +39,7 @@ def default_config() -> dict:
             "support_language": "vi",
             "pronunciation_enabled": True,
             "silence_duration_ms": 1000,
+            "live_idle_timeout_seconds": DEFAULT_LIVE_IDLE_TIMEOUT_SECONDS,
             "ai_playback_rate": 0.8,
             "echo_guard_ms": DEFAULT_ECHO_GUARD_MS,
         },
@@ -62,6 +66,17 @@ def _valid_echo_guard_ms(value: object) -> bool:
         isinstance(value, int)
         and not isinstance(value, bool)
         and MIN_ECHO_GUARD_MS <= value <= MAX_ECHO_GUARD_MS
+    )
+
+
+def _valid_live_idle_timeout_seconds(value: object) -> bool:
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and (
+            value == 0
+            or MIN_LIVE_IDLE_TIMEOUT_SECONDS <= value <= MAX_LIVE_IDLE_TIMEOUT_SECONDS
+        )
     )
 
 
@@ -98,6 +113,14 @@ def _normalize_document(raw: dict) -> tuple[dict, list[str]]:
         result["settings"]["silence_duration_ms"] = silence
     elif "silence_duration_ms" in settings_raw:
         warnings.append("settings.silence_duration_ms invalid; using 1000")
+
+    live_idle_timeout = settings_raw.get("live_idle_timeout_seconds")
+    if _valid_live_idle_timeout_seconds(live_idle_timeout):
+        result["settings"]["live_idle_timeout_seconds"] = live_idle_timeout
+    elif "live_idle_timeout_seconds" in settings_raw:
+        warnings.append(
+            f"settings.live_idle_timeout_seconds invalid; using {DEFAULT_LIVE_IDLE_TIMEOUT_SECONDS}"
+        )
 
     speed = settings_raw.get("ai_playback_rate")
     if isinstance(speed, (int, float)) and not isinstance(speed, bool):

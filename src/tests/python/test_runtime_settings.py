@@ -23,6 +23,7 @@ class SettingsStoreTests(unittest.TestCase):
             self.assertTrue(path.is_file())
             self.assertEqual(store.snapshot(), default_config())
             self.assertEqual(store.snapshot()["settings"]["echo_guard_ms"], 250)
+            self.assertEqual(store.snapshot()["settings"]["live_idle_timeout_seconds"], 180)
 
     def test_partial_update_is_persisted_and_reloaded(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -70,6 +71,26 @@ class SettingsStoreTests(unittest.TestCase):
 
             store = SettingsStore(path)
             self.assertEqual(store.snapshot()["settings"]["echo_guard_ms"], 250)
+
+    def test_live_idle_timeout_accepts_zero_or_safe_yaml_range(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            for value in (0, 30, 180, 1800):
+                raw = default_config()
+                raw["settings"]["live_idle_timeout_seconds"] = value
+                path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+                store = SettingsStore(path)
+                self.assertEqual(store.snapshot()["settings"]["live_idle_timeout_seconds"], value)
+
+    def test_invalid_live_idle_timeout_in_yaml_uses_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            for value in (1, 29, 1801, True, 180.5):
+                raw = default_config()
+                raw["settings"]["live_idle_timeout_seconds"] = value
+                path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+                store = SettingsStore(path)
+                self.assertEqual(store.snapshot()["settings"]["live_idle_timeout_seconds"], 180)
 
     def test_auto_coach_restores_default_model_order(self):
         with tempfile.TemporaryDirectory() as tmp:
