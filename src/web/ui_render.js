@@ -1,4 +1,3 @@
-import {isHandsFreeMode} from './preferences.js';
 import {hasPlayableReplay} from './replay_policy.js';
 import {icon} from './ui_icons.js';
 
@@ -72,11 +71,6 @@ export function turnScore(turn) {
   return scoreValue(pronunciation.overall_score ?? pronunciation.pronunciation_score);
 }
 
-function inlineReplay(turn, t, allowAudioActions) {
-  if (!allowAudioActions || !hasPlayableReplay(turn)) return '';
-  return `<button class="inline-action replay-inline" type="button" data-ui-action="open-replay" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}">${icon('play')}</button>`;
-}
-
 export function scoreTier(value) {
   if (value >= 90) return 'gold';
   if (value >= 70) return 'teal';
@@ -104,8 +98,7 @@ export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) 
   const userText = pronunciation
     ? highlightProblems(turn.userText || '…', pronunciation)
     : escapeHtml(turn.userText || '…');
-  const allowAudioActions = !isHandsFreeMode(conversationMode);
-  const userActions = `${inlineReplay(turn, t, allowAudioActions)}${inlineScore(turn, t, pronunciationEnabled)}`;
+  const userActions = inlineScore(turn, t, pronunciationEnabled);
   const actionRow = userActions ? `<div class="message-actions">${userActions}</div>` : '';
 
   const userRow = `<div class="message-row user-row">
@@ -180,7 +173,7 @@ function metricRow(label, value) {
   </div>`;
 }
 
-function pronunciationMetrics(pronunciation, t) {
+function pronunciationMetrics(pronunciation, t, {expanded = false} = {}) {
   if (!pronunciation) return '';
   const rows = [
     metricRow(t('accuracy'), pronunciation.pronunciation_score),
@@ -188,7 +181,10 @@ function pronunciationMetrics(pronunciation, t) {
     metricRow(t('intonation'), pronunciation.intonation_score)
   ].filter(Boolean).join('');
   if (!rows) return '';
-  return `<section class="overlay-section"><h3>${escapeHtml(t('pronunciationDetails'))}</h3><div class="coach-metrics">${rows}</div></section>`;
+  return `<section id="coach-pronunciation-details" class="overlay-section coach-pronunciation-details"${expanded ? '' : ' hidden'}>
+    <h3>${escapeHtml(t('pronunciationDetails'))}</h3>
+    <div class="coach-metrics">${rows}</div>
+  </section>`;
 }
 
 function problemCards(turn, t) {
@@ -206,35 +202,60 @@ function problemCards(turn, t) {
   </section>`;
 }
 
-function naturalExpressionCard(turn, t) {
-  const correction = String(turn?.coach?.correction || '').trim();
-  const userText = String(turn?.userText || '').trim();
-  const explanation = String(turn?.coach?.explanation || '').trim();
-  if (!correction && !explanation) return '';
-  return `<section class="overlay-section">
-    <h3>${escapeHtml(t('naturalExpression'))}</h3>
-    <button class="natural-card" type="button" data-ui-action="open-correction" data-turn="${turn.no}">
-      <span>${escapeHtml(correction || userText)}</span>
-      <span class="problem-chevron">${icon('chevron')}</span>
+function learnerReplayCard(turn, t, allowAudioActions) {
+  if (!allowAudioActions || !hasPlayableReplay(turn)) return '';
+  return `<section class="overlay-section coach-replay-section">
+    <button class="coach-replay-row" type="button" data-audio-action="replay-user" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}" aria-pressed="false">
+      <span class="coach-replay-progress" aria-hidden="true">
+        <svg viewBox="0 0 48 48" focusable="false">
+          <circle cx="24" cy="24" r="20" class="coach-replay-progress-track"/>
+          <circle cx="24" cy="24" r="20" pathLength="100" class="coach-replay-progress-ring" data-replay-progress-ring data-turn="${turn.no}" style="stroke-dasharray:100;stroke-dashoffset:100"/>
+        </svg>
+        <span class="coach-replay-mic">${icon('mic')}</span>
+      </span>
+      <span class="coach-replay-copy">
+        <strong>${escapeHtml(t('replayMine'))}</strong>
+        <small>${replayDuration(turn?.replayPcm)}</small>
+      </span>
     </button>
   </section>`;
 }
 
-export function coachOverviewHtml(turn, t) {
+function naturalExpressionCard(turn, t, allowAudioActions) {
+  const correction = String(turn?.coach?.correction || '').trim();
+  const userText = String(turn?.userText || '').trim();
+  const explanation = String(turn?.coach?.explanation || '').trim();
+  if (!correction && !explanation) return '';
+  const sentence = correction || userText;
+  return `<section class="overlay-section natural-expression-section">
+    <h3>${escapeHtml(t('naturalExpression'))}</h3>
+    <div class="natural-row">
+      <button class="natural-main" type="button" data-ui-action="open-correction" data-turn="${turn.no}">
+        <span>${escapeHtml(sentence)}</span>
+        <span class="problem-chevron">${icon('chevron')}</span>
+      </button>
+      ${allowAudioActions && sentence ? `<button class="round-audio natural-audio" type="button" data-audio-action="speak-correction" data-turn="${turn.no}" aria-label="${escapeHtml(t('playCorrect'))}">${icon('speaker')}</button>` : ''}
+    </div>
+  </section>`;
+}
+
+export function coachOverviewHtml(turn, t, {metricsExpanded = false, allowAudioActions = true} = {}) {
   const overall = turnScore(turn);
   const pronunciation = turn?.coach?.pronunciation;
   return `${overlayHeader(t('coach'), t)}
     <div class="overlay-scroll">
-      ${overall == null ? '' : `<section class="score-hero score-hero-ring">
+      ${overall == null ? '' : `<button class="score-hero score-hero-ring coach-score-toggle" type="button" data-ui-action="toggle-coach-metrics" data-turn="${turn.no}" aria-expanded="${metricsExpanded}" aria-controls="coach-pronunciation-details">
         ${scoreRingSvg(overall)}
-        <div class="score-hero-copy">
+        <span class="score-hero-copy">
           <span>${escapeHtml(t('score'))}</span>
           <strong id="score-number" data-target="${overall}">0<small>/100</small></strong>
-        </div>
-      </section>`}
-      ${pronunciationMetrics(pronunciation, t)}
+        </span>
+        <span class="coach-score-chevron">${icon('chevron')}</span>
+      </button>`}
+      ${pronunciationMetrics(pronunciation, t, {expanded: metricsExpanded})}
+      ${learnerReplayCard(turn, t, allowAudioActions)}
+      ${naturalExpressionCard(turn, t, allowAudioActions)}
       ${problemCards(turn, t)}
-      ${naturalExpressionCard(turn, t)}
       ${pronunciation?.summary ? `<section class="coach-note">${icon('check')}<span>${escapeHtml(pronunciation.summary)}</span></section>` : ''}
     </div>`;
 }
