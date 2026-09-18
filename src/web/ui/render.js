@@ -1,5 +1,5 @@
-import {hasPlayableReplay} from './replay_policy.js';
-import {icon} from './ui_icons.js';
+import {hasPlayableReplay} from '../shared/replay_policy.js';
+import {icon} from './icons.js';
 
 export function escapeHtml(value) {
   return String(value ?? '')

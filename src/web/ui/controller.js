@@ -6,11 +6,11 @@ import {
   normalizeConversationMode,
   normalizeTargetLanguage,
   normalizeTheme
-} from './preferences.js';
-import {hasPlayableReplay} from './replay_policy.js';
-import {icon} from './ui_icons.js';
-import {devTurnHtml, escapeHtml, publicTurnHtml} from './ui_render.js';
-import {UiOverlayController} from './ui_overlay.js';
+} from '../shared/preferences.js';
+import {hasPlayableReplay} from '../shared/replay_policy.js';
+import {icon} from './icons.js';
+import {devTurnHtml, escapeHtml, publicTurnHtml} from './render.js';
+import {UiOverlayController} from './overlay.js';
 
 const AUTO_SCROLL_THRESHOLD_PX = 180;
 

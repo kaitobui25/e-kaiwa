@@ -7,7 +7,7 @@ import {
   recordLanguageCode,
   selectedSupportLanguage,
   TARGET_LANGUAGE_METADATA
-} from './language_policy.js';
+} from '../shared/language_policy.js';
 import {
   CONVERSATION_MODES,
   PreferencesStore,
@@ -16,7 +16,7 @@ import {
   normalizePlaybackRate,
   normalizeTargetLanguage,
   targetSpeechLocale
-} from './preferences.js';
+} from '../shared/preferences.js';
 import {
   PlaybackCoordinator,
   microphoneCaptureReusable,
@@ -24,10 +24,10 @@ import {
   releaseMicrophoneCapture,
   resumeMicrophoneCapture
 } from './audio.js';
-import {UiController} from './ui.js';
-import {LiveRecoveryCoordinator} from './live_recovery.js';
-import {LiveIdleCoordinator} from './live_idle.js';
-import {hasPlayableReplay} from './replay_policy.js';
+import {UiController} from '../ui/controller.js';
+import {LiveRecoveryCoordinator} from './recovery.js';
+import {LiveIdleCoordinator} from './idle.js';
+import {hasPlayableReplay} from '../shared/replay_policy.js';
 
 (() => {
   'use strict';

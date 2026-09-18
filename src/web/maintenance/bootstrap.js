@@ -1,5 +1,5 @@
-import {MaintenanceController} from './maintenance.js';
-import {MaintenanceOverlay} from './ui_maintenance.js';
+import {MaintenanceController} from './controller.js';
+import {MaintenanceOverlay} from './overlay.js';
 
 const appShell = document.getElementById('app-shell');
 const updateButton = document.getElementById('update-button');

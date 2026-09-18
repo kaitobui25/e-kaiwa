@@ -3,8 +3,8 @@ import {
   correctionOverlayHtml,
   replayOverlayHtml,
   wordOverlayHtml
-} from './ui_render.js';
-import {hasPlayableReplay} from './replay_policy.js';
+} from './render.js';
+import {hasPlayableReplay} from '../shared/replay_policy.js';
 
 const DYNAMIC_OVERLAYS = new Set(['coach', 'correction', 'word', 'replay']);
 const FOCUSABLE = 'button, select, input, textarea, a[href], [tabindex]';
