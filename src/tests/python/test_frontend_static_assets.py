@@ -27,6 +27,24 @@ class FrontendStaticAssetTests(unittest.TestCase):
         cls.server.server_close()
         cls.thread.join(timeout=2)
 
+    def test_local_fonts_are_served_with_correct_content_types(self) -> None:
+        assets = [(WEB_DIR / "assets/fonts/fonts.css", "text/css")]
+        assets.extend((path, "font/woff2") for path in (WEB_DIR / "assets/fonts").glob("*.woff2"))
+        self.assertEqual(len(assets), 6)
+        for asset, content_type in assets:
+            with self.subTest(asset=asset.name):
+                url = f"{self.base_url}/{asset.relative_to(WEB_DIR).as_posix()}"
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    self.assertEqual(response.headers.get_content_type(), content_type)
+                    self.assertEqual(response.read(), asset.read_bytes())
+
+    def test_asset_routes_cannot_escape_asset_directory(self) -> None:
+        for path in ("/assets/../live.js", "/assets/../../app.py"):
+            with self.subTest(path=path):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(f"{self.base_url}{path}", timeout=2)
+                self.assertEqual(error.exception.code, 404)
+
     def test_all_browser_js_and_css_files_are_served(self) -> None:
         assets = sorted(
             path for path in WEB_DIR.iterdir()

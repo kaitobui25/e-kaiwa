@@ -22,7 +22,7 @@ body[data-app-mode="public"] {
   --ember-soft: #FCEAE6;
   --sakura: #E85D89;
   --gold: #C9932A;
-  --font-display: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lang-accent: var(--primary);
   --radius-sm: 10px;
   --radius-md: 14px;
@@ -71,7 +71,7 @@ body[data-app-mode="public"] .app-header {
   margin: 0 -12px 6px;
   padding: max(10px, env(safe-area-inset-top)) 14px 8px;
   border-bottom: 0;
-  background: var(--bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 5%, var(--bg)), var(--bg));
   backdrop-filter: none;
 }
 
@@ -96,9 +96,21 @@ body[data-app-mode="public"] .conversation {
 }
 
 body[data-app-mode="public"] .empty-state {
-  padding: 96px 28px 72px;
+  padding: 72px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   font-size: 15px;
-  line-height: 1.65;
+  line-height: 1.6;
+}
+body[data-app-mode="public"] .empty-state::before {
+  content: "";
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--primary) 55%, white), var(--primary));
+  animation: talk-breathe 3.4s ease-in-out infinite;
 }
 
 body[data-app-mode="public"] .turn {
@@ -189,10 +201,37 @@ body[data-app-mode="public"] .inline-action {
 }
 
 body[data-app-mode="public"] .score-pill {
-  border: 1px solid color-mix(in srgb, var(--success) 26%, var(--border));
-  border-radius: 10px;
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: transparent;
 }
+body[data-app-mode="public"] .score-pill-ring { position: absolute; inset: 0; }
+body[data-app-mode="public"] .score-pill-track { stroke: var(--border); }
+body[data-app-mode="public"] .score-pill-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text);
+}
+body[data-app-mode="public"] [data-score-tier="gold"] .score-pill-arc { stroke: var(--gold); }
+body[data-app-mode="public"] [data-score-tier="gold"] .score-pill-num { color: var(--gold); }
+body[data-app-mode="public"] [data-score-tier="teal"] .score-pill-arc { stroke: var(--primary); }
+body[data-app-mode="public"] [data-score-tier="teal"] .score-pill-num { color: var(--primary); }
+body[data-app-mode="public"] [data-score-tier="muted"] .score-pill-arc { stroke: var(--text-muted); }
+body[data-app-mode="public"] .score-pill-arc {
+  animation: score-pill-grow 700ms cubic-bezier(.22,.9,.3,1) both;
+}
+@keyframes score-pill-grow { from { stroke-dashoffset: 94.2; } }
 
 body[data-app-mode="public"] .inline-action:active,
 body[data-app-mode="public"] .score-button:active,
@@ -212,12 +251,33 @@ body[data-app-mode="public"] .inline-action:disabled {
 
 /* Talk dock: one primary action, quiet status/meta, stateful voice motion. */
 body[data-app-mode="public"] .control-dock {
+  overflow: visible;
   width: min(100%, 720px);
   padding: 7px 12px calc(8px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: var(--surface);
   box-shadow: none;
   backdrop-filter: none;
+}
+body[data-app-mode="public"] .control-dock::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 60%;
+  width: 220px;
+  height: 220px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 22%, transparent), transparent 70%);
+  filter: blur(30px);
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 300ms ease, background 300ms ease;
+  z-index: -1;
+}
+body[data-app-mode="public"] .control-dock:has(.talk-speaking)::before {
+  background: radial-gradient(circle, color-mix(in srgb, var(--ember) 24%, transparent), transparent 70%);
+  opacity: 0.65;
 }
 
 body[data-app-mode="public"] .status {
@@ -716,4 +776,12 @@ body[data-app-mode="public"] .settings-release .update-button {
   body[data-app-mode="public"] .replay-main:active {
     transform: none;
   }
+
+  body[data-app-mode="public"] .score-pill-arc,
+  .score-pill-arc {
+    animation: none !important;
+  }
+
+  body[data-app-mode="public"] .empty-state::before { animation: none !important; }
+  body[data-app-mode="public"] .control-dock::before { transition: none; }
 }

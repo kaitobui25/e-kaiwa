@@ -10,6 +10,7 @@ import {
   publicTurnHtml,
   replayDuration,
   replayOverlayHtml,
+  scoreTier,
   wordOverlayHtml
 } from '../../web/ui_render.js';
 
@@ -64,7 +65,10 @@ test('hands-free hides manual replay but keeps coach score and problem highlight
   assert.doesNotMatch(html, /data-ui-action="open-replay"/);
   assert.match(html, /data-ui-action="open-coach"/);
   assert.match(html, /class="pron-problem severity-yellow">listening</);
-  assert.match(html, />82<\/button>/);
+  assert.match(html, /<span class="score-pill-num">82<\/span>/);
+  assert.match(html, /data-score-tier="teal"/);
+  assert.match(html, /class="score-pill-ring"/);
+  assert.match(html, /class="score-pill-arc"/);
 });
 
 test('coach overview renders only real pronunciation metrics and drill-down actions', () => {
@@ -141,4 +145,34 @@ test('replay button hides when audio is not ready/playable', () => {
   const nullPcm = {...base, replayPcm: null};
   assert.equal(hasPlayableReplay(nullPcm), false);
   assert.doesNotMatch(publicTurnHtml(nullPcm, t, true, CONVERSATION_MODES.PUSH_TO_TALK), /data-ui-action="open-replay"/);
+});
+
+test('score tier boundaries match 70/90 spec and ring renders accessible markup', () => {
+  assert.equal(scoreTier(90), 'gold');
+  assert.equal(scoreTier(95), 'gold');
+  assert.equal(scoreTier(100), 'gold');
+  assert.equal(scoreTier(89), 'teal');
+  assert.equal(scoreTier(82), 'teal');
+  assert.equal(scoreTier(70), 'teal');
+  assert.equal(scoreTier(69), 'muted');
+  assert.equal(scoreTier(0), 'muted');
+  assert.equal(scoreTier(45), 'muted');
+});
+
+test('score pill renders tiered SVG ring with correct stroke math and aria label', () => {
+  const cases = [
+    {score: 95, tier: 'gold'},
+    {score: 82, tier: 'teal'},
+    {score: 45, tier: 'muted'}
+  ];
+  for (const {score, tier} of cases) {
+    const turn = {...sampleTurn(), coach: {pronunciation: {overall_score: score}}};
+    const html = publicTurnHtml(turn, t, true, CONVERSATION_MODES.PUSH_TO_TALK);
+    assert.match(html, new RegExp(`data-score-tier="${tier}"`));
+    assert.match(html, new RegExp(`<span class="score-pill-num">${score}<\\/span>`));
+    assert.match(html, /class="score-pill-ring"/);
+    assert.match(html, /stroke-dasharray:94\./);
+    assert.match(html, /stroke-dashoffset:/);
+    assert.match(html, new RegExp(`aria-label="score ${score}"`));
+  }
 });

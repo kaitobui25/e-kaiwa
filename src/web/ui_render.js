@@ -77,11 +77,26 @@ function inlineReplay(turn, t, allowAudioActions) {
   return `<button class="inline-action replay-inline" type="button" data-ui-action="open-replay" data-turn="${turn.no}" aria-label="${escapeHtml(t('replayMine'))}">${icon('play')}</button>`;
 }
 
+export function scoreTier(value) {
+  if (value >= 90) return 'gold';
+  if (value >= 70) return 'teal';
+  return 'muted';
+}
 function inlineScore(turn, t, pronunciationEnabled) {
   if (!pronunciationEnabled || !turn?.coachEligible) return '';
   const overall = turnScore(turn);
   if (overall == null) return '';
-  return `<button class="score-pill score-button" type="button" data-ui-action="open-coach" data-turn="${turn.no}" aria-label="${escapeHtml(t('score'))} ${overall}">${overall}</button>`;
+  const tier = scoreTier(overall);
+  const circumference = 2 * Math.PI * 15;
+  const offset = circumference * (1 - overall / 100);
+  return `<button class="score-pill score-button" type="button" data-ui-action="open-coach" data-turn="${turn.no}" data-score-tier="${tier}" aria-label="${escapeHtml(t('score'))} ${overall}">
+    <svg class="score-pill-ring" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+      <circle cx="17" cy="17" r="15" fill="none" stroke-width="3" class="score-pill-track"/>
+      <circle cx="17" cy="17" r="15" fill="none" stroke-width="3" stroke-linecap="round" transform="rotate(-90 17 17)"
+        style="stroke-dasharray:${circumference};stroke-dashoffset:${offset}" class="score-pill-arc"/>
+    </svg>
+    <span class="score-pill-num">${overall}</span>
+  </button>`;
 }
 
 export function publicTurnHtml(turn, t, pronunciationEnabled, conversationMode) {

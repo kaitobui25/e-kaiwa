@@ -1,0 +1,47 @@
+/* E-KAIWA — self-hosted Be Vietnam Pro
+   Files are fetched by ../../../../scripts/fetch-fonts.* from the official upstream repo.
+*/
+
+@font-face {
+  font-family: "Be Vietnam Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./BeVietnamPro-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Be Vietnam Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("./BeVietnamPro-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Be Vietnam Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("./BeVietnamPro-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Be Vietnam Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("./BeVietnamPro-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Be Vietnam Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url("./BeVietnamPro-ExtraBold.woff2") format("woff2");
+}
+
+:root {
+  --font-display: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+}

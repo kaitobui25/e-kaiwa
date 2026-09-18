@@ -220,6 +220,32 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 self.send_static(*static)
                 return
 
+            if path.startswith("/assets/"):
+                asset_path = (WEB_DIR / path.lstrip("/")).resolve()
+                try:
+                    asset_path.relative_to((WEB_DIR / "assets").resolve())
+                except ValueError:
+                    self.send_error(404)
+                    return
+                if not asset_path.is_file():
+                    self.send_error(404)
+                    return
+                suffix = asset_path.suffix.lower()
+                if suffix == ".css":
+                    ctype = "text/css; charset=utf-8"
+                elif suffix == ".woff2":
+                    ctype = "font/woff2"
+                elif suffix == ".woff":
+                    ctype = "font/woff"
+                elif suffix == ".svg":
+                    ctype = "image/svg+xml"
+                elif suffix == ".js":
+                    ctype = "text/javascript; charset=utf-8"
+                else:
+                    ctype = "application/octet-stream"
+                self.send_static(asset_path, ctype)
+                return
+
             if path == "/health":
                 self.send_json(200, {"ok": True, "mode": runtime.access.mode, "model": runtime.settings.realtime_model})
                 return

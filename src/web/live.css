@@ -27,7 +27,7 @@
   --font-body: 1rem;
   --font-label: 0.875rem;
   --font-meta: 0.8125rem;
-  --font-display: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lang-accent: var(--primary);
   --shadow-sm: 0 4px 14px rgba(23, 62, 117, 0.07);
   --shadow-md: 0 18px 50px rgba(25, 55, 105, 0.16);
@@ -266,19 +266,36 @@ body[data-app-mode="public"] .app-tagline { display: none; }
 }
 .inline-action .ui-svg { width: 15px; height: 15px; }
 .score-pill {
-  display: inline-grid;
-  place-items: center;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 7px;
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--success-soft);
-  color: var(--success);
-  font-size: 14px;
-  font-weight: 700;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
 }
+.score-pill-ring { position: absolute; inset: 0; }
+.score-pill-track { stroke: var(--border); }
+.score-pill-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text);
+}
+[data-score-tier="gold"] .score-pill-arc { stroke: var(--gold); }
+[data-score-tier="gold"] .score-pill-num { color: var(--gold); }
+[data-score-tier="teal"] .score-pill-arc { stroke: var(--primary); }
+[data-score-tier="teal"] .score-pill-num { color: var(--primary); }
+[data-score-tier="muted"] .score-pill-arc { stroke: var(--text-muted); }
+.score-pill-arc { animation: score-pill-grow 700ms cubic-bezier(.22,.9,.3,1) both; }
+@keyframes score-pill-grow { from { stroke-dashoffset: 94.2; } }
 .pron-problem {
   font-weight: 750;
   text-decoration-line: underline;
@@ -896,4 +913,5 @@ body[data-app-mode="dev"] .overlay-root { display: none !important; }
   .talk-pressed::before, .talk-pressed::after { display: none !important; }
   body[data-app-mode="public"] .voice-waves span { animation: none !important; }
   .score-ring-fg { animation: none; }
+  .score-pill-arc { animation: none !important; }
 }
