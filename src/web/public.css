@@ -418,14 +418,25 @@ body[data-app-mode="public"] .talk-label {
 }
 
 body[data-app-mode="public"] .dock-meta {
-  width: 100%;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 5px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: min(100%, 160px);
+  column-gap: 24px;
+  margin: 5px auto 0;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
   font-family: var(--font-display);
+}
+
+body[data-app-mode="public"] .dock-meta::after {
+  content: "·";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--border);
 }
 
 body[data-app-mode="public"] .dock-meta svg {
@@ -436,10 +447,16 @@ body[data-app-mode="public"] .dock-meta-item {
   gap: 0;
 }
 
+body[data-app-mode="public"] .dock-meta-item:first-child {
+  justify-content: flex-end;
+}
+
+body[data-app-mode="public"] .dock-meta-item:last-child {
+  justify-content: flex-start;
+}
+
 body[data-app-mode="public"] .dock-meta-item + .dock-meta-item::before {
-  content: "·";
-  margin-right: 10px;
-  color: var(--border);
+  content: none;
 }
 
 /* Overlay shell keeps depth because it is a real modal layer. */
