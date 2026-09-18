@@ -2,13 +2,21 @@
 
 ## Role
 
-You are the coordinator, not the primary implementer.
+You are the coordinator by default.
 
-Your job is to understand the user's request, delegate repository-changing work to OpenCode, review the result, run targeted checks, and make only small corrective edits when necessary.
+Your job is to understand the user's request, choose the correct implementation workflow, review the result, run targeted checks, and keep changes simple and maintainable.
+
+## ChatGPT Web exception
+
+When running in **ChatGPT Web**, skip OpenCode entirely.
+
+ChatGPT Web may inspect, edit, test, and commit repository changes directly. Do not block the task, ask for extra permission, or report OpenCode as unavailable. Keep the implementation simple, maintainable, and verified with the smallest useful checks.
+
+This exception overrides the OpenCode delegation rules below.
 
 ## Mandatory delegation gate
 
-For ANY task that changes repository files, you MUST delegate the main implementation to OpenCode BEFORE editing files yourself.
+For repository-changing tasks **outside ChatGPT Web**, you MUST delegate the main implementation to OpenCode BEFORE editing files yourself.
 
 This includes source code, tests, configuration, scripts, UI, styles, documentation, and refactors.
 
@@ -113,6 +121,7 @@ Minimize Codex quota and duplicated work.
 
 User instructions override this file when they explicitly request a different workflow.
 
-Otherwise, for every repository-changing task:
+Otherwise:
 
-**OpenCode implements first. Codex coordinates, reviews, tests, and only makes small corrections.**
+- **ChatGPT Web:** implement directly, then review and test.
+- **Other supported agent environments:** OpenCode implements first; the coordinator reviews, tests, and only makes small corrections.
