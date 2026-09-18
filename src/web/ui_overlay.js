@@ -74,6 +74,7 @@ export class UiOverlayController {
     this.onAudioAction = onAudioAction;
     this.state = new OverlayState();
     this.turn = null;
+    this.coachMetricsExpanded = false;
     this.previousFocus = null;
     this.previousFocusKey = null;
     this.renderedMarkup = null;
@@ -144,12 +145,21 @@ export class UiOverlayController {
     }
     if (!this.turn) return;
     if (action === 'back-coach') {
-      this.openCoach(this.turn);
+      this.openCoach(this.turn, {resetMetrics: false});
+    } else if (action === 'toggle-coach-metrics') {
+      this._toggleCoachMetrics(trigger);
     } else if (action === 'open-correction') {
       this.openCorrection(this.turn);
     } else if (action === 'open-word') {
       this.openWord(this.turn, Number(trigger.dataset.problem || 0));
     }
+  }
+
+  _toggleCoachMetrics(trigger) {
+    this.coachMetricsExpanded = !this.coachMetricsExpanded;
+    trigger?.setAttribute?.('aria-expanded', String(this.coachMetricsExpanded));
+    const details = this.dynamic?.querySelector?.('#coach-pronunciation-details');
+    if (details) details.hidden = !this.coachMetricsExpanded;
   }
 
   _show(type) {
@@ -185,8 +195,9 @@ export class UiOverlayController {
     this.settingsClose?.focus({preventScroll: true});
   }
 
-  openCoach(turn) {
+  openCoach(turn, {resetMetrics = true} = {}) {
     if (!turn?.coach) return;
+    if (resetMetrics) this.coachMetricsExpanded = false;
     this._showDynamic('coach', turn);
   }
 
@@ -210,7 +221,10 @@ export class UiOverlayController {
     const t = key => this.translate(key);
     const allowAudio = this.audioActionsAllowed();
     let markup;
-    if (this.state.type === 'coach') markup = coachOverviewHtml(this.turn, t);
+    if (this.state.type === 'coach') markup = coachOverviewHtml(this.turn, t, {
+      metricsExpanded: this.coachMetricsExpanded,
+      allowAudioActions: allowAudio
+    });
     else if (this.state.type === 'correction') markup = correctionOverlayHtml(this.turn, t, allowAudio);
     else if (this.state.type === 'word') markup = wordOverlayHtml(this.turn, this.state.problemIndex, t, allowAudio);
     else if (this.state.type === 'replay') markup = replayOverlayHtml(this.turn, t);
@@ -262,10 +276,24 @@ export class UiOverlayController {
     this.renderActive();
   }
 
+  setReplayProgress(turnNo, progress = 0, playing = false) {
+    if (this.state.type !== 'coach' || Number(this.state.turnNo) !== Number(turnNo)) return;
+    const normalized = Math.max(0, Math.min(100, Number(progress) || 0));
+    const turn = Number(turnNo);
+    const ring = this.dynamic?.querySelector?.(`[data-replay-progress-ring][data-turn="${turn}"]`);
+    if (ring?.style) ring.style.strokeDashoffset = String(100 - normalized);
+    const button = this.dynamic?.querySelector?.(`[data-audio-action="replay-user"][data-turn="${turn}"]`);
+    if (button) {
+      button.dataset.playing = playing ? 'true' : 'false';
+      button.setAttribute?.('aria-pressed', String(Boolean(playing)));
+    }
+  }
+
   close() {
     if (!this.state.type && this.mode === 'public') return;
     this.state.close();
     this.turn = null;
+    this.coachMetricsExpanded = false;
     if (this.root) {
       this.root.hidden = true;
       this.root.dataset.overlay = '';
