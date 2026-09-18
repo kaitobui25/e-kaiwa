@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 
-const liveSource = await readFile(new URL('../../web/live.js', import.meta.url), 'utf8');
+const liveSource = await readFile(new URL('../../web/live/main.js', import.meta.url), 'utf8');
 
 test('idle WebSocket close does not auto-reconnect without active conversation', () => {
   assert.match(liveSource, /function shouldAutoReconnect\(\)/);

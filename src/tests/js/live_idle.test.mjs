@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {LiveIdleCoordinator} from '../../web/live_idle.js';
+import {LiveIdleCoordinator} from '../../web/live/idle.js';
 
 function fakeTimers() {
   let nextId = 1;

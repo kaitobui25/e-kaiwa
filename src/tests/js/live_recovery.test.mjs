@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {LiveRecoveryCoordinator, durationToMilliseconds} from '../../web/live_recovery.js';
+import {LiveRecoveryCoordinator, durationToMilliseconds} from '../../web/live/recovery.js';
 
 function fakeTimers() {
   let nextId = 1;

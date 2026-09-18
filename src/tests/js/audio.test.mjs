@@ -7,7 +7,7 @@ import {
   pauseMicrophoneCapture,
   releaseMicrophoneCapture,
   resumeMicrophoneCapture
-} from '../../web/audio.js';
+} from '../../web/live/audio.js';
 
 function fakeAudioContext() {
   const sources = [];
