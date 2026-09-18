@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.11`**  
+**Current version: `0.27`**  
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -26,9 +26,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.9  mobile public UI refresh
 0.10 realtime / network / UI / updater stability
 0.11 iPhone / Chrome microphone lifecycle fix
+0.27 feature-based frontend folders + recursive updater JS syntax checks
 ```
 
-Future incremental releases continue as `0.12`, `0.13`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.28`, `0.29`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 
@@ -296,15 +297,19 @@ CI is secret-free and does not make external Gemini realtime calls. The final mi
 ## Current frontend ownership
 
 ```text
-live.js           realtime orchestration / PTT / turn lifecycle
-live_recovery.js  resumption / GoAway / watchdog timing
-audio.js          microphone capture + playback
-language_policy.js multilingual transcript/language policy
-ui.js             DOM updates / autoscroll / actions
-ui_render.js      conversation + Coach markup
-ui_overlay.js     Settings / Coach overlays
-maintenance.js    update frontend state machine
-public.css         public/mobile visual layer
+live/main.js                  realtime orchestration / PTT / turn lifecycle
+live/recovery.js              resumption / GoAway / watchdog timing
+live/audio.js                 microphone capture + playback
+shared/language_policy.js     multilingual transcript/language policy
+shared/preferences.js         local/browser preferences and conversation-mode policy
+shared/replay_policy.js       replay availability policy
+ui/controller.js              DOM updates / autoscroll / actions
+ui/render.js                  conversation + Coach markup
+ui/overlay.js                 Settings / Coach overlays
+ui/base.css                   shared/base visual layer
+ui/public.css                 public/mobile visual overrides
+maintenance/controller.js     update frontend state machine
+maintenance/bootstrap.js      maintenance startup / transport wiring
 ```
 
 ## Design principles

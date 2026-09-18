@@ -72,10 +72,15 @@ def run_command(
 
 def run_js_syntax(repo_root: Path, *, node: str = "node") -> CheckResult:
     web_dir = repo_root / "src" / "web"
+    paths = sorted(path for path in web_dir.rglob("*.js") if path.is_file())
+    if not paths:
+        return CheckResult("JavaScript syntax", False, "no JavaScript files found under src/web")
+
     failures: list[str] = []
-    for path in sorted(web_dir.glob("*.js")):
+    for path in paths:
+        relative_path = path.relative_to(web_dir).as_posix()
         result = run_command(
-            f"JS syntax {path.name}",
+            f"JS syntax {relative_path}",
             [node, "--input-type=module", "--check"],
             cwd=repo_root,
             timeout=30,
@@ -83,7 +88,7 @@ def run_js_syntax(repo_root: Path, *, node: str = "node") -> CheckResult:
             input_text=path.read_text(encoding="utf-8"),
         )
         if not result.ok:
-            failures.append(path.name)
+            failures.append(relative_path)
     if failures:
         return CheckResult("JavaScript syntax", False, ", ".join(failures[:8]))
     return CheckResult("JavaScript syntax", True, "")
