@@ -1,6 +1,7 @@
 export const LANGUAGE_POLICY_VERSION = 'target-language-rescue-v4';
 
 const SUPPORT_LANGUAGES = {
+  en: 'English',
   vi: 'Vietnamese',
   ja: 'Japanese'
 };
@@ -35,7 +36,8 @@ export function normalizeLanguageCode(code) {
 }
 
 export function selectedSupportLanguage(value) {
-  return value === 'ja' ? 'ja' : 'vi';
+  const normalized = String(value || '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(SUPPORT_LANGUAGES, normalized) ? normalized : 'en';
 }
 
 export function recordLanguageCode(turn, code, direction) {

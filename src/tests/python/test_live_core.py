@@ -33,7 +33,7 @@ class ConfigTests(unittest.TestCase):
     def test_feedback_language_is_allowlisted(self):
         self.assertEqual(normalize_feedback_language("ja"), "ja")
         self.assertEqual(normalize_feedback_language("JA"), "ja")
-        self.assertEqual(normalize_feedback_language("en"), "vi")
+        self.assertEqual(normalize_feedback_language("en"), "en")
         self.assertEqual(normalize_feedback_language(None), "vi")
 
 

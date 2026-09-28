@@ -221,6 +221,10 @@ test('changing UI language via setLanguage re-translates talk label and updates 
     assert.equal(talkLabel.textContent, 'Chạm và giữ để nói');
     assert.equal(talkBtn['aria-label'], 'Chạm và giữ để nói');
 
+    ui.setLanguage('en');
+    assert.equal(talkLabel.textContent, 'Hold to talk');
+    assert.equal(talkBtn['aria-label'], 'Hold to talk');
+
     ui.setLanguage('ja');
     assert.equal(talkLabel.textContent, '長押しして話す');
     assert.equal(talkBtn['aria-label'], '長押しして話す');

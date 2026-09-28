@@ -107,9 +107,11 @@ def resolve_teacher(value: object) -> TeacherMode:
 
 
 def normalize_feedback_language(value: object) -> str:
-    return "ja" if str(value or "").strip().lower() == "ja" else "vi"
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in {"en", "ja", "vi"} else "vi"
 
 
 def feedback_language_name(code: object) -> tuple[str, str]:
     normalized = normalize_feedback_language(code)
-    return ("ja", "Japanese") if normalized == "ja" else ("vi", "Vietnamese")
+    names = {"en": "English", "ja": "Japanese", "vi": "Vietnamese"}
+    return normalized, names[normalized]

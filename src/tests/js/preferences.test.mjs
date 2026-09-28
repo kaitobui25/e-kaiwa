@@ -25,10 +25,11 @@ function memoryStorage() {
 
 test('public language follows the first supported browser locale', () => {
   assert.equal(detectDefaultAppLanguage('ja-JP'), 'ja');
-  assert.equal(detectDefaultAppLanguage('en-US'), 'ja');
+  assert.equal(detectDefaultAppLanguage('en-US'), 'en');
   assert.equal(detectDefaultAppLanguage('vi-VN'), 'vi');
-  assert.equal(detectDefaultAppLanguage(['en-US', 'vi-VN', 'ja-JP']), 'vi');
-  assert.equal(detectDefaultAppLanguage(['en-US', 'ja-JP']), 'ja');
+  assert.equal(detectDefaultAppLanguage(['en-US', 'vi-VN', 'ja-JP']), 'en');
+  assert.equal(detectDefaultAppLanguage(['fr-FR', 'vi-VN', 'ja-JP']), 'vi');
+  assert.equal(detectDefaultAppLanguage(['fr-FR']), 'en');
   assert.equal(normalizeAppLanguage('zh', 'ja'), 'ja');
 });
 
@@ -43,7 +44,7 @@ test('first browser language choice is persisted for later visits', () => {
   const storage = memoryStorage();
   const first = new PreferencesStore({
     storage,
-    browserLanguages: ['en-US', 'vi-VN']
+    browserLanguages: ['fr-FR', 'vi-VN']
   });
   assert.equal(first.load().appLanguage, 'vi');
 

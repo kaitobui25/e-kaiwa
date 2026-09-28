@@ -5,7 +5,7 @@ import {
   TARGET_LANGUAGE_METADATA
 } from './language_policy.js';
 
-export const SUPPORTED_APP_LANGUAGES = Object.freeze(['ja', 'vi']);
+export const SUPPORTED_APP_LANGUAGES = Object.freeze(['en', 'ja', 'vi']);
 export const SUPPORTED_THEMES = Object.freeze(['light', 'dark']);
 export const SUPPORTED_TARGET_LANGUAGES = POLICY_TARGET_LANGUAGES;
 export const CONVERSATION_MODES = Object.freeze({
@@ -27,10 +27,10 @@ const PLAYBACK_RATES = Object.freeze(
   Array.from({length: 11}, (_, index) => Number((0.5 + index * 0.1).toFixed(1)))
 );
 
-export function normalizeAppLanguage(value, fallback = 'ja') {
+export function normalizeAppLanguage(value, fallback = 'en') {
   const normalized = String(value || '').trim().toLowerCase();
   if (SUPPORTED_APP_LANGUAGES.includes(normalized)) return normalized;
-  return SUPPORTED_APP_LANGUAGES.includes(fallback) ? fallback : 'ja';
+  return SUPPORTED_APP_LANGUAGES.includes(fallback) ? fallback : 'en';
 }
 
 export function normalizeTargetLanguage(value, fallback = TARGET_LANGUAGE) {
@@ -46,7 +46,7 @@ export function detectDefaultAppLanguage(browserLanguages = '') {
     const primary = String(value || '').trim().toLowerCase().split(/[-_]/, 1)[0];
     if (SUPPORTED_APP_LANGUAGES.includes(primary)) return primary;
   }
-  return 'ja';
+  return 'en';
 }
 
 export function normalizeTheme(value, fallback = 'light') {

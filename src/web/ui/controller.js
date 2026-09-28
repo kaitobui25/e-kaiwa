@@ -15,6 +15,67 @@ import {UiOverlayController} from './overlay.js';
 const AUTO_SCROLL_THRESHOLD_PX = 180;
 
 const COPY = Object.freeze({
+  en: {
+    conversationHistory: 'Conversation history',
+    conversationControls: 'Conversation controls',
+    currentPreferences: 'Current conversation preferences',
+    closeOverlay: 'Close overlay',
+    details: 'Details',
+    back: 'Back',
+    updateHold: 'Hold for 5 seconds to update E-KAIWA',
+    updateAction: 'Update',
+    appTagline: 'Speak more. Learn naturally.',
+    settings: 'Settings',
+    close: 'Close',
+    language: 'Language',
+    targetLanguage: 'Target language',
+    targetLanguageDescription: 'Language to practice; changing it starts a new Live session.',
+    theme: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
+    talkMode: 'Talk',
+    speed: 'AI response speed',
+    pronunciation: 'Pronunciation scoring',
+    start: 'Start talking',
+    stop: 'Stop conversation',
+    holdToTalk: 'Hold to talk',
+    releaseToSend: 'Release to send',
+    waiting: 'Waiting for AI…',
+    reconnect: 'Reconnect',
+    connecting: 'Connecting…',
+    loading: 'Loading settings…',
+    ready: 'Ready',
+    listening: 'Listening… speak naturally',
+    aiSpeaking: 'AI is speaking…',
+    stopped: 'Conversation stopped',
+    noConversation: 'Press the mic to start a conversation.',
+    you: 'You',
+    ai: 'AI',
+    coach: 'Pronunciation & expression feedback',
+    correction: 'More natural expression',
+    replayMine: 'Listen to my voice',
+    playCorrect: 'Listen to the corrected sentence',
+    problem: 'Word to review',
+    coachRunning: 'Coach is analyzing…',
+    score: 'Overall score',
+    playbackUnavailable: 'Could not play audio.',
+    appLanguageEn: 'English',
+    appLanguageJa: '日本語',
+    appLanguageVi: 'Tiếng Việt',
+    accuracy: 'Accuracy',
+    fluency: 'Fluency',
+    intonation: 'Intonation',
+    pronunciationDetails: 'Pronunciation details',
+    problemWords: 'Words to review',
+    naturalExpression: 'More natural expression',
+    yourSpeech: 'What you said',
+    naturalExample: 'More natural expression',
+    onePoint: 'Quick tip',
+    wordPractice: 'Word pronunciation practice',
+    heardLike: 'Heard like',
+    focusHere: 'Focus here',
+    replayHint: 'Replay your voice to check pronunciation and rhythm more objectively.'
+  },
   ja: {
     conversationHistory: '会話履歴',
     conversationControls: '会話コントロール',
@@ -59,6 +120,7 @@ const COPY = Object.freeze({
     coachRunning: 'コーチが分析中…',
     score: '総合スコア',
     playbackUnavailable: '音声を再生できませんでした。',
+    appLanguageEn: 'English',
     appLanguageJa: '日本語',
     appLanguageVi: 'Tiếng Việt',
     accuracy: '発音の正確さ',
@@ -119,6 +181,7 @@ const COPY = Object.freeze({
     coachRunning: 'Coach đang phân tích…',
     score: 'Điểm tổng',
     playbackUnavailable: 'Không thể phát âm thanh.',
+    appLanguageEn: 'English',
     appLanguageJa: '日本語',
     appLanguageVi: 'Tiếng Việt',
     accuracy: 'Độ chính xác',
@@ -174,7 +237,7 @@ export class UiController {
     this.mode = mode === 'public' ? 'public' : 'dev';
     this.elements = resolveUiElements(elements);
     this.onAction = onAction;
-    this.language = 'ja';
+    this.language = 'en';
     this.targetLanguage = TARGET_LANGUAGE;
     this.theme = 'light';
     this.playbackRate = 0.8;
@@ -256,7 +319,7 @@ export class UiController {
   }
 
   t(key) {
-    return COPY[this.language]?.[key] || COPY.ja[key] || key;
+    return COPY[this.language]?.[key] || COPY.en[key] || key;
   }
 
   applyMode(mode) {

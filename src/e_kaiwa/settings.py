@@ -21,7 +21,7 @@ from .model_policy import (
 
 ALLOWED_SILENCE_MS = (700, 1000, 1200, 1500)
 ALLOWED_PLAYBACK_RATES = tuple(round(0.5 + 0.1 * i, 1) for i in range(11))
-ALLOWED_SUPPORT_LANGUAGES = ("vi", "ja")
+ALLOWED_SUPPORT_LANGUAGES = ("en", "vi", "ja")
 ALLOWED_TEACHERS = tuple(mode.name for mode in TEACHER_MODES.values())
 DEFAULT_ECHO_GUARD_MS = 250
 MIN_ECHO_GUARD_MS = 0

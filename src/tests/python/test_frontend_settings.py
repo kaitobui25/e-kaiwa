@@ -57,6 +57,7 @@ class FrontendSettingsTests(unittest.TestCase):
         html = HTML.read_text(encoding="utf-8")
         prefs = PREFERENCES.read_text(encoding="utf-8")
         self.assertIn('id="feedback-language"', html)
+        self.assertIn('<option value="en">English</option>', html)
         self.assertIn('id="theme"', html)
         self.assertIn('id="target-language"', html)
         self.assertIn('<select id="target-language"></select>', html)

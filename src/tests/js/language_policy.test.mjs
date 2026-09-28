@@ -93,7 +93,9 @@ test('transcript concatenation keeps common punctuation and contraction boundari
 test('support language remains independent and live instruction is target-specific', () => {
   const instruction = policy.buildLiveLanguageInstruction('vi', 'ja');
   assert.equal(policy.selectedSupportLanguage('ja'), 'ja');
+  assert.equal(policy.selectedSupportLanguage('en'), 'en');
   assert.match(instruction, new RegExp(policy.LANGUAGE_POLICY_VERSION));
   assert.match(instruction, /Japanese conversation partner/);
   assert.match(instruction, /Vietnamese \(vi\)/);
+  assert.match(policy.buildLiveLanguageInstruction('en', 'ja'), /English \(en\)/);
 });
