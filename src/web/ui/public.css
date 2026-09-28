@@ -884,11 +884,11 @@ body[data-app-mode="public"] .setting-note {
 }
 
 body[data-app-mode="public"] .setting-control-row select {
-  width: auto;
+  width: 168px;
   min-width: 104px;
   min-height: 48px;
-  max-width: 58%;
-  flex: 0 1 auto;
+  max-width: 50%;
+  flex: 0 1 168px;
   padding: 9px 30px 9px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -896,7 +896,7 @@ body[data-app-mode="public"] .setting-control-row select {
   color: var(--text);
   font-size: 15px;
   line-height: 1.25;
-  text-align: right;
+  text-align: left;
 }
 
 body[data-app-mode="public"] .setting-control-row-primary select {
@@ -963,8 +963,9 @@ body[data-app-mode="public"] .settings-release .update-button {
   }
 
   body[data-app-mode="public"] .setting-control-row select {
-    width: auto;
-    flex-basis: auto;
+    width: 168px;
+    max-width: 50%;
+    flex-basis: 168px;
   }
 }
 
@@ -998,7 +999,7 @@ body[data-app-mode="public"] .settings-release .update-button {
   }
 
   body[data-app-mode="public"] .setting-control-row select {
-    max-width: 56%;
+    max-width: 50%;
   }
 }
 

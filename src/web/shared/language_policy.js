@@ -22,7 +22,7 @@ export const TARGET_LANGUAGE_ALIASES = Object.freeze({
 export const TARGET_LANGUAGE_METADATA = Object.freeze({
   en: Object.freeze({name: 'English', speechLocale: 'en-US'}),
   ja: Object.freeze({name: 'Japanese', speechLocale: 'ja-JP'}),
-  'zh-Hans': Object.freeze({name: 'Mandarin Chinese (Simplified)', speechLocale: 'zh-CN'})
+  'zh-Hans': Object.freeze({name: 'Chinese', speechLocale: 'zh-CN'})
 });
 export const SUPPORTED_TARGET_LANGUAGES = Object.freeze(Object.keys(TARGET_LANGUAGE_METADATA));
 const TARGET_LANGUAGES = new Set(SUPPORTED_TARGET_LANGUAGES);
