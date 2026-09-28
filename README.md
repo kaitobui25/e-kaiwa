@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.27`**  
+**Current version: `0.28`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -27,9 +27,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.10 realtime / network / UI / updater stability
 0.11 iPhone / Chrome microphone lifecycle fix
 0.27 feature-based frontend folders + recursive updater JS syntax checks
+0.28 browser-language defaults + settings UI polish
 ```
 
-Future incremental releases continue as `0.28`, `0.29`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.29`, `0.30`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 

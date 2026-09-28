@@ -23,10 +23,12 @@ function memoryStorage() {
   };
 }
 
-test('public language defaults to Japanese except Vietnamese browser locale', () => {
+test('public language follows the first supported browser locale', () => {
   assert.equal(detectDefaultAppLanguage('ja-JP'), 'ja');
   assert.equal(detectDefaultAppLanguage('en-US'), 'ja');
   assert.equal(detectDefaultAppLanguage('vi-VN'), 'vi');
+  assert.equal(detectDefaultAppLanguage(['en-US', 'vi-VN', 'ja-JP']), 'vi');
+  assert.equal(detectDefaultAppLanguage(['en-US', 'ja-JP']), 'ja');
   assert.equal(normalizeAppLanguage('zh', 'ja'), 'ja');
 });
 
@@ -35,6 +37,21 @@ test('server defaults cannot override browser-owned app language', () => {
   const store = new PreferencesStore({storage, browserLanguage: 'ja-JP'});
   const value = store.load({appLanguage: 'vi'});
   assert.equal(value.appLanguage, 'ja');
+});
+
+test('first browser language choice is persisted for later visits', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({
+    storage,
+    browserLanguages: ['en-US', 'vi-VN']
+  });
+  assert.equal(first.load().appLanguage, 'vi');
+
+  const second = new PreferencesStore({
+    storage,
+    browserLanguages: ['ja-JP']
+  });
+  assert.equal(second.load().appLanguage, 'vi');
 });
 
 test('theme and playback rate normalization fail closed to supported values', () => {

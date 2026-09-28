@@ -389,6 +389,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     state.preferences = new PreferencesStore({
       storage: state.appMode === 'public' ? window.localStorage : null,
       browserLanguage: navigator.language,
+      browserLanguages: navigator.languages,
       prefersDark: window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false
     });
 

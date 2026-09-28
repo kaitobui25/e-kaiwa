@@ -40,8 +40,13 @@ export function normalizeTargetLanguage(value, fallback = TARGET_LANGUAGE) {
   return SUPPORTED_TARGET_LANGUAGES.includes(fallback) ? fallback : TARGET_LANGUAGE;
 }
 
-export function detectDefaultAppLanguage(browserLanguage = '') {
-  return String(browserLanguage || '').toLowerCase().startsWith('vi') ? 'vi' : 'ja';
+export function detectDefaultAppLanguage(browserLanguages = '') {
+  const values = Array.isArray(browserLanguages) ? browserLanguages : [browserLanguages];
+  for (const value of values) {
+    const primary = String(value || '').trim().toLowerCase().split(/[-_]/, 1)[0];
+    if (SUPPORTED_APP_LANGUAGES.includes(primary)) return primary;
+  }
+  return 'ja';
 }
 
 export function normalizeTheme(value, fallback = 'light') {
@@ -81,12 +86,15 @@ export function targetSpeechLocale(targetLanguage = TARGET_LANGUAGE) {
 }
 
 export class PreferencesStore {
-  constructor({storage = null, browserLanguage = '', prefersDark = false} = {}) {
+  constructor({storage = null, browserLanguage = '', browserLanguages = null, prefersDark = false} = {}) {
     this.storage = storage;
     this.browserLanguage = browserLanguage;
+    this.browserLanguages = Array.isArray(browserLanguages) && browserLanguages.length
+      ? browserLanguages
+      : [browserLanguage];
     this.prefersDark = Boolean(prefersDark);
     this.value = {
-      appLanguage: detectDefaultAppLanguage(browserLanguage),
+      appLanguage: detectDefaultAppLanguage(this.browserLanguages),
       theme: this.prefersDark ? 'dark' : 'light',
       playbackRate: 0.8,
       pronunciationEnabled: true,
@@ -112,7 +120,7 @@ export class PreferencesStore {
   load(defaults = {}) {
     // App language and conversation mode are learner/browser preferences,
     // never server-global settings.
-    const defaultLanguage = detectDefaultAppLanguage(this.browserLanguage);
+    const defaultLanguage = detectDefaultAppLanguage(this.browserLanguages);
     const defaultTheme = normalizeTheme(defaults.theme, this.prefersDark ? 'dark' : 'light');
     const defaultRate = normalizePlaybackRate(defaults.playbackRate, 0.8);
     const defaultPronunciation = normalizePronunciationEnabled(defaults.pronunciationEnabled, true);
@@ -121,8 +129,12 @@ export class PreferencesStore {
       CONVERSATION_MODES.PUSH_TO_TALK
     );
 
+    const storedAppLanguage = this._read(STORAGE_KEYS.appLanguage);
+    const appLanguage = normalizeAppLanguage(storedAppLanguage, defaultLanguage);
+    if (storedAppLanguage == null) this._write(STORAGE_KEYS.appLanguage, appLanguage);
+
     this.value = {
-      appLanguage: normalizeAppLanguage(this._read(STORAGE_KEYS.appLanguage), defaultLanguage),
+      appLanguage,
       theme: normalizeTheme(this._read(STORAGE_KEYS.theme), defaultTheme),
       playbackRate: normalizePlaybackRate(this._read(STORAGE_KEYS.playbackRate), defaultRate),
       pronunciationEnabled: normalizePronunciationEnabled(
