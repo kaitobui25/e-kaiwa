@@ -52,6 +52,7 @@
         <span id="quick-speed">0.8×</span>
       </span>
     </div>
+    <div class="dock-swipe-hint public-only" data-i18n="silentSwipeLeft">Swipe left for Silent Coach ←</div>
     <div class="dev-diagnostics">
       <div class="setup-state">
         <span id="setup-dot" class="setup-dot" aria-hidden="true"></span>
@@ -60,6 +61,27 @@
       <div id="metric"></div>
     </div>
   </section>
+
+  <section id="silent-panel" class="silent-panel public-only" aria-labelledby="silent-heading" hidden>
+    <span class="silent-eyebrow" data-i18n="silentPrivate">Quiet practice session</span>
+    <h2 id="silent-heading" data-i18n="silentCoach">Silent Coach</h2>
+    <p class="silent-description" data-i18n="silentDescription">Speak naturally. Your feedback is held until you stop and review.</p>
+    <div id="silent-report" class="silent-report" aria-live="polite" aria-label="Session review" data-i18n-aria-label="silentReportTitle" hidden></div>
+  </section>
+
+  <section id="silent-dock" class="silent-dock public-only" aria-label="Silent Coach controls" data-i18n-aria-label="silentControls" hidden>
+    <p id="silent-status" class="silent-status" role="status" aria-live="polite" data-i18n="silentReady">Ready to listen</p>
+    <progress id="silent-progress" class="silent-progress" max="100" aria-label="Review progress" data-i18n-aria-label="silentProgress" hidden></progress>
+    <span id="silent-progress-label" class="silent-progress-label" hidden></span>
+    <button id="silent-start" class="silent-action silent-action--start" type="button" data-i18n="silentStart">Start Listening</button>
+    <button id="silent-stop" class="silent-action silent-action--stop" type="button" data-i18n="silentStop" hidden>Stop &amp; Review</button>
+    <p id="silent-return-hint" class="dock-swipe-hint" data-i18n="silentSwipeRight">Swipe right to return to Talk →</p>
+  </section>
+
+  <nav id="experience-switch" class="experience-switch public-only" aria-label="Learning mode" data-i18n-aria-label="silentModeSwitch">
+    <button id="mode-talk" class="experience-option" type="button" aria-pressed="true" aria-controls="conversation" data-i18n="silentTalkMode">Talk</button>
+    <button id="mode-silent" class="experience-option" type="button" aria-pressed="false" aria-controls="silent-panel" data-i18n="silentCoach">Silent Coach</button>
+  </nav>
 
   <div id="overlay-root" class="overlay-root" hidden aria-hidden="true">
     <button id="overlay-backdrop" class="overlay-backdrop" type="button" aria-label="Close overlay" data-i18n-aria-label="closeOverlay"></button>

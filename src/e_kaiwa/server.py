@@ -24,7 +24,9 @@ from .config import (
 )
 from .gemini import create_ephemeral_token
 from .languages import normalize_target_language, supported_target_languages
+from .model_policy import rotate_keys
 from .sessions import SessionStore
+from .silent_transcribe import MODEL as SILENT_MODEL, transcribe_chunk
 from .settings import ALLOWED_SUPPORT_LANGUAGES, SettingsStore
 
 
@@ -209,10 +211,15 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/live/audio.js": (WEB_DIR / "live/audio.js", "text/javascript; charset=utf-8"),
                 "/live/idle.js": (WEB_DIR / "live/idle.js", "text/javascript; charset=utf-8"),
                 "/live/recovery.js": (WEB_DIR / "live/recovery.js", "text/javascript; charset=utf-8"),
+                "/live/silent_coach.js": (WEB_DIR / "live/silent_coach.js", "text/javascript; charset=utf-8"),
+                "/live/silent_segmenter.js": (WEB_DIR / "live/silent_segmenter.js", "text/javascript; charset=utf-8"),
+                "/live/silent_audio_store.js": (WEB_DIR / "live/silent_audio_store.js", "text/javascript; charset=utf-8"),
                 "/ui/controller.js": (WEB_DIR / "ui/controller.js", "text/javascript; charset=utf-8"),
                 "/ui/render.js": (WEB_DIR / "ui/render.js", "text/javascript; charset=utf-8"),
                 "/ui/overlay.js": (WEB_DIR / "ui/overlay.js", "text/javascript; charset=utf-8"),
                 "/ui/icons.js": (WEB_DIR / "ui/icons.js", "text/javascript; charset=utf-8"),
+                "/ui/silent_view.js": (WEB_DIR / "ui/silent_view.js", "text/javascript; charset=utf-8"),
+                "/ui/swipe.js": (WEB_DIR / "ui/swipe.js", "text/javascript; charset=utf-8"),
                 "/ui/base.css": (WEB_DIR / "ui/base.css", "text/css; charset=utf-8"),
                 "/ui/public.css": (WEB_DIR / "ui/public.css", "text/css; charset=utf-8"),
                 "/shared/language_policy.js": (WEB_DIR / "shared/language_policy.js", "text/javascript; charset=utf-8"),
@@ -291,10 +298,44 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                     self.send_json(502, {"error": "could not create live session" if runtime.access.is_public else str(exc)})
                 return
 
+            if path == "/api/silent/session":
+                if not self.allow_public_request("session"):
+                    return
+                try:
+                    token = None
+                    for _slot, key in rotate_keys(runtime.keys, 1):
+                        try:
+                            token = create_ephemeral_token(key)
+                            break
+                        except Exception:
+                            continue
+                    if not token:
+                        raise RuntimeError("no key available for transcription")
+                    session_id, _ = runtime.sessions.create(mode="silent", model=SILENT_MODEL)
+                    self.send_json(200, {
+                        "token": token,
+                        "session_id": session_id,
+                        "model": "gemini-3.5-transcribe-live",
+                    })
+                except Exception:
+                    self.send_json(502, {"error": "could not create transcription session"})
+                return
+
             self.send_error(404)
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
+
+            if path == "/api/silent/transcribe":
+                if not self.allow_public_request("coach"):
+                    return
+                try:
+                    self.send_json(200, transcribe_chunk(runtime.keys, runtime.sessions, self.read_json()))
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    self.send_json(502, {"error": "audio transcription unavailable"})
+                return
 
             if path == "/api/settings":
                 if runtime.access.is_public:
@@ -313,10 +354,11 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 if not self.allow_public_request("coach"):
                     return
                 try:
+                    payload = self.read_json()
                     result = runtime.coach.run_turn(
-                        self.read_json(),
+                        payload,
                         allow_client_preferences=runtime.access.is_public,
-                        temporary_audio=runtime.access.is_public,
+                        temporary_audio=runtime.access.is_public or payload.get("silent_private") is True,
                     )
                     self.send_json(200, result)
                 except Exception as exc:

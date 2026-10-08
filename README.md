@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.30`**
+**Current version: `0.31`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -30,9 +30,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.28 browser-language defaults + settings UI polish
 0.29 English UI + browser-language matching
 0.30 conversation style selector (Default / Natural 1) + fresh Live session on change
+0.31 Silent Coach: continuous SMART transcription, deferred feedback, audio fallback and swipe navigation
 ```
 
-Future incremental releases continue as `0.31`, `0.32`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.32`, `0.33`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 
@@ -89,6 +90,20 @@ Normal PTT release, language changes, network recovery, and Gemini reconnects pa
 **Conversation style — Settings**
 
 `Default` keeps the existing Gemini Live prompt. `Natural 1` adds guidance for relaxed dialogue with fewer routine follow-up questions. The selection is saved in the browser; switching styles clears the displayed chat and starts a fresh Gemini Live session.
+
+**Silent Coach — public UI**
+
+Swipe left on the empty area of the Hold-to-Talk dock (or tap **Silent Coach**) to switch modes. Tap **Start Listening** to capture speech continuously without Gemini speaking back. The browser streams PCM to `gemini-3.5-transcribe-live` with SMART transcription, stores short audio segments temporarily, and sends finalized utterances to the existing Coach in a bounded queue. **Stop & Review** completes outstanding analyses and reveals one report with suggested corrections, pronunciation notes, and explicit partial failures. Swipe right or tap **Talk** to return; switching back is blocked during capture/review.
+
+If a Live transcript is missing or the Live stream fails, captured audio can be transcribed through the server's `gemini-3.5-transcribe` SMART fallback. Audio segments are held temporarily in IndexedDB and removed after processing; Silent Coach audio and Coach results are not written to the persistent conversation JSONL log. SMART may normalize fillers and false starts, so its text should not be treated as verbatim proof of spoken grammar errors. A basic energy-based segmenter cannot guarantee perfect audio-to-transcript alignment or detect very quiet speech.
+
+Offline emulated end-to-end tests (mock micro PCM, Gemini Live WebSocket, Coach, fallback and local HTTP server):
+
+```bat
+src\tests\run_silent_emulator.bat
+```
+
+This suite does not replace real Gemini account integration or a microphone test on iOS/Android. The live transcription service may impose short session duration and usage limits.
 
 ## Multilingual engine
 

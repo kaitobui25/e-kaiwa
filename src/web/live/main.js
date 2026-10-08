@@ -29,6 +29,7 @@ import {
 import {UiController} from '../ui/controller.js';
 import {LiveRecoveryCoordinator} from './recovery.js';
 import {LiveIdleCoordinator} from './idle.js';
+import {SilentCoachEngine} from './silent_coach.js';
 import {hasPlayableReplay} from '../shared/replay_policy.js';
 
 (() => {
@@ -111,7 +112,9 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     playback: null,
     preferences: null,
     recovery: null,
-    idle: null
+    idle: null,
+    silentCoach: null,
+    practiceView: 'talk'
   };
 
   state.recovery = new LiveRecoveryCoordinator({
@@ -405,6 +408,16 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     });
     state.ui.setConversationMode(state.conversationMode);
 
+    state.silentCoach = new SilentCoachEngine({
+      targetLanguage: () => state.selectedTargetLanguage,
+      feedbackLanguage: () => elements.feedbackLanguage.value,
+      pronunciationEnabled: () => elements.pron.checked,
+      teacher: () => elements.teacher.value,
+      onChange: ({state: phase, status, progress, report}) => {
+        state.ui?.setSilentState?.(phase, {status, progress, report});
+      }
+    });
+
     state.playback = new PlaybackCoordinator({
       getEchoGuardMs: () => state.echoGuardMs,
       onBlockedChange: (blocked, reason) => {
@@ -608,6 +621,11 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
         state.micSource = state.inputCtx.createMediaStreamSource(stream);
         state.processor = state.inputCtx.createScriptProcessor(4096, 1, 1);
         state.processor.onaudioprocess = event => {
+          if (state.silentCoach?.isRecording) {
+            const mono = event.inputBuffer.getChannelData(0);
+            state.silentCoach.feedPcm(floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000)));
+            return;
+          }
           if (!state.inputForwarding || state.ws?.readyState !== WebSocket.OPEN || !state.activeTurn) return;
           const mono = event.inputBuffer.getChannelData(0);
           const pcm = floatToPcm16(downsample(mono, state.inputCtx.sampleRate, 16000));
@@ -1051,6 +1069,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   }
 
   async function newLiveSession({fallback = false, resume = false, reason = 'initial'} = {}) {
+    if (state.practiceView !== 'talk') return;
     if (state.connecting) return;
     if (!state.browserOnline) throw new Error('Browser is offline');
     state.idle?.cancel();
@@ -1076,6 +1095,10 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
 
     const response = await fetch(`/api/session${fallback ? '?fallback=1' : ''}`, {cache: 'no-store'});
     const data = await readJsonResponse(response);
+    if (state.practiceView !== 'talk') {
+      state.connecting = false;
+      return;
+    }
     if (!response.ok) {
       state.connecting = false;
       emitUiEvent({
@@ -1319,7 +1342,49 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     replayProgressFrame = globalThis.requestAnimationFrame?.(tick) || 0;
   }
 
+  async function switchPracticeView(view) {
+    if (state.appMode !== 'public' || !['silent', 'talk'].includes(view) || state.practiceView === view) return;
+    if (state.silentCoach?.isRecording || state.silentCoach?.state === 'reviewing') return;
+    if (view === 'silent') {
+      state.idle?.cancel();
+      cancelPushReconnectIntent();
+      endInputBeforeModeChange();
+      state.recovery.clearHandle();
+      state.ws?.close();
+      state.ws = null;
+      state.setupReady = false;
+      state.connecting = false;
+      state.ui.setSetupReady(false);
+    } else {
+      state.silentCoach.cancel();
+      newLiveSession({reason: 'silent_mode_exit'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+    }
+    state.practiceView = view;
+    state.ui.setExperienceMode(view);
+  }
+
   async function handleUiAction(action, detail) {
+    if (action === 'silent-mode-change') {
+      await switchPracticeView(detail.mode);
+      return;
+    }
+    if (action === 'silent-start') {
+      try {
+        if (state.practiceView !== 'silent' || state.silentCoach.isRecording) return;
+        if (!await ensureMicReady()) throw new Error('Microphone unavailable');
+        await state.silentCoach.start();
+      } catch (error) {
+        state.ui?.setSilentState?.('error', {status: error.message});
+      }
+      return;
+    }
+    if (action === 'silent-stop') {
+      if (state.practiceView !== 'silent') return;
+      pauseMicCapture();
+      try { await state.silentCoach.stop(); }
+      catch (error) { state.silentCoach.fail(error); }
+      return;
+    }
     state.idle?.cancel();
     if (handsFree() || state.pushToTalkPressed || state.pushActivityOpen || state.activeTurn) {
       state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
@@ -1567,6 +1632,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   window.addEventListener('keydown', noteUserActivity, {capture: true});
 
   window.addEventListener('beforeunload', () => {
+    state.silentCoach?.cancel();
     state.inputForwarding = false;
     state.recovery.clearTimers();
     state.idle?.dispose();

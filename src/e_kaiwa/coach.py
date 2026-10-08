@@ -342,41 +342,42 @@ class CoachService:
 
             pron_value = pronunciation_result.value if pronunciation_enabled else None
 
-            self.sessions.log(
-                session_dir,
-                "coach",
-                turn=turn_no,
-                user_audio=(None if temporary_audio else user_wav.name),
-                user_text=transcript,
-                teacher=teacher.name,
-                feedback_language=normalized_language,
-                target_language=target_language.code,
-                coach_model_mode=coach_mode,
-                coach_requested_model=requested_model,
-                correction=correction_text,
-                explanation=explanation,
-                correction_effective_model=correction_result.model,
-                correction_key_slot=correction_result.key_slot,
-                correction_llm={
-                    "model": correction_result.model,
-                    "key_slot": correction_result.key_slot,
-                    "latency_s": round(correction_result.latency_s, 3),
-                    "attempts": correction_result.attempts,
-                    "error": correction_result.error,
-                },
-                pronunciation_effective_model=pronunciation_result.model,
-                pronunciation_key_slot=pronunciation_result.key_slot,
-                pronunciation={
-                    "enabled": pronunciation_enabled,
-                    "model": pronunciation_result.model,
-                    "key_slot": pronunciation_result.key_slot,
-                    "latency_s": round(pronunciation_result.latency_s, 3),
-                    "attempts": pronunciation_result.attempts,
-                    "error": pronunciation_result.error,
-                    "result": pron_value,
-                },
-                coach_wall_s=round(coach_wall, 3),
-            )
+            if not (temporary_audio and payload.get("silent_private") is True):
+                self.sessions.log(
+                    session_dir,
+                    "coach",
+                    turn=turn_no,
+                    user_audio=(None if temporary_audio else user_wav.name),
+                    user_text=transcript,
+                    teacher=teacher.name,
+                    feedback_language=normalized_language,
+                    target_language=target_language.code,
+                    coach_model_mode=coach_mode,
+                    coach_requested_model=requested_model,
+                    correction=correction_text,
+                    explanation=explanation,
+                    correction_effective_model=correction_result.model,
+                    correction_key_slot=correction_result.key_slot,
+                    correction_llm={
+                        "model": correction_result.model,
+                        "key_slot": correction_result.key_slot,
+                        "latency_s": round(correction_result.latency_s, 3),
+                        "attempts": correction_result.attempts,
+                        "error": correction_result.error,
+                    },
+                    pronunciation_effective_model=pronunciation_result.model,
+                    pronunciation_key_slot=pronunciation_result.key_slot,
+                    pronunciation={
+                        "enabled": pronunciation_enabled,
+                        "model": pronunciation_result.model,
+                        "key_slot": pronunciation_result.key_slot,
+                        "latency_s": round(pronunciation_result.latency_s, 3),
+                        "attempts": pronunciation_result.attempts,
+                        "error": pronunciation_result.error,
+                        "result": pron_value,
+                    },
+                    coach_wall_s=round(coach_wall, 3),
+                )
 
             return {
                 "correction": correction_text,
@@ -393,3 +394,8 @@ class CoachService:
         finally:
             if temporary_audio:
                 user_wav.unlink(missing_ok=True)
+                if payload.get("silent_private") is True:
+                    try:
+                        session_dir.rmdir()  # Only remove the empty temporary directory.
+                    except OSError:
+                        pass

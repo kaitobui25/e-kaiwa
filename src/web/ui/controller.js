@@ -11,6 +11,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
 import {icon} from './icons.js';
 import {devTurnHtml, escapeHtml, publicTurnHtml} from './render.js';
 import {UiOverlayController} from './overlay.js';
+import {SilentView} from './silent_view.js';
 
 const AUTO_SCROLL_THRESHOLD_PX = 180;
 
@@ -78,7 +79,44 @@ const COPY = Object.freeze({
     wordPractice: 'Word pronunciation practice',
     heardLike: 'Heard like',
     focusHere: 'Focus here',
-    replayHint: 'Replay your voice to check pronunciation and rhythm more objectively.'
+    replayHint: 'Replay your voice to check pronunciation and rhythm more objectively.',
+    silentCoach: 'Silent Coach',
+    silentTalkMode: 'Talk',
+    silentModeSwitch: 'Learning mode',
+    silentPrivate: 'Quiet practice session',
+    silentDescription: 'Speak naturally. Feedback appears only after you stop and review.',
+    silentControls: 'Silent Coach controls',
+    silentStart: 'Start Listening',
+    silentStop: 'Stop & Review',
+    silentReady: 'Ready to listen',
+    silentListening: 'Listening… no feedback during recording',
+    silentFallback: 'Listening with audio-only backup…',
+    silentReviewing: 'Preparing your review…',
+    silentComplete: 'Your review is ready',
+    silentError: 'Review unavailable. Try again.',
+    silentSwipeLeft: 'Swipe left for Silent Coach ←',
+    silentSwipeRight: 'Swipe right to return to Talk →',
+    silentProgress: 'Review progress',
+    silentReportTitle: 'Session review',
+    silentReportSummary: 'Summary',
+    silentSegment: 'Segment',
+    silentTotal: 'Total',
+    silentReviewed: 'Reviewed',
+    silentFailed: 'Unavailable',
+    silentYourSpeech: 'What you said',
+    silentCorrection: 'Suggested expression',
+    silentExplanation: 'Explanation',
+    silentPronunciation: 'Pronunciation',
+    silentScore: 'Score',
+    silentUnavailable: 'Feedback was unavailable for this segment.',
+    silentNoFeedback: 'No feedback was returned.',
+    silentStrengths: 'Strengths',
+    silentImprovements: 'Areas to improve',
+    silentSuggestions: 'Suggestions',
+    silentCorrected: 'Needs improvement',
+    silentAnalyzedCount: 'Analyzed: {done} / {total}',
+    silentFinishToSwitch: 'Stop & Review before returning to Talk',
+    silentReviewNote: 'About this review'
   },
   ja: {
     conversationHistory: '会話履歴',
@@ -143,7 +181,44 @@ const COPY = Object.freeze({
     wordPractice: '単語の発音練習',
     heardLike: '聞こえ方',
     focusHere: 'ここを意識しよう',
-    replayHint: '自分の声を聞き返すことで、発音やリズムを客観的に確認できます。'
+    replayHint: '自分の声を聞き返すことで、発音やリズムを客観的に確認できます。',
+    silentCoach: 'サイレントコーチ',
+    silentTalkMode: '会話',
+    silentModeSwitch: '学習モード',
+    silentPrivate: '静かなリスニング練習',
+    silentDescription: '自然に話してください。フィードバックは停止後の確認時にのみ表示されます。',
+    silentControls: 'サイレントコーチの操作',
+    silentStart: '聞き取り開始',
+    silentStop: '停止して振り返る',
+    silentReady: '開始できます',
+    silentListening: '聞き取り中…録音中はフィードバックを表示しません',
+    silentFallback: '音声のみの予備モードで聞き取り中…',
+    silentReviewing: '振り返りを準備中…',
+    silentComplete: '振り返りの準備ができました',
+    silentError: '分析できませんでした。もう一度お試しください。',
+    silentSwipeLeft: '左にスワイプしてサイレントコーチへ ←',
+    silentSwipeRight: '右にスワイプして会話に戻る →',
+    silentProgress: '分析の進捗',
+    silentReportTitle: '練習の振り返り',
+    silentReportSummary: 'まとめ',
+    silentSegment: '発話',
+    silentTotal: '合計',
+    silentReviewed: '分析済み',
+    silentFailed: '分析不可',
+    silentYourSpeech: 'あなたの発話',
+    silentCorrection: '改善例',
+    silentExplanation: '説明',
+    silentPronunciation: '発音',
+    silentScore: 'スコア',
+    silentUnavailable: 'この発話は分析できませんでした。',
+    silentNoFeedback: 'フィードバックはありません。',
+    silentStrengths: '良かった点',
+    silentImprovements: '改善点',
+    silentSuggestions: 'アドバイス',
+    silentCorrected: '改善対象',
+    silentAnalyzedCount: '分析済み: {done} / {total}',
+    silentFinishToSwitch: '会話に戻るには「停止して振り返る」を押してください',
+    silentReviewNote: '分析について'
   },
   vi: {
     conversationHistory: 'Lịch sử hội thoại',
@@ -208,7 +283,44 @@ const COPY = Object.freeze({
     wordPractice: 'Luyện phát âm từ',
     heardLike: 'Nghe gần giống',
     focusHere: 'Điểm cần chú ý',
-    replayHint: 'Nghe lại giọng của bạn giúp kiểm tra phát âm và nhịp điệu khách quan hơn.'
+    replayHint: 'Nghe lại giọng của bạn giúp kiểm tra phát âm và nhịp điệu khách quan hơn.',
+    silentCoach: 'Silent Coach',
+    silentTalkMode: 'Hội thoại',
+    silentModeSwitch: 'Chế độ luyện tập',
+    silentPrivate: 'Buổi luyện nghe yên tĩnh',
+    silentDescription: 'Cứ nói tự nhiên. Phản hồi chỉ xuất hiện sau khi dừng và xem lại.',
+    silentControls: 'Điều khiển Silent Coach',
+    silentStart: 'Bắt đầu nghe',
+    silentStop: 'Dừng & Xem lại',
+    silentReady: 'Sẵn sàng lắng nghe',
+    silentListening: 'Đang nghe… không hiển thị phản hồi khi thu âm',
+    silentFallback: 'Đang nghe bằng chế độ âm thanh dự phòng…',
+    silentReviewing: 'Đang chuẩn bị bản đánh giá…',
+    silentComplete: 'Bản đánh giá đã sẵn sàng',
+    silentError: 'Không thể đánh giá. Vui lòng thử lại.',
+    silentSwipeLeft: 'Vuốt sang trái để mở Silent Coach ←',
+    silentSwipeRight: 'Vuốt sang phải để về Hội thoại →',
+    silentProgress: 'Tiến độ đánh giá',
+    silentReportTitle: 'Đánh giá buổi luyện tập',
+    silentReportSummary: 'Tóm tắt',
+    silentSegment: 'Đoạn',
+    silentTotal: 'Tổng',
+    silentReviewed: 'Đã đánh giá',
+    silentFailed: 'Không thể đánh giá',
+    silentYourSpeech: 'Bạn đã nói',
+    silentCorrection: 'Cách diễn đạt gợi ý',
+    silentExplanation: 'Giải thích',
+    silentPronunciation: 'Phát âm',
+    silentScore: 'Điểm',
+    silentUnavailable: 'Không có phản hồi cho đoạn này.',
+    silentNoFeedback: 'Không nhận được phản hồi.',
+    silentStrengths: 'Điểm tốt',
+    silentImprovements: 'Điểm cần cải thiện',
+    silentSuggestions: 'Gợi ý',
+    silentCorrected: 'Cần cải thiện',
+    silentAnalyzedCount: 'Đã phân tích: {done} / {total}',
+    silentFinishToSwitch: 'Dừng & Xem lại trước khi quay về Hội thoại',
+    silentReviewNote: 'Lưu ý về bản đánh giá'
   }
 });
 
@@ -240,7 +352,21 @@ function resolveUiElements(elements) {
     overlaySurface: elements.overlaySurface || document.getElementById('overlay-surface'),
     overlayDynamic: elements.overlayDynamic || document.getElementById('overlay-dynamic'),
     quickLanguage: elements.quickLanguage || document.getElementById('quick-language'),
-    quickSpeed: elements.quickSpeed || document.getElementById('quick-speed')
+    quickSpeed: elements.quickSpeed || document.getElementById('quick-speed'),
+    conversationCard: elements.conversationCard || document.querySelector?.('.conversation-card'),
+    controlDock: elements.controlDock || document.querySelector?.('.control-dock'),
+    silentPanel: elements.silentPanel || document.getElementById('silent-panel'),
+    silentDock: elements.silentDock || document.getElementById('silent-dock'),
+    silentStart: elements.silentStart || document.getElementById('silent-start'),
+    silentStop: elements.silentStop || document.getElementById('silent-stop'),
+    silentStatus: elements.silentStatus || document.getElementById('silent-status'),
+    silentProgress: elements.silentProgress || document.getElementById('silent-progress'),
+    silentProgressLabel: elements.silentProgressLabel || document.getElementById('silent-progress-label'),
+    silentReturnHint: elements.silentReturnHint || document.getElementById('silent-return-hint'),
+    silentReport: elements.silentReport || document.getElementById('silent-report'),
+    modeTalk: elements.modeTalk || document.getElementById('mode-talk'),
+    modeSilent: elements.modeSilent || document.getElementById('mode-silent'),
+    experienceSwitch: elements.experienceSwitch || document.getElementById('experience-switch')
   };
 }
 
@@ -276,6 +402,11 @@ export class UiController {
       translate: key => this.t(key),
       audioActionsAllowed: () => this.replayEnabled && !isHandsFreeMode(this.conversationMode),
       onAudioAction: (action, detail) => this.onAction(action, detail)
+    });
+    this.silentView = new SilentView({
+      elements: this.elements,
+      translate: key => this.t(key),
+      onAction: (action, detail) => this.onAction(action, detail)
     });
 
     this._bindConversation();
@@ -340,6 +471,15 @@ export class UiController {
     this.overlay.setMode(this.mode);
     if (this.elements.settingsPanel) this.elements.settingsPanel.hidden = this.mode === 'public';
     if (this.elements.settingsOpen) this.elements.settingsOpen.hidden = this.mode !== 'public';
+    if (this.mode !== 'public') this.silentView.setExperienceMode('talk');
+  }
+
+  setExperienceMode(mode) {
+    this.silentView.setExperienceMode(mode);
+  }
+
+  setSilentState(state, options = {}) {
+    this.silentView.setState(state, options);
   }
 
   setConversationMode(mode) {
@@ -380,6 +520,7 @@ export class UiController {
       }
     }
     if (this.lastStatus) this.setStatus(this.lastStatus, {error: this.lastStatusError});
+    this.silentView.refresh();
     this.overlay.refresh(this.turns);
   }
 
