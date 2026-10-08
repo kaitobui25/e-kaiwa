@@ -72,6 +72,19 @@ async function spokenUtterance(env) {
   await new Promise(resolve => setImmediate(resolve));
 }
 
+test('Gemini Live binary setupComplete is decoded before audio is sent', async () => {
+  const env = fakeEnvironment();
+  await env.engine.start();
+  await new Promise(resolve => setImmediate(resolve));
+  env.sockets[0].onopen();
+  env.sockets[0].onmessage({data: new Blob([JSON.stringify({setupComplete: {}})])});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.engine.ready, true);
+  env.engine.feedPcm(loud);
+  assert.ok(env.sockets[0].sent.some(item => item.realtimeInput?.audio?.data));
+  env.engine.cancel();
+});
+
 test('local VAD only emits speech segments and caps continuous speech', () => {
   const values = [];
   const detector = new SilentSegmenter(pcm => values.push(pcm), {maxMs: 1000});

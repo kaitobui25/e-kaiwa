@@ -55,6 +55,15 @@ def transcribe_chunk(keys: list[tuple[int, str]], sessions: SessionStore, payloa
                      error=error[:300] if status != 200 else "")
         if status == 200:
             text = extract_text(response).strip()
+            if not text:
+                candidates = response.get('candidates') or []
+                if candidates:
+                    parts = candidates[0].get('content', {}).get('parts', [])
+                    text = ''.join(
+                        part.get('audioTranscription', {}).get('text', '')
+                        for part in parts if isinstance(part, dict)
+                        and isinstance(part.get('audioTranscription'), dict)
+                    ).strip()
             if text:
                 sessions.log(record.directory, "silent_fallback_result", turn=turn, model=MODEL,
                              text=text[:4000], source="fallback")

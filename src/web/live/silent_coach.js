@@ -173,10 +173,15 @@ export class SilentCoachEngine {
           inputAudioTranscription: {mode: 'SMART', languageCodes: []}
         }}));
       };
-      socket.onmessage = event => {
+      socket.onmessage = async event => {
         if (this.socket !== socket) return;
         let message;
-        try { message = JSON.parse(event.data); }
+        try {
+          const raw = event.data instanceof Blob ? await event.data.text()
+            : event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data)
+            : event.data;
+          message = JSON.parse(raw);
+        }
         catch {
           this.logEvent('silent_ws_message_error', {connection, reason: 'invalid_json'});
           return;

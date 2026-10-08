@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.32`**
+**Current version: `0.33`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -32,9 +32,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.30 conversation style selector (Default / Natural 1) + fresh Live session on change
 0.31 Silent Coach: continuous SMART transcription, deferred feedback, audio fallback and swipe navigation
 0.32 Silent Coach session diagnostics: per-session JSONL logs for actions, transcripts, model/fallback attempts, Coach results and errors
+0.33 Fix Silent Coach Gemini Live binary WebSocket messages and SMART fallback audioTranscription parsing
 ```
 
-Future incremental releases continue as `0.33`, `0.34`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.34`, `0.35`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 

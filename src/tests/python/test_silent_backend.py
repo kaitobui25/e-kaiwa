@@ -77,6 +77,15 @@ class SilentTranscribeTests(unittest.TestCase):
             with self.subTest(payload=list(payload.keys())), self.assertRaises(ValueError):
                 transcribe_chunk([(1, "test-key")], self.sessions, payload)
 
+    def test_real_smart_response_uses_audio_transcription_part_not_text_part(self):
+        response = {"candidates": [{"content": {"parts": [
+            {"audioTranscription": {"text": "Hello, I am learning English."}}
+        ]}}]}
+        with patch("e_kaiwa.silent_transcribe.post_json", return_value=(200, response, 0.1, "")) as post:
+            result = transcribe_chunk([(1, "test-key")], self.sessions, request_audio(self.session_id))
+        self.assertEqual(result["text"], "Hello, I am learning English.")
+        self.assertEqual(post.call_count, 1)
+
     @contextmanager
     def running_server(self, *, public=False):
         runtime = SimpleNamespace(
