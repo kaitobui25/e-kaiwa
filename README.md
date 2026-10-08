@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.33`**
+**Current version: `0.34`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -32,10 +32,11 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.30 conversation style selector (Default / Natural 1) + fresh Live session on change
 0.31 Silent Coach: continuous SMART transcription, deferred feedback, audio fallback and swipe navigation
 0.32 Silent Coach session diagnostics: per-session JSONL logs for actions, transcripts, model/fallback attempts, Coach results and errors
+0.34 Compact Silent Coach review: show spoken and suggested sentences by default, expand details on demand, replay original recorded PCM and speak suggested corrections
 0.33 Fix Silent Coach Gemini Live binary WebSocket messages and SMART fallback audioTranscription parsing
 ```
 
-Future incremental releases continue as `0.34`, `0.35`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.35`, `0.36`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 
@@ -96,6 +97,8 @@ Normal PTT release, language changes, network recovery, and Gemini reconnects pa
 **Silent Coach — public UI**
 
 Swipe left on the empty area of the Hold-to-Talk dock (or tap **Silent Coach**) to switch modes. Tap **Start Listening** to capture speech continuously without Gemini speaking back. The browser streams PCM to `gemini-3.5-transcribe-live` with SMART transcription, stores short audio segments temporarily, and sends finalized utterances to the existing Coach in a bounded queue. **Stop & Review** completes outstanding analyses and reveals one report with suggested corrections, pronunciation notes, and explicit partial failures. Swipe right or tap **Talk** to return; switching back is blocked during capture/review.
+
+The final Silent Coach review lists **every captured segment** with just **What you said** and the **suggested expression** visible by default. Use the down-chevron **More details** disclosure to inspect grammar explanations, pronunciation feedback and failures. The speaker beside the original sentence replays the captured **16 kHz PCM recording**; the speaker beside the suggestion reads the corrected sentence using the browser's speech synthesis in the chosen practice language. Replay audio is kept only in a bounded 12 MB in-memory cache for the completed review and cleared when starting another run or leaving Silent Coach. Older segments may have their replay button disabled in unusually long sessions; speech synthesis also requires browser support.
 
 If a Live transcript is missing or the Live stream fails, captured audio can be transcribed through the server's `gemini-3.5-transcribe` SMART fallback. Audio segments are held temporarily in IndexedDB and removed after processing. SMART may normalize fillers and false starts, so its text should not be treated as verbatim proof of spoken grammar errors. A basic energy-based segmenter cannot guarantee perfect audio-to-transcript alignment or detect very quiet speech.
 

@@ -20,7 +20,7 @@ CLIENT_EVENTS = frozenset({
     "silent_fallback_enabled", "silent_rotation",
     "silent_fallback_request", "silent_coach_request", "silent_coach_result",
     "silent_segment_skipped", "silent_segment_error",
-    "silent_review_complete",
+    "silent_review_complete", "silent_audio_playback", "silent_audio_playback_error",
 })
 
 SAFE_FIELDS = frozenset({

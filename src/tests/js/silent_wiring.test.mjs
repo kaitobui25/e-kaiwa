@@ -19,3 +19,11 @@ test('Silent Coach is connected to the existing mic stream and public UI without
   assert.match(html, /id="silent-start"/);
   assert.match(html, /id="silent-stop"/);
 });
+
+test('Silent Coach report speakers use actual recorded PCM and suggested-sentence speech synthesis', () => {
+  assert.match(js, /action === 'silent-replay-user' \|\| action === 'silent-speak-suggestion'/);
+  assert.match(js, /state\.silentCoach\.getReplayPcm\(segment\)/);
+  assert.match(js, /state\.playback\.playUserPcm\(pcm, 16000\)/);
+  assert.match(js, /state\.playback\.speak\(suggestion/);
+  assert.match(js, /targetSpeechLocale\(state\.selectedTargetLanguage\)/);
+});

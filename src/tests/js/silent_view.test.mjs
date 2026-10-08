@@ -197,6 +197,57 @@ test('final report displays per-segment feedback, partial failures and escapes u
   assert.match(html, /88\/100/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /<details class="silent-item-details">/);
+  assert.doesNotMatch(html, /<details class="silent-item-details" open/);
+  assert.match(html, /data-silent-audio="suggestion"/);
+  assert.match(html, /data-silent-audio="original"/);
+  assert.match(html, /disabled/, 'audio from older reports without a captured PCM must be disabled');
+});
+
+test('compact Silent report shows two audio buttons and disclosure of hidden details', () => {
+  const html = renderSilentReport({items: [{
+    no: 4, text: 'I goes home', correction: 'I go home', status: 'done',
+    audioAvailable: true, explanation: 'Use go with I',
+    pronunciation: {overall_score: 92, summary: 'Clear speech'}
+  }]}, key => key);
+  assert.match(html, /silent-compact-row/);
+  assert.match(html, /I goes home/);
+  assert.match(html, /I go home/);
+  assert.match(html, /data-silent-audio="original" data-segment="4"/);
+  assert.match(html, /data-silent-audio="suggestion" data-segment="4"/);
+  assert.match(html, /<details class="silent-item-details">/);
+  assert.match(html, /silent-details-toggle/);
+  assert.match(html, /Use go with I/);
+  assert.match(html, /92\/100/);
+  assert.doesNotMatch(html, /data-silent-audio="original" data-segment="4"[^>]*disabled/);
+});
+
+test('audio clicks are delegated only after review and ignore disabled or invalid buttons', () => {
+  const {elements, calls, view} = harness();
+  const button = (kind, segment, disabled = false) => ({
+    disabled, dataset: {silentAudio: kind, segment: String(segment)}
+  });
+  const click = control => elements.silentReport.emit('click', {
+    target: {closest: () => control}
+  });
+  elements.modeSilent.emit('click');
+  click(button('original', 1));
+  assert.equal(calls.filter(call => call.action.startsWith('silent-replay')).length, 0);
+  elements.silentStart.emit('click');
+  elements.silentStop.emit('click');
+  view.setState('complete', {report: {items: [{no: 1, text: 'hello', correction: 'Hello'}]}});
+  click(button('original', 1));
+  click(button('suggestion', 1));
+  click(button('original', 1, true));
+  click(button('original', 0));
+  assert.deepEqual(calls.slice(-2), [
+    {action: 'silent-replay-user', detail: {segment: 1}},
+    {action: 'silent-speak-suggestion', detail: {segment: 1}}
+  ]);
+  view.setPlaybackStatus('Cannot play audio');
+  assert.equal(elements.silentStatus.textContent, 'Cannot play audio');
+  view.setPlaybackStatus();
+  assert.equal(elements.silentStatus.textContent, 'Review ready');
 });
 
 test('engine flat summary reports correction counts, score and SMART caveat', () => {
@@ -216,7 +267,8 @@ test('Silent Coach controls and reports have EN, JA and VI translations', () => 
     const ui = {language};
     for (const key of ['silentCoach', 'silentStart', 'silentStop', 'silentListening', 'silentFallback',
       'silentReviewing', 'silentComplete', 'silentProgress', 'silentReportTitle', 'silentSegment',
-      'silentYourSpeech', 'silentUnavailable', 'silentCorrected', 'silentFinishToSwitch']) {
+      'silentYourSpeech', 'silentUnavailable', 'silentCorrected', 'silentFinishToSwitch',
+      'silentPlayOriginal', 'silentPlaySuggested', 'silentShowDetails', 'silentAudioUnavailable']) {
       const localized = UiController.prototype.t.call(ui, key);
       assert.notEqual(localized, key, `${language} missing ${key}`);
     }

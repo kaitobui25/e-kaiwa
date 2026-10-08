@@ -9,6 +9,9 @@ const MAX_WS_BUFFER = 512_000;
 const RECONNECT_LIMIT = 2;
 const ROTATE_AFTER_MS = 8 * 60 * 1000;
 const TRANSCRIPT_WAIT_MS = 5500;
+// PCM for replay lives only in memory and is discarded on leaving or restarting.
+// 12 MB holds up to ~6 minutes of 16 kHz mono audio on a typical phone.
+const MAX_REPLAY_BYTES = 12_000_000;
 
 export function pcmBase64(pcm) {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -33,6 +36,7 @@ export class SilentCoachEngine {
     fetcher = (...args) => fetch(...args),
     socketFactory = url => new WebSocket(url),
     store = new SilentAudioStore(),
+    maxReplayBytes = MAX_REPLAY_BYTES,
     logger = new SilentEventLogger({fetcher}),
     onChange = () => {},
     targetLanguage = () => 'en',
@@ -46,6 +50,9 @@ export class SilentCoachEngine {
     this.fetcher = fetcher;
     this.socketFactory = socketFactory;
     this.store = store;
+    this.maxReplayBytes = Math.max(0, Math.min(MAX_REPLAY_BYTES, Number(maxReplayBytes) || 0));
+    this.replaySegments = new Map();
+    this.replayBytes = 0;
     this.logger = logger;
     this.onChange = onChange;
     this.targetLanguage = targetLanguage;
@@ -97,6 +104,27 @@ export class SilentCoachEngine {
 
   get isRecording() { return this.state === 'listening'; }
 
+  clearReplay() {
+    this.replaySegments.clear();
+    this.replayBytes = 0;
+  }
+
+  saveReplay(no, pcm) {
+    if (!this.maxReplayBytes || pcm.byteLength > this.maxReplayBytes) return;
+    const copy = new Int16Array(pcm);
+    while (this.replayBytes + copy.byteLength > this.maxReplayBytes && this.replaySegments.size) {
+      const oldest = this.replaySegments.keys().next().value;
+      this.replayBytes -= this.replaySegments.get(oldest).byteLength;
+      this.replaySegments.delete(oldest);
+    }
+    this.replaySegments.set(no, copy);
+    this.replayBytes += copy.byteLength;
+  }
+
+  getReplayPcm(no) {
+    return this.state === 'complete' ? this.replaySegments.get(no) || null : null;
+  }
+
   logEvent(event, details = {}) {
     this.logger.log(event, {elapsed_ms: this.startedAt ? this.now() - this.startedAt : 0, ...details});
   }
@@ -113,6 +141,7 @@ export class SilentCoachEngine {
 
   async start() {
     if (this.state === 'listening' || this.state === 'reviewing') return false;
+    this.clearReplay();
     this.logger.begin();
     this.startedAt = this.now();
     this.logEvent('silent_mode_enter', {reason: 'start_listening'});
@@ -278,6 +307,7 @@ export class SilentCoachEngine {
   captureSegment(pcm) {
     if (!this.isRecording && this.state !== 'reviewing') return;
     const id = ++this.sequence;
+    this.saveReplay(id, pcm);
     const key = `${this.generation}-${this.now()}-${id}`;
     this.logEvent('silent_segment_captured', {turn: id, frames: pcm.length,
       pcm_bytes: pcm.byteLength, audio_ms: Math.round(pcm.length * 1000 / 16000)});
@@ -478,7 +508,7 @@ export class SilentCoachEngine {
         ? 'SMARTは言いよどみを自動修正する場合があります。発音は録音音声に基づいて評価します。'
         : 'SMART transcription may clean disfluencies; pronunciation feedback is based on captured audio.';
     return {
-      items: [...new Map([...changed, ...failed].map(item => [item.no, item])).values()].sort((a, b) => a.no - b.no),
+      items: items.map(item => ({...item, audioAvailable: this.replaySegments.has(item.no)})),
       total: items.length, corrected: changed.length, failed: failed.length,
       score,
       totals: {total: items.length, reviewed: scored.length, failed: failed.length},
@@ -535,6 +565,7 @@ export class SilentCoachEngine {
       this.logEvent('silent_cancel', {phase: this.state, captured: this.sequence, reason});
     }
     this.generation += 1;
+    this.clearReplay();
     this.state = 'idle';
     this.closeSocket();
     for (const segment of this.segments) {
@@ -550,6 +581,7 @@ export class SilentCoachEngine {
     this.logEvent('silent_fatal', {phase: this.state,
       error: String(error?.message || error || 'Review failed.').slice(0, 350)});
     this.generation += 1;
+    this.clearReplay();
     this.closeSocket();
     for (const segment of this.segments) if (segment.timer) clearTimeout(segment.timer);
     this.state = 'error';

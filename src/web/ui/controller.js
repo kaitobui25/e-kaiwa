@@ -105,6 +105,10 @@ const COPY = Object.freeze({
     silentFailed: 'Unavailable',
     silentYourSpeech: 'What you said',
     silentCorrection: 'Suggested expression',
+    silentPlayOriginal: 'Play your recorded voice',
+    silentPlaySuggested: 'Listen to the suggested expression',
+    silentAudioUnavailable: 'Audio playback unavailable',
+    silentShowDetails: 'More details',
     silentExplanation: 'Explanation',
     silentPronunciation: 'Pronunciation',
     silentScore: 'Score',
@@ -207,6 +211,10 @@ const COPY = Object.freeze({
     silentFailed: '分析不可',
     silentYourSpeech: 'あなたの発話',
     silentCorrection: '改善例',
+    silentPlayOriginal: '録音した声を再生',
+    silentPlaySuggested: '改善例を読み上げる',
+    silentAudioUnavailable: '音声を再生できません',
+    silentShowDetails: '詳細を見る',
     silentExplanation: '説明',
     silentPronunciation: '発音',
     silentScore: 'スコア',
@@ -309,6 +317,10 @@ const COPY = Object.freeze({
     silentFailed: 'Không thể đánh giá',
     silentYourSpeech: 'Bạn đã nói',
     silentCorrection: 'Cách diễn đạt gợi ý',
+    silentPlayOriginal: 'Nghe lại giọng nói của bạn',
+    silentPlaySuggested: 'Nghe câu gợi ý',
+    silentAudioUnavailable: 'Không có âm thanh để phát',
+    silentShowDetails: 'Xem chi tiết',
     silentExplanation: 'Giải thích',
     silentPronunciation: 'Phát âm',
     silentScore: 'Điểm',
@@ -480,6 +492,10 @@ export class UiController {
 
   setSilentState(state, options = {}) {
     this.silentView.setState(state, options);
+  }
+
+  setSilentPlaybackStatus(message = '') {
+    this.silentView.setPlaybackStatus(message);
   }
 
   setConversationMode(mode) {

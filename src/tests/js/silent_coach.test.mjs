@@ -7,7 +7,7 @@ import {SilentSegmenter} from '../../web/live/silent_segmenter.js';
 const loud = new Int16Array(1600).fill(3000);
 const quiet = new Int16Array(1600);
 
-function fakeEnvironment({live = true, fallbackText = 'Did you finished your homework?', coachFailure = false, transcriptWaitMs = 5500} = {}) {
+function fakeEnvironment({live = true, fallbackText = 'Did you finished your homework?', coachFailure = false, transcriptWaitMs = 5500, maxReplayBytes} = {}) {
   const requests = [];
   const sockets = [];
   const saved = new Map();
@@ -46,7 +46,7 @@ function fakeEnvironment({live = true, fallbackText = 'Did you finished your hom
     return socket;
   };
   const engine = new SilentCoachEngine({
-    fetcher, socketFactory, store,
+    fetcher, socketFactory, store, maxReplayBytes,
     onChange: data => changes.push(data),
     delay: async () => {},
     transcriptWaitMs,
@@ -144,6 +144,9 @@ test('silent transcription streams SMART TEXT, grades final utterances and hides
   assert.equal(result.score, 82);
   assert.equal(env.changes.at(-1).state, 'complete');
   assert.equal(env.saved.size, 0);
+  assert.equal(result.items[0].audioAvailable, true);
+  assert.ok(env.engine.getReplayPcm(1) instanceof Int16Array);
+  assert.ok(env.engine.getReplayPcm(1).some(sample => sample === 3000));
   assert.ok(env.sockets[0].sent.some(item => item.realtimeInput?.audioStreamEnd));
   assert.ok(env.sockets[0].sent.some(item => item.realtimeInput?.audio));
   assert.ok(env.sockets[0].sent.every(item => !item.setup || !item.setup.outputAudioTranscription));
@@ -190,10 +193,37 @@ test('skips a clearly non-target-language utterance', async () => {
   env.sockets[0].emit({serverContent: {inputTranscription: {text: 'Xin chào', languageCode: 'vi-VN'}}});
   const report = await env.engine.stop();
   assert.equal(report.total, 1);
-  assert.equal(report.items.length, 0);
+  assert.equal(report.items.length, 1);
+  assert.equal(report.items[0].status, 'skipped');
   assert.match(report.summary, /ngoài ngôn ngữ học/);
   assert.equal(report.score, null);
   assert.equal(env.requests.filter(item => item.url === '/api/coach').length, 0);
+});
+
+test('original audio replay is private, memory bounded, and cleared on a new session', async () => {
+  const env = fakeEnvironment({maxReplayBytes: 6000});
+  await connected(env);
+  const original = new Int16Array(2000).fill(1234);
+  env.engine.captureSegment(original);
+  original.fill(999);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.engine.getReplayPcm(1), null, 'no audio replay before Stop & Review');
+  env.sockets[0].emit({serverContent: {inputTranscription: {text: 'Hello in English.', languageCode: 'en-US'}}});
+  env.engine.captureSegment(new Int16Array(2000).fill(4321));
+  await new Promise(resolve => setImmediate(resolve));
+  env.sockets[0].emit({serverContent: {inputTranscription: {text: 'Another English sentence.', languageCode: 'en-US'}}});
+  const report = await env.engine.stop();
+  assert.equal(report.items.length, 2);
+  assert.equal(report.items[0].audioAvailable, false, 'oldest audio evicted when replay budget exceeded');
+  assert.equal(report.items[1].audioAvailable, true);
+  assert.equal(env.engine.getReplayPcm(1), null);
+  assert.equal(env.engine.getReplayPcm(2)[0], 4321);
+  assert.ok(env.engine.replayBytes <= 6000);
+  assert.ok(!JSON.stringify(report).includes('pcm_b64'), 'binary audio must not be placed in reports');
+  await env.engine.start();
+  assert.equal(env.engine.replayBytes, 0);
+  assert.equal(env.engine.replaySegments.size, 0);
+  env.engine.cancel();
 });
 
 test('live connection failures trigger retry and bounded fallback mode', async () => {

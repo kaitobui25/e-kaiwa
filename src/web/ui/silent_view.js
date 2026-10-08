@@ -1,4 +1,5 @@
 import {escapeHtml} from './render.js';
+import {icon} from './icons.js';
 import {installHorizontalSwipe} from './swipe.js';
 
 const STATES = new Set(['idle', 'listening', 'reviewing', 'complete', 'error']);
@@ -47,17 +48,35 @@ function renderItem(item, index, t) {
   const number = item.no ?? index + 1;
   const status = text(item.status).toLowerCase();
   const message = text(item.error);
-  const result = [
-    section(t('silentYourSpeech'), paragraph(item.text || item.transcript)),
-    section(t('silentCorrection'), paragraph(item.correction)),
-    section(t('silentExplanation'), paragraph(item.explanation)),
-    renderPronunciation(item.pronunciation, t)
-  ].join('');
+  const speech = text(item.text || item.transcript);
+  const suggested = text(item.correction) ||
+    (['done', 'partial'].includes(status) ? speech : '');
   const unavailable = (message || (status === 'error' || status === 'failed' ? t('silentUnavailable') : ''));
+  const details = [
+    section(t('silentExplanation'), paragraph(item.explanation)),
+    renderPronunciation(item.pronunciation, t),
+    paragraph(unavailable, 'silent-report-error')
+  ].join('') || paragraph(t('silentNoFeedback'), 'silent-report-body');
+  const audioButton = (kind, label, enabled) => `<button class="silent-audio-button" type="button"
+    data-silent-audio="${kind}" data-segment="${escapeHtml(String(number))}"
+    aria-label="${escapeHtml(label)}"${enabled ? '' : ' disabled'}
+    title="${escapeHtml(enabled ? label : t('silentAudioUnavailable'))}">${icon('speaker')}</button>`;
   return `<article class="silent-report-item">
     <h3>${escapeHtml(t('silentSegment'))} ${escapeHtml(String(number))}</h3>
-    ${result}
-    ${paragraph(unavailable, 'silent-report-error')}
+    <div class="silent-compact-row">
+      <div class="silent-compact-text"><h4>${escapeHtml(t('silentYourSpeech'))}</h4>
+        ${paragraph(speech || t('silentUnavailable'))}</div>
+      ${audioButton('original', t('silentPlayOriginal'), Boolean(item.audioAvailable))}
+    </div>
+    <div class="silent-compact-row silent-compact-row--suggestion">
+      <div class="silent-compact-text"><h4>${escapeHtml(t('silentCorrection'))}</h4>
+        ${paragraph(suggested || t('silentUnavailable'))}</div>
+      ${audioButton('suggestion', t('silentPlaySuggested'), Boolean(suggested))}
+    </div>
+    <details class="silent-item-details">
+      <summary class="silent-details-toggle">${escapeHtml(t('silentShowDetails'))}${icon('down', 'silent-detail-chevron')}</summary>
+      <div class="silent-item-details-body">${details}</div>
+    </details>
   </article>`;
 }
 
@@ -120,6 +139,14 @@ export class SilentView {
       this.setState('reviewing');
       this.onAction('silent-stop');
     });
+    elements.silentReport?.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-silent-audio]');
+      if (!button || button.disabled || this.state !== 'complete' || this.experienceMode !== 'silent') return;
+      const segment = Number(button.dataset.segment);
+      if (!Number.isSafeInteger(segment) || segment <= 0) return;
+      if (button.dataset.silentAudio === 'original') this.onAction('silent-replay-user', {segment});
+      else if (button.dataset.silentAudio === 'suggestion') this.onAction('silent-speak-suggestion', {segment});
+    });
     this.disposeSwipes = [
       installHorizontalSwipe(elements.controlDock, direction => this._handleSwipe(direction)),
       installHorizontalSwipe(elements.silentDock, direction => this._handleSwipe(direction)),
@@ -169,6 +196,11 @@ export class SilentView {
     this.status = typeof status === 'string' ? status : '';
     this.progress = progress === undefined ? null : progress;
     this.refresh();
+  }
+
+  setPlaybackStatus(message = '') {
+    if (this.state !== 'complete' || !this.elements.silentStatus) return;
+    this.elements.silentStatus.textContent = message || this.translate('silentComplete');
   }
 
   refresh() {

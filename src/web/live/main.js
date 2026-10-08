@@ -1356,6 +1356,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.connecting = false;
       state.ui.setSetupReady(false);
     } else {
+      state.playback?.stopManual();
       state.silentCoach.logEvent('silent_mode_exit', {reason: 'return_to_talk'});
       state.silentCoach.cancel('return_to_talk');
       newLiveSession({reason: 'silent_mode_exit'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
@@ -1372,6 +1373,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     if (action === 'silent-start') {
       try {
         if (state.practiceView !== 'silent' || state.silentCoach.isRecording) return;
+        state.playback?.stopManual();
         await state.silentCoach.start();
         if (!await ensureMicReady()) throw new Error('Microphone unavailable');
         state.silentCoach.logEvent('silent_mic_ready', {
@@ -1389,6 +1391,41 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       pauseMicCapture();
       try { await state.silentCoach.stop(); }
       catch (error) { state.silentCoach.fail(error); }
+      return;
+    }
+    if (action === 'silent-replay-user' || action === 'silent-speak-suggestion') {
+      if (state.practiceView !== 'silent' || state.silentCoach?.state !== 'complete' || !state.playback) return;
+      const segment = Number(detail?.segment);
+      const item = state.silentCoach.results.find(entry => entry.no === segment);
+      if (!Number.isSafeInteger(segment) || !item) return;
+      const isOriginal = action === 'silent-replay-user';
+      const pcm = isOriginal ? state.silentCoach.getReplayPcm(segment) : null;
+      const suggestion = !isOriginal && ['done', 'partial'].includes(item.status)
+        ? String(item.correction || item.text || '').trim() : '';
+      if (isOriginal ? !pcm?.length : !suggestion) return;
+      state.ui.setSilentPlaybackStatus();
+      state.silentCoach.logEvent('silent_audio_playback', {
+        turn: segment, source: isOriginal ? 'original_pcm' : 'suggested_tts',
+        audio_ms: isOriginal ? Math.round(pcm.length / 16) : null
+      });
+      let played = false;
+      try {
+        played = isOriginal
+          ? await state.playback.playUserPcm(pcm, 16000)
+          : await state.playback.speak(suggestion, {
+            lang: targetSpeechLocale(state.selectedTargetLanguage), rate: Math.min(1, aiPlaybackRate())
+          });
+      } catch (error) {
+        state.silentCoach.logEvent('silent_audio_playback_error', {
+          turn: segment, error: String(error?.message || error).slice(0, 300)
+        });
+      }
+      if (!played) {
+        state.silentCoach.logEvent('silent_audio_playback_error', {
+          turn: segment, reason: 'playback_failed', source: isOriginal ? 'original_pcm' : 'suggested_tts'
+        });
+        state.ui.setSilentPlaybackStatus(state.ui.t('playbackUnavailable'));
+      }
       return;
     }
     state.idle?.cancel();
