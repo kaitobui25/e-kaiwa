@@ -16,6 +16,7 @@ class MobileSettingsUiTests(unittest.TestCase):
         controls = [
             'id="target-language"',
             'id="feedback-language"',
+            'id="conversation-style"',
             'id="theme"',
             'id="ai-speed"',
             'id="talk-mode"',

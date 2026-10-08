@@ -1,9 +1,11 @@
 import {
+  CONVERSATION_STYLES,
   LANGUAGE_POLICY_VERSION,
   buildLiveLanguageInstruction,
   concatTargetTranscript,
   finalizeLanguageMode,
   isCoachEligible,
+  normalizeConversationStyle,
   recordLanguageCode,
   selectedSupportLanguage,
   TARGET_LANGUAGE_METADATA
@@ -49,6 +51,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     conversation: document.getElementById('conversation'),
     teacher: document.getElementById('teacher'),
     feedbackLanguage: document.getElementById('feedback-language'),
+    conversationStyle: document.getElementById('conversation-style'),
     targetLanguage: document.getElementById('target-language'),
     theme: document.getElementById('theme'),
     realtimeModel: document.getElementById('realtime-model'),
@@ -80,6 +83,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     // frozen for the active Live session and every turn it creates.
     selectedTargetLanguage: TARGET_LANGUAGE,
     targetLanguage: TARGET_LANGUAGE,
+    selectedConversationStyle: CONVERSATION_STYLES.DEFAULT,
+    conversationStyle: CONVERSATION_STYLES.DEFAULT,
     sessionSilenceDurationMs: 1000,
     liveIdleTimeoutSeconds: 180,
     echoGuardMs: 250,
@@ -387,7 +392,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       ? CONVERSATION_MODES.PUSH_TO_TALK
       : CONVERSATION_MODES.HANDS_FREE;
     state.preferences = new PreferencesStore({
-      storage: state.appMode === 'public' ? window.localStorage : null,
+      storage: window.localStorage,
       browserLanguage: navigator.language,
       browserLanguages: navigator.languages,
       prefersDark: window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false
@@ -465,6 +470,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.ui.setTheme(preferences.theme);
       state.ui.setConversationMode(state.conversationMode);
     } else {
+      state.preferences.load();
       elements.feedbackLanguage.value = settings.support_language || 'vi';
       // Saving server settings must not overwrite the developer's selected
       // target while the existing Live socket still has its old instruction.
@@ -485,6 +491,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       setSelectChoices(elements.coachModel, choices.coach, coachSelected);
     }
 
+    elements.conversationStyle.value = state.preferences.value.conversationStyle;
+    state.selectedConversationStyle = elements.conversationStyle.value;
     state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
     render();
     if (state.setupReady) armLiveIdleIfEligible();
@@ -1101,12 +1109,13 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
       state.selectedTargetLanguage = normalizeTargetLanguage(elements.targetLanguage.value);
       state.targetLanguage = state.selectedTargetLanguage;
+      state.conversationStyle = normalizeConversationStyle(elements.conversationStyle.value);
       state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : `WebSocket open · configuring ${modelLabel(data.model)}…`);
       socket.send(JSON.stringify({
         setup: {
           model: `models/${data.model}`,
           generationConfig: {responseModalities: ['AUDIO']},
-          systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage)}]},
+          systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage, state.conversationStyle)}]},
           realtimeInputConfig: {
             automaticActivityDetection: liveVadConfig()
           },
@@ -1165,7 +1174,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   }
 
   function sessionSettingsChanged() {
-    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || state.selectedTargetLanguage !== state.targetLanguage || (
+    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || state.selectedTargetLanguage !== state.targetLanguage || state.selectedConversationStyle !== state.conversationStyle || (
       state.appMode === 'dev' && (
         elements.realtimeModel.value !== state.sessionRequestedModel ||
         Number(elements.silenceDuration.value) !== state.sessionSilenceDurationMs
@@ -1380,6 +1389,17 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.ui.setTargetLanguage(target);
     }
     requestSessionReconnect(state.appMode === 'public' ? state.ui.t('language') : 'Target language changed.');
+  });
+
+  elements.conversationStyle.addEventListener('change', () => {
+    const style = normalizeConversationStyle(elements.conversationStyle.value);
+    elements.conversationStyle.value = style;
+    if (style === state.selectedConversationStyle) return;
+    cancelPushReconnectIntent();
+    endInputBeforeModeChange();
+    clearConversationHistory();
+    state.selectedConversationStyle = state.preferences.setConversationStyle(style);
+    requestSessionReconnect(state.ui.t('connecting'));
   });
 
   elements.theme.addEventListener('change', () => {

@@ -99,3 +99,24 @@ test('support language remains independent and live instruction is target-specif
   assert.match(instruction, /Vietnamese \(vi\)/);
   assert.match(policy.buildLiveLanguageInstruction('en', 'ja'), /English \(en\)/);
 });
+
+test('default conversation style preserves the original Live instruction', () => {
+  const expected = `Language policy ${policy.LANGUAGE_POLICY_VERSION}.
+You are a English conversation partner for a English learner.
+Keep normal conversation in English. The configured support language is Vietnamese (vi).
+If the learner clearly speaks an utterance outside English, treat it as a short rescue turn rather than switching the conversation language. If their intent is clear, briefly help in Vietnamese, give the natural English phrase, and ask them to say it in English. If their intent is unclear or the speech may have been misheard, do not confidently translate it; briefly ask in Vietnamese for another attempt in English.
+Never choose the rescue language from the detected input language; always use Vietnamese. Keep rescue responses short and return immediately to English practice.`;
+  assert.equal(policy.buildLiveLanguageInstruction('vi', 'en'), expected);
+  assert.equal(policy.buildLiveLanguageInstruction('vi', 'en', 'default'), expected);
+  assert.equal(policy.buildLiveLanguageInstruction('vi', 'en', 'invalid'), expected);
+});
+
+test('natural_1 appends conversation behavior without changing the language policy', () => {
+  const baseline = policy.buildLiveLanguageInstruction('ja', 'zh-Hans');
+  const natural = policy.buildLiveLanguageInstruction('ja', 'zh-Hans', 'natural_1');
+  assert.ok(natural.startsWith(`${baseline}\n`));
+  assert.match(natural, /not an interviewer/);
+  assert.match(natural, /Do not end every reply with a question/);
+  assert.match(natural, /answer directly and fully/);
+  assert.equal(policy.normalizeConversationStyle('bad'), policy.CONVERSATION_STYLES.DEFAULT);
+});

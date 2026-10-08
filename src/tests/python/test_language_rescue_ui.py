@@ -34,7 +34,7 @@ class LanguageRescueUiTests(unittest.TestCase):
         js = JS.read_text(encoding="utf-8")
         prefs = PREFERENCES.read_text(encoding="utf-8")
         self.assertIn("state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);", js)
-        self.assertIn("buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage)", js)
+        self.assertIn("buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage, state.conversationStyle)", js)
         self.assertIn("feedback_language: elements.feedbackLanguage.value", js)
         self.assertIn("setAppLanguage", js)
         self.assertIn("SUPPORTED_APP_LANGUAGES", prefs)

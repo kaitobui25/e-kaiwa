@@ -83,6 +83,16 @@ test('conversation mode persists locally and normalizes to supported values', ()
   assert.equal(normalizeConversationMode('bad', CONVERSATION_MODES.HANDS_FREE), CONVERSATION_MODES.HANDS_FREE);
 });
 
+test('conversation style defaults to current behavior and persists between visits', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({storage});
+  assert.equal(first.load().conversationStyle, 'default');
+  assert.equal(first.setConversationStyle('natural_1'), 'natural_1');
+  assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'natural_1');
+  assert.equal(first.setConversationStyle('unsupported'), 'default');
+  assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'default');
+});
+
 test('preferences persist without coupling target language to app language', () => {
   const storage = memoryStorage();
   const first = new PreferencesStore({storage, browserLanguage: 'ja-JP'});

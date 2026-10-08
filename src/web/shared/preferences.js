@@ -1,5 +1,7 @@
 import {
+  CONVERSATION_STYLES,
   SUPPORTED_TARGET_LANGUAGES as POLICY_TARGET_LANGUAGES,
+  normalizeConversationStyle,
   normalizeTargetLanguage as normalizePolicyTargetLanguage,
   TARGET_LANGUAGE_ALIASES,
   TARGET_LANGUAGE_METADATA
@@ -20,6 +22,7 @@ const STORAGE_KEYS = Object.freeze({
   playbackRate: 'e-kaiwa.playback-rate',
   pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
   conversationMode: 'e-kaiwa.conversation-mode',
+  conversationStyle: 'e-kaiwa.conversation-style',
   targetLanguage: 'e-kaiwa.target-language'
 });
 
@@ -99,6 +102,7 @@ export class PreferencesStore {
       playbackRate: 0.8,
       pronunciationEnabled: true,
       conversationMode: CONVERSATION_MODES.PUSH_TO_TALK,
+      conversationStyle: CONVERSATION_STYLES.DEFAULT,
       targetLanguage: TARGET_LANGUAGE
     };
   }
@@ -145,6 +149,7 @@ export class PreferencesStore {
         this._read(STORAGE_KEYS.conversationMode),
         defaultConversationMode
       ),
+      conversationStyle: normalizeConversationStyle(this._read(STORAGE_KEYS.conversationStyle)),
       targetLanguage: normalizeTargetLanguage(this._read(STORAGE_KEYS.targetLanguage), defaults.targetLanguage)
     };
     return {...this.value};
@@ -181,6 +186,12 @@ export class PreferencesStore {
     this.value.conversationMode = normalizeConversationMode(value, this.value.conversationMode);
     this._write(STORAGE_KEYS.conversationMode, this.value.conversationMode);
     return this.value.conversationMode;
+  }
+
+  setConversationStyle(value) {
+    this.value.conversationStyle = normalizeConversationStyle(value);
+    this._write(STORAGE_KEYS.conversationStyle, this.value.conversationStyle);
+    return this.value.conversationStyle;
   }
 
   setTargetLanguage(value) {

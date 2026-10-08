@@ -1,4 +1,17 @@
 export const LANGUAGE_POLICY_VERSION = 'target-language-rescue-v4';
+export const CONVERSATION_STYLES = Object.freeze({
+  DEFAULT: 'default',
+  NATURAL_1: 'natural_1'
+});
+
+export function normalizeConversationStyle(value) {
+  return Object.values(CONVERSATION_STYLES).includes(value) ? value : CONVERSATION_STYLES.DEFAULT;
+}
+
+const NATURAL_1_INSTRUCTION = `Be a relaxed, natural conversation partner, not an interviewer.
+Respond thoughtfully to what the learner says. Contribute interesting details, observations, and relevant ideas of your own.
+Ask follow-up questions only when they naturally fit the conversation. Do not end every reply with a question.
+When the learner requests information, answer directly and fully. Respect signs that the learner wants to stop or change the topic.`;
 
 const SUPPORT_LANGUAGES = {
   en: 'English',
@@ -130,15 +143,18 @@ export function isCoachEligible(turn) {
   return turn?.coachEligible !== false;
 }
 
-export function buildLiveLanguageInstruction(supportLanguage, targetLanguage = 'en') {
+export function buildLiveLanguageInstruction(supportLanguage, targetLanguage = 'en', conversationStyle = CONVERSATION_STYLES.DEFAULT) {
   const language = selectedSupportLanguage(supportLanguage);
   const languageName = SUPPORT_LANGUAGES[language];
   const target = normalizeTargetLanguage(targetLanguage);
   const targetName = TARGET_LANGUAGE_METADATA[target].name;
 
-  return `Language policy ${LANGUAGE_POLICY_VERSION}.
+  const instruction = `Language policy ${LANGUAGE_POLICY_VERSION}.
 You are a ${targetName} conversation partner for a ${targetName} learner.
 Keep normal conversation in ${targetName}. The configured support language is ${languageName} (${language}).
 If the learner clearly speaks an utterance outside ${targetName}, treat it as a short rescue turn rather than switching the conversation language. If their intent is clear, briefly help in ${languageName}, give the natural ${targetName} phrase, and ask them to say it in ${targetName}. If their intent is unclear or the speech may have been misheard, do not confidently translate it; briefly ask in ${languageName} for another attempt in ${targetName}.
 Never choose the rescue language from the detected input language; always use ${languageName}. Keep rescue responses short and return immediately to ${targetName} practice.`;
+  return normalizeConversationStyle(conversationStyle) === CONVERSATION_STYLES.NATURAL_1
+    ? `${instruction}\n${NATURAL_1_INSTRUCTION}`
+    : instruction;
 }
