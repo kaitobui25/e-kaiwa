@@ -46,6 +46,7 @@ class AccessPolicy:
     coach_limiter: SlidingWindowLimiter = field(default_factory=lambda: SlidingWindowLimiter(90, 60))
     metric_limiter: SlidingWindowLimiter = field(default_factory=lambda: SlidingWindowLimiter(180, 60))
     ui_event_limiter: SlidingWindowLimiter = field(default_factory=lambda: SlidingWindowLimiter(120, 60))
+    silent_log_limiter: SlidingWindowLimiter = field(default_factory=lambda: SlidingWindowLimiter(240, 60))
 
     @classmethod
     def from_environment(cls, mode: str) -> "AccessPolicy":
@@ -90,5 +91,6 @@ class AccessPolicy:
             "coach": self.coach_limiter,
             "metric": self.metric_limiter,
             "ui_event": self.ui_event_limiter,
+            "silent_log": self.silent_log_limiter,
         }.get(endpoint)
         return True if limiter is None else limiter.allow(client_key)

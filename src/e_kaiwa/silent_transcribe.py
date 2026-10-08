@@ -16,7 +16,8 @@ MAX_PCM_BYTES = 16_000 * 2 * 25  # At most 25 seconds per request.
 
 
 def transcribe_chunk(keys: list[tuple[int, str]], sessions: SessionStore, payload: dict) -> dict:
-    if sessions.get(payload.get("session_id")) is None:
+    record = sessions.record(payload.get("session_id"))
+    if record is None or record.mode != "silent":
         raise ValueError("unknown session_id")
     if payload.get("sample_rate") != 16000:
         raise ValueError("sample_rate must be 16000")
@@ -42,16 +43,27 @@ def transcribe_chunk(keys: list[tuple[int, str]], sessions: SessionStore, payloa
         "generationConfig": {"audioTranscriptionConfig": {"mode": "SMART"}},
     }
     endpoint = f"{API_BASE}/models/{MODEL}:generateContent"
+    turn = payload.get("turn")
+    turn = turn if type(turn) is int and turn > 0 else None
+    sessions.log(record.directory, "silent_fallback_started", turn=turn, model=MODEL,
+                 pcm_bytes=len(pcm), sample_rate=16000)
     last_error = "transcription unavailable"
-    for _slot, key in rotate_keys(keys, 1):
-        status, response, _, error = post_json(endpoint, body, key)
+    for slot, key in rotate_keys(keys, turn or 1):
+        status, response, duration_s, error = post_json(endpoint, body, key)
+        sessions.log(record.directory, "silent_fallback_attempt", turn=turn, model=MODEL,
+                     key_slot=slot, http_status=status, latency_s=round(duration_s, 3),
+                     error=error[:300] if status != 200 else "")
         if status == 200:
             text = extract_text(response).strip()
             if text:
+                sessions.log(record.directory, "silent_fallback_result", turn=turn, model=MODEL,
+                             text=text[:4000], source="fallback")
                 return {"text": text[:4000], "model": MODEL}
             last_error = "empty transcription"
             continue
         last_error = f"transcription HTTP {status or 'network'}"
         if not is_retryable_failure(status, error):
             break
+    sessions.log(record.directory, "silent_fallback_error", turn=turn, model=MODEL,
+                 error=last_error)
     raise RuntimeError(last_error)

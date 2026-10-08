@@ -39,6 +39,7 @@ def save_pcm_wav(raw_pcm: bytes, path: Path, sample_rate: int = 16000) -> None:
 class SessionRecord:
     directory: Path
     expires_at: float
+    mode: str = "live"
 
 
 class SessionStore:
@@ -75,6 +76,7 @@ class SessionStore:
             self._sessions[public_id] = SessionRecord(
                 directory=session_dir,
                 expires_at=now_mono + self.ttl_s,
+                mode=mode,
             )
 
         # Folder and conversation.jsonl are created lazily on first real log
@@ -83,14 +85,17 @@ class SessionStore:
         return public_id, session_dir
 
     def get(self, session_id: object) -> Path | None:
+        record = self.record(session_id)
+        return record.directory if record else None
+
+    def record(self, session_id: object) -> SessionRecord | None:
         value = str(session_id or "")
         if not valid_session_id(value):
             return None
         now = time.monotonic()
         with self._registry_lock:
             self._prune_locked(now)
-            record = self._sessions.get(value)
-            return record.directory if record is not None else None
+            return self._sessions.get(value)
 
     def active_count(self) -> int:
         now = time.monotonic()

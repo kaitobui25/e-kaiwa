@@ -19,9 +19,10 @@ function fakeEnvironment({live = true, fallbackText = 'Did you finished your hom
   };
   const fetcher = async (url, options = {}) => {
     requests.push({url, body: options.body ? JSON.parse(options.body) : null});
-    if (url === '/api/silent/session') {
+    if (url.startsWith('/api/silent/session')) {
       return {ok: true, async json() { return {token: 'TEST_TOKEN', session_id: 'abcdefghijklmnopqrstuvwxyz_123456', model: 'gemini-3.5-transcribe-live'}; }};
     }
+    if (url === '/api/silent/log') return {ok: true};
     if (url === '/api/silent/transcribe') {
       return {ok: true, async json() { return {text: fallbackText, model: 'gemini-3.5-transcribe'}; }};
     }

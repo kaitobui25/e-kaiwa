@@ -36,9 +36,10 @@ test('emulated mobile swipe, microphone, live transcript, fallback and final rep
     fetcher: async (url, params = {}) => {
       network.push(url);
       const body = params.body && JSON.parse(params.body);
-      if (url === '/api/silent/session') return {
+      if (url.startsWith('/api/silent/session')) return {
         ok: true, async json() { return {token: 'EMULATED', session_id: 'abcdefghijklmnopqrstuvwxyz_123456'}; }
       };
+      if (url === '/api/silent/log') return {ok: true};
       if (url === '/api/silent/transcribe') {
         assert.equal(body.sample_rate, 16000);
         return {ok: true, async json() { return {text: 'Can you helping me?'}; }};

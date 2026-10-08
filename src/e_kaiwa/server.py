@@ -26,6 +26,7 @@ from .gemini import create_ephemeral_token
 from .languages import normalize_target_language, supported_target_languages
 from .model_policy import rotate_keys
 from .sessions import SessionStore
+from .silent_logging import write_silent_event
 from .silent_transcribe import MODEL as SILENT_MODEL, transcribe_chunk
 from .settings import ALLOWED_SUPPORT_LANGUAGES, SettingsStore
 
@@ -173,12 +174,12 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(raw)
 
-        def read_json(self) -> dict:
+        def read_json(self, *, max_bytes: int = REQUEST_MAX_BYTES) -> dict:
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError as exc:
                 raise ValueError("invalid Content-Length") from exc
-            if length <= 0 or length > REQUEST_MAX_BYTES:
+            if length <= 0 or length > max_bytes:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             if not isinstance(payload, dict):
@@ -212,6 +213,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/live/idle.js": (WEB_DIR / "live/idle.js", "text/javascript; charset=utf-8"),
                 "/live/recovery.js": (WEB_DIR / "live/recovery.js", "text/javascript; charset=utf-8"),
                 "/live/silent_coach.js": (WEB_DIR / "live/silent_coach.js", "text/javascript; charset=utf-8"),
+                "/live/silent_log.js": (WEB_DIR / "live/silent_log.js", "text/javascript; charset=utf-8"),
                 "/live/silent_segmenter.js": (WEB_DIR / "live/silent_segmenter.js", "text/javascript; charset=utf-8"),
                 "/live/silent_audio_store.js": (WEB_DIR / "live/silent_audio_store.js", "text/javascript; charset=utf-8"),
                 "/ui/controller.js": (WEB_DIR / "ui/controller.js", "text/javascript; charset=utf-8"),
@@ -301,23 +303,40 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             if path == "/api/silent/session":
                 if not self.allow_public_request("session"):
                     return
+                session_id = query.get("session_id", [""])[0]
                 try:
+                    if session_id:
+                        record = runtime.sessions.record(session_id)
+                        if record is None or record.mode != "silent":
+                            self.send_json(400, {"error": "invalid Silent Coach session"})
+                            return
+                        session_dir = record.directory
+                        runtime.sessions.log(session_dir, "silent_token_requested", reconnect=True)
+                    else:
+                        session_id, session_dir = runtime.sessions.create(mode="silent", model="gemini-3.5-transcribe-live")
+                        runtime.sessions.log(session_dir, "silent_session_created",
+                                             model="gemini-3.5-transcribe-live",
+                                             fallback_model=SILENT_MODEL, transcription_mode="SMART")
                     token = None
-                    for _slot, key in rotate_keys(runtime.keys, 1):
+                    for slot, key in rotate_keys(runtime.keys, 1):
                         try:
                             token = create_ephemeral_token(key)
+                            runtime.sessions.log(session_dir, "silent_token_issued", key_slot=slot)
                             break
-                        except Exception:
+                        except Exception as exc:
+                            runtime.sessions.log(session_dir, "silent_token_attempt_failed",
+                                                 key_slot=slot, error_type=type(exc).__name__)
                             continue
                     if not token:
                         raise RuntimeError("no key available for transcription")
-                    session_id, _ = runtime.sessions.create(mode="silent", model=SILENT_MODEL)
                     self.send_json(200, {
                         "token": token,
                         "session_id": session_id,
                         "model": "gemini-3.5-transcribe-live",
                     })
-                except Exception:
+                except Exception as exc:
+                    if "session_dir" in locals():
+                        runtime.sessions.log(session_dir, "silent_session_error", error_type=type(exc).__name__)
                     self.send_json(502, {"error": "could not create transcription session"})
                 return
 
@@ -337,6 +356,18 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                     self.send_json(502, {"error": "audio transcription unavailable"})
                 return
 
+            if path == "/api/silent/log":
+                if not self.allow_public_request("silent_log"):
+                    return
+                try:
+                    write_silent_event(runtime.sessions, self.read_json(max_bytes=12000))
+                    self.send_json(200, {"ok": True})
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    self.send_json(500, {"error": "could not write Silent Coach log"})
+                return
+
             if path == "/api/settings":
                 if runtime.access.is_public:
                     self.send_json(403, {"error": "public settings are read-only"})
@@ -353,6 +384,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
             if path == "/api/coach":
                 if not self.allow_public_request("coach"):
                     return
+                payload = None
                 try:
                     payload = self.read_json()
                     result = runtime.coach.run_turn(
@@ -363,6 +395,13 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                     self.send_json(200, result)
                 except Exception as exc:
                     print(f"[COACH ERROR] {exc}")
+                    if payload and payload.get("silent_private") is True:
+                        record = runtime.sessions.record(payload.get("session_id"))
+                        if record is not None and record.mode == "silent":
+                            runtime.sessions.log(record.directory, "silent_coach_server_error",
+                                                 turn=_positive_turn(payload.get("turn")),
+                                                 error_type=type(exc).__name__,
+                                                 error=str(exc)[:300])
                     self.send_json(400, {"error": str(exc)})
                 return
 

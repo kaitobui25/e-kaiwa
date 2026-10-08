@@ -55,6 +55,16 @@ class SilentTranscribeTests(unittest.TestCase):
             result = transcribe_chunk([(1, "failed-key"), (2, "working-key")], self.sessions, request_audio(self.session_id))
         self.assertEqual(post.call_count, 2)
         self.assertEqual(result, {"text": "Please finish your homework.", "model": MODEL})
+        rows = [json.loads(line) for line in (
+            self.sessions.get(self.session_id) / "conversation.jsonl"
+        ).read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([item["event"] for item in rows], [
+            "silent_fallback_started", "silent_fallback_attempt", "silent_fallback_attempt",
+            "silent_fallback_result",
+        ])
+        self.assertEqual(rows[1]["http_status"], 429)
+        self.assertEqual(rows[2]["key_slot"], 2)
+        self.assertEqual(rows[-1]["text"], "Please finish your homework.")
 
     def test_rejects_invalid_sessions_and_audio_payloads(self):
         for payload in [
@@ -117,8 +127,18 @@ class SilentTranscribeTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(request, timeout=5)
             self.assertEqual(caught.exception.code, 403)
+            request = urllib.request.Request(
+                f"{root}/api/silent/log",
+                data=json.dumps({"session_id": self.session_id, "event": "silent_start",
+                                 "sequence": 1}).encode(),
+                headers={"Content-Type": "application/json", "Origin": "https://malicious.example"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=5)
+            self.assertEqual(caught.exception.code, 403)
 
-    def test_silent_coach_audio_and_transcript_are_not_persistently_logged(self):
+    def test_silent_coach_audio_is_temporary_but_transcript_and_models_are_logged(self):
         model_result = StructuredCallResult(
             {"correction": "Did you finish it?", "explanation": "Use the base verb."},
             0.01, "fake-model", 1, [], "",
@@ -147,5 +167,77 @@ class SilentTranscribeTests(unittest.TestCase):
             )
         directory = self.sessions.get(self.session_id)
         self.assertEqual(result["correction"], "Did you finish it?")
-        self.assertFalse((directory / "conversation.jsonl").exists())
+        rows = [json.loads(line) for line in (directory / "conversation.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(rows[-1]["event"], "silent_coach")
+        self.assertEqual(rows[-1]["user_text"], "Did you finished it?")
+        self.assertEqual(rows[-1]["correction"], "Did you finish it?")
+        self.assertEqual(rows[-1]["correction_effective_model"], "fake-model")
+        self.assertEqual(rows[-1]["pronunciation"]["result"]["overall_score"], 80)
         self.assertFalse((directory / "turn_001_user.wav").exists())
+
+    def test_browser_log_endpoint_stays_in_silent_session_and_rejects_secrets(self):
+        from e_kaiwa.silent_logging import write_silent_event
+
+        write_silent_event(self.sessions, {
+            "session_id": self.session_id, "event": "silent_coach_result", "sequence": 1,
+            "details": {
+                "turn": 3, "text": "Did you finished?",
+                "correction": "Did you finish?",
+                "model": "test-model",
+                "api_key": "DO-NOT-LOG", "token": "DO-NOT-LOG",
+                "pcm_b64": "DO-NOT-LOG",
+                "detail": {"apiKey": "DO-NOT-LOG", "latency": 1.3},
+            },
+        })
+        path = self.sessions.get(self.session_id) / "conversation.jsonl"
+        raw = path.read_text(encoding="utf-8")
+        self.assertNotIn("DO-NOT-LOG", raw)
+        row = json.loads(raw.splitlines()[0])
+        self.assertEqual(row["sequence"], 1)
+        self.assertEqual(row["turn"], 3)
+        self.assertEqual(row["text"], "Did you finished?")
+        self.assertNotIn("apiKey", row["detail"])
+
+        invalid = [
+            {"event": "silent_coach_result", "sequence": 2, "session_id": "not-a-session"},
+            {"event": "arbitrary_injected_event", "sequence": 2, "session_id": self.session_id},
+            {"event": "silent_coach_result", "sequence": 2, "session_id": self.session_id,
+             "details": {"sequence": 4}},
+        ]
+        with self.assertRaises(ValueError):
+            write_silent_event(self.sessions, invalid[0])
+        with self.assertRaises(ValueError):
+            write_silent_event(self.sessions, invalid[1])
+        # Additional sequence values in details cannot overwrite authoritative sequence.
+        write_silent_event(self.sessions, invalid[2])
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8").splitlines()[-1])["sequence"], 2)
+
+    def test_session_reconnect_keeps_same_folder_and_http_events_are_logged(self):
+        with (
+            patch("e_kaiwa.server.create_ephemeral_token", return_value="fake-transcription-token"),
+            self.running_server(public=True) as root,
+        ):
+            def get_session(path):
+                with urllib.request.urlopen(f"{root}{path}", timeout=3) as resp:
+                    return json.load(resp)
+            first = get_session("/api/silent/session")
+            second = get_session(f"/api/silent/session?session_id={first['session_id']}")
+            self.assertEqual(first["session_id"], second["session_id"])
+            request = urllib.request.Request(
+                f"{root}/api/silent/log",
+                data=json.dumps({
+                    "session_id": first["session_id"],
+                    "event": "silent_stop", "sequence": 4,
+                    "details": {"captured": 10, "failed": 1, "fallback": True},
+                }).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=3) as response:
+                self.assertTrue(json.load(response)["ok"])
+            rows = [json.loads(line) for line in (
+                self.sessions.get(first["session_id"]) / "conversation.jsonl"
+            ).read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[0]["event"], "silent_session_created")
+            self.assertEqual(rows[-1]["event"], "silent_stop")
+            self.assertEqual(rows[-1]["captured"], 10)
+            self.assertIn("silent_token_requested", [row["event"] for row in rows])

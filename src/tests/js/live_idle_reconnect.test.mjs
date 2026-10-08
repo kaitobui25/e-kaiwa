@@ -39,7 +39,7 @@ test('goAway and browser-online respect idle guard', () => {
 test('SessionStore lazy creation keeps folder off disk until first real log', async () => {
   // structural check: server /api/session must not synchronously log conversation folder
   const serverSource = await readFile(new URL('../../e_kaiwa/server.py', import.meta.url), 'utf8');
-  const sessionBlock = serverSource.slice(serverSource.indexOf('if path == "/api/session"'), serverSource.indexOf('self.send_error(404)', serverSource.indexOf('if path == "/api/session"')));
+  const sessionBlock = serverSource.slice(serverSource.indexOf('if path == "/api/session"'), serverSource.indexOf('if path == "/api/silent/session"', serverSource.indexOf('if path == "/api/session"')));
   assert.doesNotMatch(sessionBlock, /sessions\.log\(/);
   assert.match(sessionBlock, /lazy/);
 });

@@ -1356,7 +1356,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.connecting = false;
       state.ui.setSetupReady(false);
     } else {
-      state.silentCoach.cancel();
+      state.silentCoach.logEvent('silent_mode_exit', {reason: 'return_to_talk'});
+      state.silentCoach.cancel('return_to_talk');
       newLiveSession({reason: 'silent_mode_exit'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
     }
     state.practiceView = view;
@@ -1371,10 +1372,15 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     if (action === 'silent-start') {
       try {
         if (state.practiceView !== 'silent' || state.silentCoach.isRecording) return;
-        if (!await ensureMicReady()) throw new Error('Microphone unavailable');
         await state.silentCoach.start();
+        if (!await ensureMicReady()) throw new Error('Microphone unavailable');
+        state.silentCoach.logEvent('silent_mic_ready', {
+          sample_rate: 16000,
+          detail: state.micAudioSettings
+        });
       } catch (error) {
-        state.ui?.setSilentState?.('error', {status: error.message});
+        state.silentCoach.logEvent('silent_mic_error', {error: String(error?.message || error).slice(0, 350)});
+        state.silentCoach.fail(error);
       }
       return;
     }
@@ -1605,6 +1611,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   function handleBrowserOffline() {
     if (!state.browserOnline) return;
     state.browserOnline = false;
+    if (state.practiceView === 'silent') state.silentCoach?.logEvent('silent_network_offline');
     state.idle?.cancel();
     state.pushReconnectPending = false;
     emitUiEvent({event: 'browser_offline'});
@@ -1621,6 +1628,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   function handleBrowserOnline() {
     if (state.browserOnline && state.setupReady && state.ws?.readyState === WebSocket.OPEN) return;
     state.browserOnline = true;
+    if (state.practiceView === 'silent') state.silentCoach?.logEvent('silent_network_online');
     emitUiEvent({event: 'browser_online'});
     if (!shouldAutoReconnect()) return;
     recoverLiveSession('browser_online', {resume: true, force: true});
@@ -1632,7 +1640,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   window.addEventListener('keydown', noteUserActivity, {capture: true});
 
   window.addEventListener('beforeunload', () => {
-    state.silentCoach?.cancel();
+    state.silentCoach?.cancel('page_unload');
     state.inputForwarding = false;
     state.recovery.clearTimers();
     state.idle?.dispose();
