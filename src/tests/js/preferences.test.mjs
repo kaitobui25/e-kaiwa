@@ -8,6 +8,7 @@ import {
   detectDefaultAppLanguage,
   isHandsFreeMode,
   normalizeAppLanguage,
+  normalizeAiVolume,
   normalizeConversationMode,
   normalizePlaybackRate,
   normalizeTargetLanguage,
@@ -81,6 +82,19 @@ test('conversation mode persists locally and normalizes to supported values', ()
   assert.equal(value.conversationMode, CONVERSATION_MODES.HANDS_FREE);
   assert.equal(isHandsFreeMode(value.conversationMode), true);
   assert.equal(normalizeConversationMode('bad', CONVERSATION_MODES.HANDS_FREE), CONVERSATION_MODES.HANDS_FREE);
+});
+
+test('AI volume defaults to current level and persists a bounded percent', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({storage});
+  assert.equal(first.load().aiVolume, 100);
+  assert.equal(first.setAiVolume(150), 150);
+  assert.equal(new PreferencesStore({storage}).load().aiVolume, 150);
+  assert.equal(first.setAiVolume(203), 200);
+  assert.equal(first.setAiVolume(90), 100);
+  assert.equal(first.setAiVolume('invalid'), 100);
+  assert.equal(normalizeAiVolume(147), 150);
+  assert.equal(normalizeAiVolume(null), 100);
 });
 
 test('conversation style defaults to current behavior and persists between visits', () => {

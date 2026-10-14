@@ -132,6 +132,8 @@ export class PlaybackCoordinator {
     this.onBlockedChange = onBlockedChange;
 
     this.context = null;
+    this.liveGain = 1;
+    this.liveGainNode = null;
     this.playAt = 0;
     this.liveSources = new Set();
     this.manualSource = null;
@@ -142,9 +144,22 @@ export class PlaybackCoordinator {
   }
 
   async ensureContext() {
-    if (!this.context) this.context = this.audioContextFactory();
+    if (!this.context) {
+      this.context = this.audioContextFactory();
+      this.liveGainNode = this.context.createGain();
+      this.liveGainNode.gain.value = this.liveGain;
+      this.liveGainNode.connect(this.context.destination);
+    }
     if (this.context.state === 'suspended') await this.context.resume();
     return this.context;
+  }
+
+  setLiveGain(value) {
+    const numeric = Number(value);
+    this.liveGain = Number.isFinite(numeric) ? Math.max(1, Math.min(2, numeric)) : 1;
+    if (this.liveGainNode) {
+      this.liveGainNode.gain.setTargetAtTime(this.liveGain, this.context.currentTime, 0.015);
+    }
   }
 
   get blocked() {
@@ -211,7 +226,7 @@ export class PlaybackCoordinator {
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = rate;
-    source.connect(this.context.destination);
+    source.connect(this.liveGainNode);
     this.liveSources.add(source);
 
     source.onended = () => {

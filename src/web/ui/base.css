@@ -724,6 +724,10 @@ body[data-app-mode="public"] .app-tagline { display: none; }
 }
 .setting-control-row > label { min-width: 0; overflow-wrap: anywhere; }
 .setting-control-row select { min-width: 0; max-width: 100%; flex: 0 1 55%; }
+.setting-volume-control { display: flex; align-items: center; flex: 0 1 55%; min-width: 0; gap: 10px; }
+.setting-volume-control input { width: 100%; min-width: 0; margin: 0; accent-color: var(--primary); touch-action: pan-x; }
+.setting-volume-control input:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 4px; }
+.setting-volume-control output { flex: 0 0 46px; text-align: right; font-variant-numeric: tabular-nums; }
 .settings-panel select:focus-visible { outline: 3px solid var(--primary-strong); outline-offset: 2px; }
 .setting-control-row + .setting-control-row,
 .setting-control-row + .switch-row,
@@ -874,6 +878,7 @@ body[data-app-mode="dev"] .setting-section { margin: 0; padding: 0; border: 0; }
 body[data-app-mode="dev"] .setting-control-row,
 body[data-app-mode="dev"] .switch-row { display: block; min-height: 0; margin-top: 12px; color: var(--text); }
 body[data-app-mode="dev"] .setting-control-row > label { display: block; margin-bottom: 6px; font-weight: 700; }
+body[data-app-mode="dev"] .setting-volume-control { width: 100%; }
 body[data-app-mode="dev"] .setting-control-row select,
 body[data-app-mode="dev"] .settings-panel .dev-only select { width: 100%; min-height: 42px; border-radius: 10px; background: var(--surface-soft); }
 body[data-app-mode="dev"] .switch-row { display: flex; align-items: center; justify-content: space-between; }

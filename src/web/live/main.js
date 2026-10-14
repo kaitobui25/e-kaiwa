@@ -58,6 +58,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     realtimeModel: document.getElementById('realtime-model'),
     coachModel: document.getElementById('coach-model'),
     aiSpeed: document.getElementById('ai-speed'),
+    aiVolume: document.getElementById('ai-volume'),
+    aiVolumeValue: document.getElementById('ai-volume-value'),
     silenceDuration: document.getElementById('silence-duration'),
     pron: document.getElementById('pron'),
     settingsPanel: document.getElementById('settings-panel'),
@@ -389,6 +391,12 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     return Number(aiSpeedValue(elements.aiSpeed.value));
   }
 
+  function updateAiVolume(volume) {
+    elements.aiVolume.value = String(volume);
+    elements.aiVolumeValue.textContent = `${volume}%`;
+    state.playback.setLiveGain(volume / 100);
+  }
+
   function initializeUi(payload) {
     state.appMode = payload?.app_mode === 'public' ? 'public' : 'dev';
     state.conversationMode = state.appMode === 'public'
@@ -504,6 +512,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       setSelectChoices(elements.coachModel, choices.coach, coachSelected);
     }
 
+    updateAiVolume(state.preferences.value.aiVolume);
     elements.conversationStyle.value = state.preferences.value.conversationStyle;
     state.selectedConversationStyle = elements.conversationStyle.value;
     state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
@@ -1565,6 +1574,10 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       return;
     }
     try { await persistSettings({ai_playback_rate: Number(value)}); } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.aiVolume.addEventListener('input', () => {
+    updateAiVolume(state.preferences.setAiVolume(elements.aiVolume.value));
   });
 
   elements.silenceDuration.addEventListener('change', async () => {

@@ -77,6 +77,14 @@ class MobileSettingsUiTests(unittest.TestCase):
         self.assertIn('const value = aiSpeedValue(elements.aiSpeed.value);', live)
         self.assertNotIn('String(normalizePlaybackRate(elements.aiSpeed.value', live)
 
+    def test_ai_volume_slider_is_above_talk_mode_with_current_volume_as_minimum(self):
+        html = HTML.read_text(encoding="utf-8")
+        live = LIVE.read_text(encoding="utf-8")
+        self.assertIn('id="ai-volume" type="range" min="100" max="200" step="10" value="100"', html)
+        self.assertLess(html.index('id="ai-speed"'), html.index('id="ai-volume"'))
+        self.assertLess(html.index('id="ai-volume"'), html.index('id="talk-mode"'))
+        self.assertIn("state.preferences.setAiVolume(elements.aiVolume.value)", live)
+
     def test_vietnamese_settings_copy_is_compact(self):
         ui = UI.read_text(encoding="utf-8")
         self.assertIn("language: 'Ngôn ngữ'", ui)

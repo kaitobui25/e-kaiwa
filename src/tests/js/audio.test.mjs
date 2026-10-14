@@ -11,6 +11,7 @@ import {
 
 function fakeAudioContext() {
   const sources = [];
+  const gains = [];
   return {
     state: 'running',
     currentTime: 0,
@@ -19,12 +20,24 @@ function fakeAudioContext() {
     createBuffer(_channels, length, sampleRate) {
       return {duration: length / sampleRate, copyToChannel() {}};
     },
+    createGain() {
+      const node = {
+        gain: {
+          value: 1,
+          changes: [],
+          setTargetAtTime(value, time, constant) { this.changes.push([value, time, constant]); }
+        },
+        connect(destination) { node.destination = destination; }
+      };
+      gains.push(node);
+      return node;
+    },
     createBufferSource() {
       const source = {
         playbackRate: {value: 1},
         buffer: null,
         onended: null,
-        connect() {},
+        connect(destination) { source.destination = destination; },
         disconnect() {},
         start(when = 0) { source.startedAt = when; },
         stop() { source.onended?.(); }
@@ -32,7 +45,8 @@ function fakeAudioContext() {
       sources.push(source);
       return source;
     },
-    sources
+    sources,
+    gains
   };
 }
 
@@ -134,11 +148,36 @@ test('live PCM queue owns playback timing and blocks input', async () => {
   assert.equal(changes[0], true);
   assert.equal(context.sources.length, 1);
   assert.equal(context.sources[0].playbackRate.value, 0.8);
+  assert.equal(context.gains.length, 1);
+  assert.equal(context.gains[0].destination, context.destination);
+  assert.equal(context.sources[0].destination, context.gains[0]);
   assert.ok(coordinator.livePlaybackRemainingMs > 0);
 
   coordinator.clear();
   assert.equal(coordinator.liveSources.size, 0);
   assert.equal(changes.at(-1), false);
+});
+
+test('live gain defaults to current volume, updates active playback and reuses one node', async () => {
+  const context = fakeAudioContext();
+  const coordinator = new PlaybackCoordinator({audioContextFactory: () => context});
+
+  coordinator.setLiveGain(1.5);
+  await coordinator.ensureContext();
+  assert.equal(context.gains.length, 1);
+  assert.equal(context.gains[0].gain.value, 1.5);
+
+  coordinator.queueLivePcm(pcmBase64());
+  coordinator.setLiveGain(2);
+  assert.deepEqual(context.gains[0].gain.changes, [[2, 0, 0.015]]);
+  coordinator.queueLivePcm(pcmBase64());
+  assert.equal(context.gains.length, 1);
+  assert.ok(context.sources.every(source => source.destination === context.gains[0]));
+
+  coordinator.setLiveGain(99);
+  coordinator.setLiveGain(NaN);
+  assert.deepEqual(context.gains[0].gain.changes.slice(-2).map(change => change[0]), [2, 1]);
+  coordinator.clear();
 });
 
 test('echo guard counts as live playback and rejects manual replay during guard', async () => {

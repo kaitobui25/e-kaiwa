@@ -20,6 +20,7 @@ const STORAGE_KEYS = Object.freeze({
   appLanguage: 'e-kaiwa.app-language',
   theme: 'e-kaiwa.theme',
   playbackRate: 'e-kaiwa.playback-rate',
+  aiVolume: 'e-kaiwa.ai-volume',
   pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
   conversationMode: 'e-kaiwa.conversation-mode',
   conversationStyle: 'e-kaiwa.conversation-style',
@@ -65,6 +66,12 @@ export function normalizePlaybackRate(value, fallback = 0.8) {
   return PLAYBACK_RATES.includes(Number(fallback)) ? Number(fallback) : 0.8;
 }
 
+export function normalizeAiVolume(value) {
+  const numeric = value == null || value === '' ? NaN : Number(value);
+  if (!Number.isFinite(numeric)) return 100;
+  return Math.min(200, Math.max(100, Math.round(numeric / 10) * 10));
+}
+
 export function normalizePronunciationEnabled(value, fallback = true) {
   if (typeof value === 'boolean') return value;
   if (value === 'true') return true;
@@ -100,6 +107,7 @@ export class PreferencesStore {
       appLanguage: detectDefaultAppLanguage(this.browserLanguages),
       theme: this.prefersDark ? 'dark' : 'light',
       playbackRate: 0.8,
+      aiVolume: 100,
       pronunciationEnabled: true,
       conversationMode: CONVERSATION_MODES.PUSH_TO_TALK,
       conversationStyle: CONVERSATION_STYLES.DEFAULT,
@@ -141,6 +149,7 @@ export class PreferencesStore {
       appLanguage,
       theme: normalizeTheme(this._read(STORAGE_KEYS.theme), defaultTheme),
       playbackRate: normalizePlaybackRate(this._read(STORAGE_KEYS.playbackRate), defaultRate),
+      aiVolume: normalizeAiVolume(this._read(STORAGE_KEYS.aiVolume)),
       pronunciationEnabled: normalizePronunciationEnabled(
         this._read(STORAGE_KEYS.pronunciationEnabled),
         defaultPronunciation
@@ -171,6 +180,12 @@ export class PreferencesStore {
     this.value.playbackRate = normalizePlaybackRate(value, this.value.playbackRate);
     this._write(STORAGE_KEYS.playbackRate, this.value.playbackRate);
     return this.value.playbackRate;
+  }
+
+  setAiVolume(value) {
+    this.value.aiVolume = normalizeAiVolume(value);
+    this._write(STORAGE_KEYS.aiVolume, this.value.aiVolume);
+    return this.value.aiVolume;
   }
 
   setPronunciationEnabled(value) {
