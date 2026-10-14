@@ -15,6 +15,7 @@ import {
   normalizeTheme,
   targetSpeechLocale
 } from '../../web/shared/preferences.js';
+import {DEFAULT_AI_VOICE, AI_VOICE_NAMES, normalizeAiVoice, liveAudioGenerationConfig, isVoiceSetupError} from '../../web/shared/voices.js';
 
 function memoryStorage() {
   const values = new Map();
@@ -95,6 +96,34 @@ test('AI volume defaults to current level and persists a bounded percent', () =>
   assert.equal(first.setAiVolume('invalid'), 100);
   assert.equal(normalizeAiVolume(147), 150);
   assert.equal(normalizeAiVolume(null), 100);
+});
+
+test('AI voice defaults to Auto, validates the catalog and persists per browser', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({storage});
+  assert.equal(first.load().aiVoice, DEFAULT_AI_VOICE);
+  assert.equal(first.setAiVoice('kore'), 'Kore');
+  assert.equal(new PreferencesStore({storage}).load().aiVoice, 'Kore');
+  assert.equal(first.setAiVoice('  PUCK  '), 'Puck');
+  assert.equal(first.setAiVoice('some-unknown-voice'), 'auto');
+  assert.equal(new PreferencesStore({storage}).load().aiVoice, 'auto');
+  assert.equal(normalizeAiVoice(null), 'auto');
+  assert.equal(normalizeAiVoice('<script>'), 'auto');
+  assert.equal(new Set(AI_VOICE_NAMES).size, AI_VOICE_NAMES.length);
+});
+
+test('Gemini Live setup omits voiceConfig for Auto and uses only whitelisted prebuilt voices', () => {
+  assert.deepEqual(liveAudioGenerationConfig('auto'), {responseModalities: ['AUDIO']});
+  assert.deepEqual(liveAudioGenerationConfig('invalid'), {responseModalities: ['AUDIO']});
+  for (const voice of AI_VOICE_NAMES) {
+    assert.deepEqual(liveAudioGenerationConfig(voice), {
+      responseModalities: ['AUDIO'],
+      speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: voice}}}
+    });
+  }
+  assert.equal(isVoiceSetupError('Invalid voice name'), true);
+  assert.equal(isVoiceSetupError('speechConfig unsupported'), true);
+  assert.equal(isVoiceSetupError('Network unreachable'), false);
 });
 
 test('conversation style defaults to current behavior and persists between visits', () => {

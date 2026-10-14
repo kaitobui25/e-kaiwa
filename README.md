@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.35`**
+**Current version: `0.36`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -15,6 +15,7 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 - **Coach sidecar** for correction + pronunciation after each learner turn without delaying the realtime reply.
 - **Mobile-first UI** with replay, Coach score/details, light/dark themes, and stable streaming transcript updates.
 - **Adjustable AI Live volume:** 100–200% amplification from Settings, saved locally per device.
+- **Selectable Gemini Live voices:** Auto or seven prebuilt voices, saved per device and applied on a fresh Live session.
 - **Live recovery** with session resumption, GoAway handling, offline/online recovery, and a stale-response watchdog.
 - **iPhone/Chrome mic reuse:** reconnects and language changes reuse the granted microphone capture instead of unnecessarily calling `getUserMedia()` again.
 - **Ubuntu VPS deployment** using one Python process behind Caddy + systemd.
@@ -36,9 +37,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.33 Fix Silent Coach Gemini Live binary WebSocket messages and SMART fallback audioTranscription parsing
 0.34 Compact Silent Coach review: show spoken and suggested sentences by default, expand details on demand, replay original recorded PCM and speak suggested corrections
 0.35 AI Live volume boost: adjustable 100–200% slider, saved per device and applied without reconnecting
+0.36 AI voice selector: Auto + seven Gemini Live voices, local preferences and safe between-turn reconnection
 ```
 
-Future incremental releases continue as `0.36`, `0.37`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.37`, `0.38`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 

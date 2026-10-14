@@ -31,6 +31,13 @@ import {LiveRecoveryCoordinator} from './recovery.js';
 import {LiveIdleCoordinator} from './idle.js';
 import {SilentCoachEngine} from './silent_coach.js';
 import {hasPlayableReplay} from '../shared/replay_policy.js';
+import {
+  AI_VOICE_NAMES,
+  DEFAULT_AI_VOICE,
+  isVoiceSetupError,
+  liveAudioGenerationConfig,
+  normalizeAiVoice
+} from '../shared/voices.js';
 
 (() => {
   'use strict';
@@ -58,6 +65,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     realtimeModel: document.getElementById('realtime-model'),
     coachModel: document.getElementById('coach-model'),
     aiSpeed: document.getElementById('ai-speed'),
+    aiVoice: document.getElementById('ai-voice'),
     aiVolume: document.getElementById('ai-volume'),
     aiVolumeValue: document.getElementById('ai-volume-value'),
     silenceDuration: document.getElementById('silence-duration'),
@@ -88,6 +96,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     targetLanguage: TARGET_LANGUAGE,
     selectedConversationStyle: CONVERSATION_STYLES.DEFAULT,
     conversationStyle: CONVERSATION_STYLES.DEFAULT,
+    selectedAiVoice: DEFAULT_AI_VOICE,
+    activeAiVoice: DEFAULT_AI_VOICE,
     sessionSilenceDurationMs: 1000,
     liveIdleTimeoutSeconds: 180,
     echoGuardMs: 250,
@@ -397,6 +407,16 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     state.playback.setLiveGain(volume / 100);
   }
 
+  function setAiVoiceChoices() {
+    // One catalog powers both the select and the Live setup allowlist.
+    for (const voice of AI_VOICE_NAMES) {
+      const option = document.createElement('option');
+      option.value = voice;
+      option.textContent = voice;
+      elements.aiVoice.append(option);
+    }
+  }
+
   function initializeUi(payload) {
     state.appMode = payload?.app_mode === 'public' ? 'public' : 'dev';
     state.conversationMode = state.appMode === 'public'
@@ -408,6 +428,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       browserLanguages: navigator.languages,
       prefersDark: window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false
     });
+    setAiVoiceChoices();
 
     state.ui = new UiController({
       mode: state.appMode,
@@ -513,6 +534,8 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     }
 
     updateAiVolume(state.preferences.value.aiVolume);
+    state.selectedAiVoice = state.preferences.value.aiVoice;
+    elements.aiVoice.value = state.selectedAiVoice;
     elements.conversationStyle.value = state.preferences.value.conversationStyle;
     state.selectedConversationStyle = elements.conversationStyle.value;
     state.supportLanguage = selectedSupportLanguage(elements.feedbackLanguage.value);
@@ -561,6 +584,11 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     }
     state.recovery.clearHandle();
     newLiveSession({reason: 'settings_change'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+  }
+
+  function voiceChangeMustWait() {
+    return state.selectedAiVoice !== state.activeAiVoice &&
+      (inputBusy() || Boolean(state.activeTurn) || Boolean(state.playback?.busy));
   }
 
   function micCaptureState() {
@@ -803,6 +831,11 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   function armPushToTalkAfterPlayback() {
     const delay = state.playback.armAfterLive(() => {
       if (!state.setupReady || state.ws?.readyState !== WebSocket.OPEN || state.activeTurn) return;
+      if (sessionSettingsChanged() && state.selectedAiVoice !== state.activeAiVoice) {
+        state.recovery.clearHandle();
+        newLiveSession({reason: 'voice_change_after_playback'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+        return;
+      }
       state.ui.setTalkState('ready');
       state.ui.setStatus(state.ui.t('holdToTalk'));
       armLiveIdleIfEligible();
@@ -829,14 +862,14 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     postTurnMetric(turn);
     render();
 
-    if (sessionSettingsChanged()) {
+    if (sessionSettingsChanged() && !voiceChangeMustWait()) {
       state.reconnectPending = false;
       state.recovery.clearHandle();
       newLiveSession({reason: 'settings_change_after_turn'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
       return;
     }
 
-    if (state.reconnectPending) {
+    if (state.reconnectPending && !voiceChangeMustWait()) {
       state.reconnectPending = false;
       if (handsFree() && state.conversationActive) state.resumeHandsFreeAfterReconnect = true;
       newLiveSession({resume: true, reason: 'deferred_recovery'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
@@ -994,6 +1027,16 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       });
       if (!state.setupReady) {
         state.connecting = false;
+        if (socket.__ekaiwaAiVoice !== DEFAULT_AI_VOICE &&
+            socket.__ekaiwaAiVoice === state.selectedAiVoice &&
+            isVoiceSetupError(detail)) {
+          state.selectedAiVoice = state.preferences.setAiVoice(DEFAULT_AI_VOICE);
+          elements.aiVoice.value = state.selectedAiVoice;
+          state.recovery.clearHandle();
+          state.ui.setStatus(state.ui.t('aiVoiceFallback'), {error: true});
+          newLiveSession({reason: 'voice_fallback_auto'}).catch(error => showReconnect(`Connection error: ${error.message}.`));
+          return;
+        }
         if (await retryFreshAfterResume(socket, detail)) return;
         if (await retryWithRealtimeFallback(detail)) return;
         showReconnect(`Gemini setup error: ${detail}.`);
@@ -1142,11 +1185,13 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       state.selectedTargetLanguage = normalizeTargetLanguage(elements.targetLanguage.value);
       state.targetLanguage = state.selectedTargetLanguage;
       state.conversationStyle = normalizeConversationStyle(elements.conversationStyle.value);
+      state.activeAiVoice = normalizeAiVoice(state.selectedAiVoice);
+      socket.__ekaiwaAiVoice = state.activeAiVoice;
       state.ui.setStatus(state.appMode === 'public' ? state.ui.t('connecting') : `WebSocket open · configuring ${modelLabel(data.model)}…`);
       socket.send(JSON.stringify({
         setup: {
           model: `models/${data.model}`,
-          generationConfig: {responseModalities: ['AUDIO']},
+          generationConfig: liveAudioGenerationConfig(state.activeAiVoice),
           systemInstruction: {parts: [{text: buildLiveLanguageInstruction(state.supportLanguage, state.targetLanguage, state.conversationStyle)}]},
           realtimeInputConfig: {
             automaticActivityDetection: liveVadConfig()
@@ -1206,7 +1251,7 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
   }
 
   function sessionSettingsChanged() {
-    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || state.selectedTargetLanguage !== state.targetLanguage || state.selectedConversationStyle !== state.conversationStyle || (
+    return selectedSupportLanguage(elements.feedbackLanguage.value) !== state.supportLanguage || state.selectedTargetLanguage !== state.targetLanguage || state.selectedConversationStyle !== state.conversationStyle || state.selectedAiVoice !== state.activeAiVoice || (
       state.appMode === 'dev' && (
         elements.realtimeModel.value !== state.sessionRequestedModel ||
         Number(elements.silenceDuration.value) !== state.sessionSilenceDurationMs
@@ -1453,6 +1498,10 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       if (state.playback.manualPlaying && replayProgressTurnNo === turn.no) {
         state.playback.stopManual();
         resetReplayProgress(turn.no);
+        if (state.selectedAiVoice !== state.activeAiVoice && !voiceChangeMustWait()) {
+          requestSessionReconnect(state.ui.t('connecting'));
+          return;
+        }
         armLiveIdleIfEligible();
         return;
       }
@@ -1475,6 +1524,10 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
     }
 
     if (!played) state.ui.setStatus(state.ui.t('playbackUnavailable'), {error: true});
+    if (state.selectedAiVoice !== state.activeAiVoice && !voiceChangeMustWait()) {
+      requestSessionReconnect(state.ui.t('connecting'));
+      return;
+    }
     armLiveIdleIfEligible();
   }
 
@@ -1574,6 +1627,19 @@ import {hasPlayableReplay} from '../shared/replay_policy.js';
       return;
     }
     try { await persistSettings({ai_playback_rate: Number(value)}); } catch (error) { await recoverSettings(error); }
+  });
+
+  elements.aiVoice.addEventListener('change', () => {
+    const previous = state.selectedAiVoice;
+    state.selectedAiVoice = state.preferences.setAiVoice(elements.aiVoice.value);
+    elements.aiVoice.value = state.selectedAiVoice;
+    if (state.selectedAiVoice === previous || state.selectedAiVoice === state.activeAiVoice) return;
+    if (state.practiceView !== 'talk') return; // The next Talk session will use this choice.
+    if (voiceChangeMustWait()) {
+      state.ui.setStatus(state.ui.t('aiVoicePending'));
+      return;
+    }
+    requestSessionReconnect(state.ui.t('connecting'));
   });
 
   elements.aiVolume.addEventListener('input', () => {

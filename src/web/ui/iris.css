@@ -412,6 +412,10 @@ body[data-app-mode="public"] .setting-control-row select {
   border-radius: 14px;
   background: var(--surface-soft);
 }
+body[data-app-mode="public"] #ai-voice {
+  font-weight: 650;
+  color: var(--primary-strong);
+}
 body[data-app-mode="public"] .setting-volume-control input { accent-color: var(--primary-strong); }
 body[data-app-mode="public"] .switch-control:checked { background: var(--primary); border-color: var(--primary); }
 body[data-app-mode="public"] .settings-release { border-color: var(--border); }

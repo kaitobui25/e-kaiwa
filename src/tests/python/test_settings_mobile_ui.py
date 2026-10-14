@@ -36,6 +36,7 @@ class MobileSettingsUiTests(unittest.TestCase):
             'id="feedback-language"',
             'id="conversation-style"',
             'id="theme"',
+            'id="ai-voice"',
             'id="ai-speed"',
             'id="talk-mode"',
             'id="pron"',

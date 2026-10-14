@@ -6,6 +6,7 @@ import {
   TARGET_LANGUAGE_ALIASES,
   TARGET_LANGUAGE_METADATA
 } from './language_policy.js';
+import {DEFAULT_AI_VOICE, normalizeAiVoice} from './voices.js';
 
 export const SUPPORTED_APP_LANGUAGES = Object.freeze(['en', 'ja', 'vi']);
 export const SUPPORTED_THEMES = Object.freeze(['light', 'dark']);
@@ -21,6 +22,7 @@ const STORAGE_KEYS = Object.freeze({
   theme: 'e-kaiwa.theme',
   playbackRate: 'e-kaiwa.playback-rate',
   aiVolume: 'e-kaiwa.ai-volume',
+  aiVoice: 'e-kaiwa.ai-voice',
   pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
   conversationMode: 'e-kaiwa.conversation-mode',
   conversationStyle: 'e-kaiwa.conversation-style',
@@ -108,6 +110,7 @@ export class PreferencesStore {
       theme: this.prefersDark ? 'dark' : 'light',
       playbackRate: 0.8,
       aiVolume: 100,
+      aiVoice: DEFAULT_AI_VOICE,
       pronunciationEnabled: true,
       conversationMode: CONVERSATION_MODES.PUSH_TO_TALK,
       conversationStyle: CONVERSATION_STYLES.DEFAULT,
@@ -150,6 +153,7 @@ export class PreferencesStore {
       theme: normalizeTheme(this._read(STORAGE_KEYS.theme), defaultTheme),
       playbackRate: normalizePlaybackRate(this._read(STORAGE_KEYS.playbackRate), defaultRate),
       aiVolume: normalizeAiVolume(this._read(STORAGE_KEYS.aiVolume)),
+      aiVoice: normalizeAiVoice(this._read(STORAGE_KEYS.aiVoice)),
       pronunciationEnabled: normalizePronunciationEnabled(
         this._read(STORAGE_KEYS.pronunciationEnabled),
         defaultPronunciation
@@ -186,6 +190,12 @@ export class PreferencesStore {
     this.value.aiVolume = normalizeAiVolume(value);
     this._write(STORAGE_KEYS.aiVolume, this.value.aiVolume);
     return this.value.aiVolume;
+  }
+
+  setAiVoice(value) {
+    this.value.aiVoice = normalizeAiVoice(value);
+    this._write(STORAGE_KEYS.aiVoice, this.value.aiVoice);
+    return this.value.aiVoice;
   }
 
   setPronunciationEnabled(value) {
