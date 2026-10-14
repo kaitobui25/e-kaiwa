@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/assets/fonts/fonts.css">
   <link rel="stylesheet" href="/ui/base.css">
   <link rel="stylesheet" href="/ui/public.css">
+  <link rel="stylesheet" href="/ui/iris.css">
   <link rel="stylesheet" href="/maintenance/style.css">
   <script type="module" src="/live/main.js"></script>
   <script type="module" src="/maintenance/bootstrap.js"></script>
@@ -16,8 +17,13 @@
 <main id="app-shell" class="app-shell">
   <header class="app-header">
     <div class="brand-block">
-      <h1>E-KAIWA</h1>
-      <div class="app-tagline" data-i18n="appTagline">Speak more. Learn naturally.</div>
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none"><path d="M17.5 2.5 6 18h9l-1.5 11.5L26 13.5h-9L17.5 2.5Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>
+      </span>
+      <div class="brand-copy">
+        <h1>E-KAIWA</h1>
+        <div class="app-tagline" data-i18n="appTagline">Speak more. Learn naturally.</div>
+      </div>
     </div>
     <button id="settings-open" class="header-icon" type="button" aria-label="Settings" data-i18n-aria-label="settings" aria-expanded="false" hidden>
       <span class="icon-mask icon-mask--settings" aria-hidden="true"></span>

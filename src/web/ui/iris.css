@@ -1,0 +1,433 @@
+/* Electric Iris visual skin. Only public UI is affected; live behavior stays in
+   the existing controllers and base/public layout styles. */
+body[data-app-mode="public"] {
+  --bg: #f5f3ff;
+  --surface: #ffffff;
+  --surface-soft: #efebff;
+  --surface-raised: #ffffff;
+  --text: #252148;
+  --text-muted: #77718f;
+  --border: #e5e0f6;
+  --border-strong: #d8cff4;
+  --primary: #6045dd;
+  --primary-strong: #4d31c7;
+  --primary-soft: #edeaff;
+  --ai-surface: #ffffff;
+  --user-surface: #e9e4ff;
+  --conversation-bg: transparent;
+  --on-primary: #ffffff;
+  --ember: #e65c8a;
+  --ember-soft: #ffecf3;
+  --sakura: #db7198;
+  --gold: #ae8029;
+  --iris-ink: #242047;
+  --iris-lime: #dcfc88;
+  --iris-card: #5739d0;
+  --shadow-sm: 0 3px 12px rgba(55, 33, 120, 0.06);
+  --shadow-md: 0 24px 70px rgba(40, 25, 95, 0.2);
+  --shadow-card: 0 10px 30px rgba(68, 45, 153, 0.06);
+  --radius-md: 18px;
+  --radius-lg: 26px;
+  --control-dock-safe-area: 230px;
+}
+
+body[data-app-mode="public"][data-theme="dark"] {
+  --bg: #14112b;
+  --surface: #231f40;
+  --surface-soft: #30284e;
+  --surface-raised: #292343;
+  --text: #f5f3ff;
+  --text-muted: #b9b0d7;
+  --border: #43395f;
+  --border-strong: #594d79;
+  --primary: #af9aff;
+  --primary-strong: #c4b5ff;
+  --primary-soft: #3a2d66;
+  --ai-surface: #262141;
+  --user-surface: #43356c;
+  --conversation-bg: transparent;
+  --on-primary: #21163e;
+  --iris-ink: #211c40;
+  --iris-lime: #dcfc88;
+  --iris-card: #593cd0;
+  --shadow-sm: 0 3px 12px rgba(0, 0, 0, 0.16);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+/* Compact product identity: a single bolt mark and a consistent icon weight. */
+body[data-app-mode="public"] .app-header {
+  min-height: 84px;
+  margin-bottom: 2px;
+  padding: max(12px, env(safe-area-inset-top)) 18px 12px;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+body[data-app-mode="public"] .brand-block {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+body[data-app-mode="public"] .brand-mark {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #5032d0;
+  color: var(--iris-lime);
+}
+body[data-app-mode="public"] .brand-mark svg { width: 25px; height: 25px; }
+body[data-app-mode="public"] .brand-copy { min-width: 0; }
+body[data-app-mode="public"] h1 {
+  font-size: clamp(17px, 5vw, 21px);
+  font-weight: 800;
+  letter-spacing: 0.115em;
+  line-height: 1.25;
+}
+body[data-app-mode="public"] .app-tagline {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+body[data-app-mode="public"] .header-icon {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--primary-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The no-conversation state presents an honest onboarding message.
+   Progress/streak statistics from the concept are intentionally omitted. */
+body[data-app-mode="public"] .conversation-card {
+  min-height: calc(100dvh - var(--control-dock-safe-area) - 102px);
+  margin: 0;
+  padding: 10px 4px 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body[data-app-mode="public"] .iris-welcome { padding: 14px 2px 16px; }
+body[data-app-mode="public"] .iris-welcome-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+body[data-app-mode="public"] .iris-welcome h2 {
+  margin: 18px 0 24px;
+  color: var(--text);
+  font-size: clamp(34px, 9.6vw, 55px);
+  font-weight: 800;
+  line-height: 1.13;
+  letter-spacing: -0.045em;
+}
+body[data-app-mode="public"] .iris-welcome h2 span { color: var(--primary); }
+body[data-app-mode="public"][data-theme="dark"] .iris-welcome h2 span { color: #bbabff; }
+body[data-app-mode="public"] .iris-welcome-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 212px;
+  padding: 26px 23px 30px;
+  border-radius: 29px;
+  background: linear-gradient(125deg, #6343e1 0%, var(--iris-card) 70%);
+  color: #fff;
+  box-shadow: 0 18px 38px rgba(76, 48, 182, 0.18);
+}
+body[data-app-mode="public"] .iris-welcome-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -86px;
+  right: -112px;
+  width: 280px;
+  height: 280px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  pointer-events: none;
+}
+body[data-app-mode="public"] .iris-welcome-card-label {
+  display: block;
+  margin-bottom: 20px;
+  color: #dcd4ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+body[data-app-mode="public"] .iris-welcome-card strong {
+  display: block;
+  position: relative;
+  z-index: 1;
+  max-width: 74%;
+  font-size: clamp(21px, 6.5vw, 30px);
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+body[data-app-mode="public"] .iris-welcome-card p {
+  position: relative;
+  z-index: 1;
+  max-width: 74%;
+  margin: 14px 0 0;
+  color: #ece6ff;
+  font-size: 13px;
+  line-height: 1.6;
+}
+body[data-app-mode="public"] .iris-welcome-spark {
+  position: absolute;
+  top: 50%;
+  right: 7%;
+  width: 72px;
+  aspect-ratio: 1;
+  transform: translateY(-50%);
+  background: var(--iris-lime);
+  clip-path: polygon(45% 0, 55% 0, 53% 36%, 74% 8%, 82% 16%, 61% 43%, 97% 32%, 100% 45%, 65% 51%, 100% 62%, 95% 74%, 61% 59%, 78% 91%, 67% 97%, 53% 65%, 55% 100%, 44% 100%, 46% 65%, 28% 96%, 17% 91%, 38% 59%, 4% 75%, 0 63%, 35% 51%, 0 44%, 4% 33%, 38% 43%, 17% 17%, 25% 9%, 46% 36%);
+  pointer-events: none;
+}
+
+/* Chat view retains the existing streaming, coaching and replay markup. */
+body[data-app-mode="public"] .message-row { margin: 14px 0; }
+body[data-app-mode="public"] .ai-avatar {
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+body[data-app-mode="public"] .bubble {
+  padding: 12px 14px;
+  border-radius: 18px;
+  box-shadow: 0 3px 12px rgba(45, 31, 93, 0.035);
+}
+body[data-app-mode="public"] .ai-bubble {
+  border-top-left-radius: 5px;
+  background: var(--ai-surface);
+}
+body[data-app-mode="public"] .user-bubble {
+  border-top-right-radius: 5px;
+  background: var(--user-surface);
+}
+body[data-app-mode="public"] .inline-action {
+  border-color: var(--border);
+  border-radius: 15px;
+  box-shadow: none;
+}
+
+/* The microphone is the primary action; the navy dock is its stable anchor. */
+body[data-app-mode="public"] .control-dock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-rows: auto auto auto;
+  align-items: center;
+  justify-items: start;
+  gap: 5px 10px;
+  min-height: 123px;
+  bottom: calc(81px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 24px), 700px);
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 25px;
+  background: var(--iris-ink);
+  box-shadow: 0 13px 27px rgba(33, 27, 72, 0.17);
+  backdrop-filter: none;
+}
+body[data-app-mode="public"] .control-dock::before,
+body[data-app-mode="public"] .control-dock::after { display: none; }
+body[data-app-mode="public"] .control-dock .status {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  margin: 0;
+  color: #c4fba6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  opacity: 1;
+}
+body[data-app-mode="public"] .control-dock .status.error { color: #ff9eba; }
+body[data-app-mode="public"] .voice-control-row {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  justify-self: end;
+}
+body[data-app-mode="public"] .voice-waves { display: none; }
+body[data-app-mode="public"] .talk-button {
+  width: 76px;
+  height: 76px;
+  border: 0;
+  border-radius: 23px;
+  background: var(--iris-lime);
+  color: var(--iris-ink);
+  box-shadow: 0 8px 24px rgba(219, 252, 136, 0.15);
+  animation: none;
+}
+body[data-app-mode="public"] .talk-button .icon-mask { width: 30px; height: 30px; }
+body[data-app-mode="public"] .talk-pressed,
+body[data-app-mode="public"] .talk-recording {
+  background: var(--iris-lime);
+  color: var(--iris-ink);
+  box-shadow: 0 0 0 5px rgba(220, 252, 136, 0.24);
+  animation: none;
+}
+body[data-app-mode="public"] .talk-pressed::before,
+body[data-app-mode="public"] .talk-pressed::after,
+body[data-app-mode="public"] .talk-recording::before,
+body[data-app-mode="public"] .talk-recording::after { border-radius: 23px; }
+body[data-app-mode="public"] .talk-waiting,
+body[data-app-mode="public"] .talk-connecting {
+  border: 1px solid #5a537c;
+  background: #474064;
+  color: #ece8fa;
+  box-shadow: none;
+}
+body[data-app-mode="public"] .talk-speaking {
+  background: #ffb8d0;
+  color: var(--iris-ink);
+  box-shadow: 0 8px 24px rgba(255, 143, 180, 0.15);
+}
+body[data-app-mode="public"] .talk-label {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(13px, 4vw, 16px);
+  font-weight: 800;
+  line-height: 1.35;
+  opacity: 1;
+  text-align: left;
+}
+body[data-app-mode="public"] .dock-meta {
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  justify-content: flex-start;
+  gap: 15px;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  color: #bcb5de;
+  font-size: 11px;
+}
+body[data-app-mode="public"] .dock-meta::after { display: none; }
+body[data-app-mode="public"] .dock-meta-item:first-child,
+body[data-app-mode="public"] .dock-meta-item:last-child { justify-content: flex-start; }
+body[data-app-mode="public"] .dock-meta svg { display: block; width: 13px; height: 13px; }
+body[data-app-mode="public"] .control-dock .dock-swipe-hint { display: none; }
+
+/* Mode navigation uses one shape/line-weight family of icons. */
+body[data-app-mode="public"] .experience-switch {
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 24px), 700px);
+  min-height: 61px;
+  padding: 5px;
+  gap: 5px;
+  border-radius: 23px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+body[data-app-mode="public"] .experience-option {
+  min-height: 49px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 17px;
+  font-size: 13px;
+  font-weight: 750;
+}
+body[data-app-mode="public"] .experience-option::before {
+  content: "";
+  display: inline-block;
+  flex: 0 0 19px;
+  width: 19px;
+  height: 19px;
+  background: currentColor;
+  -webkit-mask: url("/assets/icons/message-circle.svg") center / contain no-repeat;
+  mask: url("/assets/icons/message-circle.svg") center / contain no-repeat;
+}
+body[data-app-mode="public"] #mode-silent::before {
+  -webkit-mask-image: url("/assets/icons/headphones.svg");
+  mask-image: url("/assets/icons/headphones.svg");
+}
+body[data-app-mode="public"] .experience-option[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+/* Silent Coach and bottom sheets share the same palette and rounded geometry. */
+body[data-app-mode="public"] .silent-panel {
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+body[data-app-mode="public"] .silent-eyebrow { color: var(--primary-strong); }
+body[data-app-mode="public"] .silent-panel h2 {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+body[data-app-mode="public"] .silent-dock {
+  bottom: calc(81px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 24px), 700px);
+  border: 0;
+  border-radius: 25px;
+  background: var(--iris-ink);
+  box-shadow: 0 13px 27px rgba(33, 27, 72, 0.17);
+}
+body[data-app-mode="public"] .silent-status,
+body[data-app-mode="public"] .silent-dock .dock-swipe-hint { color: #e5defb; }
+body[data-app-mode="public"] .silent-action--start {
+  background: var(--iris-lime);
+  color: var(--iris-ink);
+}
+body[data-app-mode="public"][data-theme="dark"] .silent-action--start { color: var(--iris-ink); }
+body[data-app-mode="public"] .silent-action--stop { background: #ffb1cb; color: var(--iris-ink); }
+body[data-app-mode="public"] .settings-panel,
+body[data-app-mode="public"] .overlay-surface {
+  border-color: var(--border);
+  border-radius: 27px 27px 0 0;
+  background: var(--surface);
+}
+body[data-app-mode="public"] .settings-head { background: var(--surface); }
+body[data-app-mode="public"] .settings-head strong { font-size: 18px; font-weight: 800; }
+body[data-app-mode="public"] .setting-control-row select {
+  border-color: var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+body[data-app-mode="public"] .setting-volume-control input { accent-color: var(--primary-strong); }
+body[data-app-mode="public"] .switch-control:checked { background: var(--primary); border-color: var(--primary); }
+body[data-app-mode="public"] .settings-release { border-color: var(--border); }
+
+@media (max-width: 380px) {
+  body[data-app-mode="public"] .app-header { padding-right: 12px; padding-left: 12px; }
+  body[data-app-mode="public"] .iris-welcome-card { padding: 23px 19px 26px; }
+  body[data-app-mode="public"] .iris-welcome-spark { width: 60px; right: 5%; }
+  body[data-app-mode="public"] .control-dock { padding: 16px; grid-template-columns: minmax(0, 1fr) 68px; }
+  body[data-app-mode="public"] .talk-button { width: 68px; height: 68px; border-radius: 21px; }
+  body[data-app-mode="public"] .dock-meta { gap: 10px; font-size: 10px; }
+  body[data-app-mode="public"] .experience-option { gap: 6px; font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-app-mode="public"] .talk-button,
+  body[data-app-mode="public"] .talk-recording,
+  body[data-app-mode="public"] .talk-pressed { animation: none; }
+}

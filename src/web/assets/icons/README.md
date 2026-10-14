@@ -10,6 +10,8 @@ Included:
 - volume-2.svg
 - rotate-ccw.svg
 - info.svg
+- message-circle.svg (Talk navigation)
+- headphones.svg (Silent Coach navigation)
 
 All use:
 - 24x24 viewBox

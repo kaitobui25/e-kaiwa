@@ -224,6 +224,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/ui/swipe.js": (WEB_DIR / "ui/swipe.js", "text/javascript; charset=utf-8"),
                 "/ui/base.css": (WEB_DIR / "ui/base.css", "text/css; charset=utf-8"),
                 "/ui/public.css": (WEB_DIR / "ui/public.css", "text/css; charset=utf-8"),
+                "/ui/iris.css": (WEB_DIR / "ui/iris.css", "text/css; charset=utf-8"),
                 "/shared/language_policy.js": (WEB_DIR / "shared/language_policy.js", "text/javascript; charset=utf-8"),
                 "/shared/preferences.js": (WEB_DIR / "shared/preferences.js", "text/javascript; charset=utf-8"),
                 "/shared/replay_policy.js": (WEB_DIR / "shared/replay_policy.js", "text/javascript; charset=utf-8"),

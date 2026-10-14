@@ -8,9 +8,27 @@ HTML = WEB / "live.html"
 CSS = WEB / "ui" / "public.css"
 UI = WEB / "ui" / "controller.js"
 LIVE = WEB / "live" / "main.js"
+IRIS = WEB / "ui" / "iris.css"
 
 
 class MobileSettingsUiTests(unittest.TestCase):
+    def test_iris_visual_layer_loads_after_public_styles_without_changing_settings(self):
+        html = HTML.read_text(encoding="utf-8")
+        theme = IRIS.read_text(encoding="utf-8")
+        ui = UI.read_text(encoding="utf-8")
+        base = (WEB / "ui" / "base.css").read_text(encoding="utf-8")
+        self.assertLess(html.index('/ui/public.css'), html.index('/ui/iris.css'))
+        self.assertIn('.brand-mark { display: none; }', base)
+        self.assertIn('.brand-mark {', theme)
+        self.assertIn('body[data-app-mode="public"]', theme)
+        self.assertIn('body[data-app-mode="public"][data-theme="dark"]', theme)
+        for token in ('--iris-lime:', '--iris-card:', '.iris-welcome-card', '.talk-button', '.experience-switch', '.settings-panel'):
+            self.assertIn(token, theme)
+        for key in ('welcomeEyebrow', 'welcomeTitle', 'welcomeHighlight', 'welcomeCardLabel', 'welcomeCardTitle'):
+            self.assertEqual(ui.count(key + ':'), 3)
+        self.assertIn("this.mode === 'public'", ui)
+        self.assertNotIn('7-day speaking streak', theme)
+
     def test_public_settings_follow_expected_order(self):
         html = HTML.read_text(encoding="utf-8")
         controls = [

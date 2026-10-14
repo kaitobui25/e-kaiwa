@@ -26,6 +26,11 @@ const COPY = Object.freeze({
     updateHold: 'Hold for 5 seconds to update E-KAIWA',
     updateAction: 'Update',
     appTagline: 'Speak more. Learn naturally.',
+    welcomeEyebrow: 'YOUR SPEAKING SPACE',
+    welcomeTitle: 'Talk more.',
+    welcomeHighlight: 'Grow confident.',
+    welcomeCardLabel: 'YOUR AI PARTNER',
+    welcomeCardTitle: 'Ready when you are',
     settings: 'Settings',
     close: 'Close',
     language: 'Language',
@@ -133,6 +138,11 @@ const COPY = Object.freeze({
     updateHold: '5秒長押しでE-KAIWAを更新',
     updateAction: '更新',
     appTagline: '気軽に、たくさん話そう！',
+    welcomeEyebrow: 'スピーキング練習',
+    welcomeTitle: 'もっと話そう。',
+    welcomeHighlight: 'もっと自然に。',
+    welcomeCardLabel: 'AIパートナー',
+    welcomeCardTitle: '準備ができました',
     settings: '設定',
     close: '閉じる',
     language: '言語',
@@ -240,6 +250,11 @@ const COPY = Object.freeze({
     updateHold: 'Nhấn giữ 5 giây để cập nhật E-KAIWA',
     updateAction: 'Update',
     appTagline: 'Cứ nói nhiều, giao tiếp sẽ tự nhiên hơn!',
+    welcomeEyebrow: 'LUYỆN NÓI MỖI NGÀY',
+    welcomeTitle: 'Nói nhiều.',
+    welcomeHighlight: 'Giỏi nhanh.',
+    welcomeCardLabel: 'BẠN ĐỒNG HÀNH AI',
+    welcomeCardTitle: 'Sẵn sàng luyện tập',
     settings: 'Cài đặt',
     close: 'Đóng',
     language: 'Ngôn ngữ',
@@ -663,7 +678,18 @@ export class UiController {
     if (!target) return;
     const shouldScroll = this._isNearBottom();
     if (!this.turns.length) {
-      target.innerHTML = `<div class="empty-state">${escapeHtml(this.mode === 'public' ? this.t('noConversation') : 'No conversation yet.')}</div>`;
+      target.innerHTML = this.mode === 'public'
+        ? `<div class="iris-welcome">
+            <div class="iris-welcome-eyebrow">${escapeHtml(this.t('welcomeEyebrow'))}</div>
+            <h2>${escapeHtml(this.t('welcomeTitle'))}<br><span>${escapeHtml(this.t('welcomeHighlight'))}</span></h2>
+            <div class="iris-welcome-card">
+              <span class="iris-welcome-card-label">${escapeHtml(this.t('welcomeCardLabel'))}</span>
+              <strong>${escapeHtml(this.t('welcomeCardTitle'))}</strong>
+              <p>${escapeHtml(this.t('noConversation'))}</p>
+              <span class="iris-welcome-spark" aria-hidden="true"></span>
+            </div>
+          </div>`
+        : '<div class="empty-state">No conversation yet.</div>';
       this.lastRenderedTurnNo = null;
       this.overlay.refresh(this.turns);
       return;
