@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.36`**
+**Current version: `0.37`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -16,6 +16,7 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 - **Mobile-first UI** with replay, Coach score/details, light/dark themes, and stable streaming transcript updates.
 - **Adjustable AI Live volume:** 100–200% amplification from Settings, saved locally per device.
 - **Selectable Gemini Live voices:** Auto or seven prebuilt voices, saved per device and applied on a fresh Live session.
+- **Study conversation style:** Gemini Live corrects important errors, speaks a natural model sentence, and asks the learner to repeat it.
 - **Live recovery** with session resumption, GoAway handling, offline/online recovery, and a stale-response watchdog.
 - **iPhone/Chrome mic reuse:** reconnects and language changes reuse the granted microphone capture instead of unnecessarily calling `getUserMedia()` again.
 - **Ubuntu VPS deployment** using one Python process behind Caddy + systemd.
@@ -38,9 +39,10 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.34 Compact Silent Coach review: show spoken and suggested sentences by default, expand details on demand, replay original recorded PCM and speak suggested corrections
 0.35 AI Live volume boost: adjustable 100–200% slider, saved per device and applied without reconnecting
 0.36 AI voice selector: Auto + seven Gemini Live voices, local preferences and safe between-turn reconnection
+0.37 Study conversation style: Gemini Live voice correction and repeat-practice loop, without duplicate Coach feedback
 ```
 
-Future incremental releases continue as `0.37`, `0.38`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.38`, `0.39`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 
@@ -96,7 +98,7 @@ Normal PTT release, language changes, network recovery, and Gemini reconnects pa
 
 **Conversation style — Settings**
 
-`Default` keeps the existing Gemini Live prompt. `Natural 1` adds guidance for relaxed dialogue with fewer routine follow-up questions. The selection is saved in the browser; switching styles clears the displayed chat and starts a fresh Gemini Live session.
+`Default` keeps the existing Gemini Live prompt. `Natural 1` adds guidance for relaxed dialogue with fewer routine follow-up questions. `Study` asks Gemini Live to correct meaningful language errors, speak one natural model sentence, and listen as the learner repeats it until the attempt is good or the learner skips. In Study, the separate Coach sidecar is not requested because the Live teacher already provides spoken feedback; use Push-to-Talk for clearer attempt boundaries. The flow is prompt-guided, so individual Gemini responses may not always follow every rule. The selection is saved in the browser; switching styles clears the displayed chat and starts a fresh Gemini Live session.
 
 **Silent Coach — public UI**
 

@@ -132,6 +132,8 @@ test('conversation style defaults to current behavior and persists between visit
   assert.equal(first.load().conversationStyle, 'default');
   assert.equal(first.setConversationStyle('natural_1'), 'natural_1');
   assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'natural_1');
+  assert.equal(first.setConversationStyle('study'), 'study');
+  assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'study');
   assert.equal(first.setConversationStyle('unsupported'), 'default');
   assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'default');
 });

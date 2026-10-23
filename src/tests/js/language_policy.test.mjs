@@ -120,3 +120,20 @@ test('natural_1 appends conversation behavior without changing the language poli
   assert.match(natural, /answer directly and fully/);
   assert.equal(policy.normalizeConversationStyle('bad'), policy.CONVERSATION_STYLES.DEFAULT);
 });
+
+test('study prompts one spoken correction and evaluates repeated attempts without changing targets', () => {
+  assert.equal(policy.normalizeConversationStyle('study'), policy.CONVERSATION_STYLES.STUDY);
+  const instruction = policy.buildLiveLanguageInstruction('vi', 'ja', 'study');
+  assert.match(instruction, /natural Japanese/);
+  assert.match(instruction, /explanations in Vietnamese/);
+  assert.match(instruction, /SAY one complete.*corrected Japanese sentence aloud/);
+  assert.match(instruction, /active practice target/);
+  assert.match(instruction, /Do not keep rewriting the target/);
+  assert.match(instruction, /exact wording is not required/);
+  assert.match(instruction, /audio or intent is unclear/);
+  assert.doesNotMatch(instruction, /You are a Japanese conversation partner/);
+
+  const chinese = policy.buildLiveLanguageInstruction('en', 'zh-Hans', 'study');
+  assert.match(chinese, /natural Chinese/);
+  assert.match(chinese, /explanations in English/);
+});

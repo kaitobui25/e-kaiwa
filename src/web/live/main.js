@@ -854,7 +854,8 @@ import {
     turn.pcmChunks = [];
     boundReplayHistory();
 
-    if (isCoachEligible(turn)) runCoach(turn);
+    // In Study, Gemini Live already speaks the correction; avoid a second coach giving conflicting feedback.
+    if (isCoachEligible(turn) && state.conversationStyle !== CONVERSATION_STYLES.STUDY) runCoach(turn);
     state.turnNo += 1;
     state.activeTurn = null;
     state.inputForwarding = false;

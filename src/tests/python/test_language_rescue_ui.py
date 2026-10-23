@@ -28,7 +28,7 @@ class LanguageRescueUiTests(unittest.TestCase):
         self.assertIn("content.inputTranscription?.languageCode", js)
         self.assertIn("content.outputTranscription?.languageCode", js)
         self.assertIn("finalizeLanguageMode(turn);", js)
-        self.assertIn("if (isCoachEligible(turn)) runCoach(turn);", js)
+        self.assertIn("if (isCoachEligible(turn) && state.conversationStyle !== CONVERSATION_STYLES.STUDY) runCoach(turn);", js)
 
     def test_app_language_controls_live_rescue_and_coach_feedback(self):
         js = JS.read_text(encoding="utf-8")
