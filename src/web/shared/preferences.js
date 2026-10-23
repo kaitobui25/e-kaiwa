@@ -24,6 +24,7 @@ const STORAGE_KEYS = Object.freeze({
   aiVolume: 'e-kaiwa.ai-volume',
   aiVoice: 'e-kaiwa.ai-voice',
   pronunciationEnabled: 'e-kaiwa.pronunciation-enabled',
+  saveRecordings: 'e-kaiwa.save-recordings',
   conversationMode: 'e-kaiwa.conversation-mode',
   conversationStyle: 'e-kaiwa.conversation-style',
   targetLanguage: 'e-kaiwa.target-language'
@@ -112,6 +113,7 @@ export class PreferencesStore {
       aiVolume: 100,
       aiVoice: DEFAULT_AI_VOICE,
       pronunciationEnabled: true,
+      saveRecordings: true,
       conversationMode: CONVERSATION_MODES.PUSH_TO_TALK,
       conversationStyle: CONVERSATION_STYLES.DEFAULT,
       targetLanguage: TARGET_LANGUAGE
@@ -158,6 +160,7 @@ export class PreferencesStore {
         this._read(STORAGE_KEYS.pronunciationEnabled),
         defaultPronunciation
       ),
+      saveRecordings: normalizePronunciationEnabled(this._read(STORAGE_KEYS.saveRecordings), true),
       conversationMode: normalizeConversationMode(
         this._read(STORAGE_KEYS.conversationMode),
         defaultConversationMode
@@ -205,6 +208,12 @@ export class PreferencesStore {
     );
     this._write(STORAGE_KEYS.pronunciationEnabled, this.value.pronunciationEnabled);
     return this.value.pronunciationEnabled;
+  }
+
+  setSaveRecordings(value) {
+    this.value.saveRecordings = normalizePronunciationEnabled(value, true);
+    this._write(STORAGE_KEYS.saveRecordings, this.value.saveRecordings);
+    return this.value.saveRecordings;
   }
 
   setConversationMode(value) {

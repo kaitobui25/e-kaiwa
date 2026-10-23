@@ -132,10 +132,22 @@ test('conversation style defaults to current behavior and persists between visit
   assert.equal(first.load().conversationStyle, 'default');
   assert.equal(first.setConversationStyle('natural_1'), 'natural_1');
   assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'natural_1');
+  assert.equal(first.setConversationStyle('study_v2'), 'study_v2');
+  assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'study_v2');
   assert.equal(first.setConversationStyle('study'), 'study');
   assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'study');
   assert.equal(first.setConversationStyle('unsupported'), 'default');
   assert.equal(new PreferencesStore({storage}).load().conversationStyle, 'default');
+});
+
+test('server recordings default on and can be disabled per browser', () => {
+  const storage = memoryStorage();
+  const first = new PreferencesStore({storage});
+  assert.equal(first.load().saveRecordings, true);
+  assert.equal(first.setSaveRecordings(false), false);
+  assert.equal(new PreferencesStore({storage}).load().saveRecordings, false);
+  assert.equal(first.setSaveRecordings(true), true);
+  assert.equal(new PreferencesStore({storage}).load().saveRecordings, true);
 });
 
 test('preferences persist without coupling target language to app language', () => {

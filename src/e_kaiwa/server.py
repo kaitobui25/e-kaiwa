@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Event, Thread
 from typing import Type
 from urllib.parse import parse_qs, urlparse
 
@@ -25,6 +26,7 @@ from .config import (
 from .gemini import create_ephemeral_token
 from .languages import normalize_target_language, supported_target_languages
 from .model_policy import rotate_keys
+from .recordings import MAX_PCM_BYTES, SAMPLE_RATES, RecordingStore
 from .sessions import SessionStore
 from .silent_logging import write_silent_event
 from .silent_transcribe import MODEL as SILENT_MODEL, transcribe_chunk
@@ -38,6 +40,7 @@ class Runtime:
     settings: SettingsStore
     coach: CoachService
     access: AccessPolicy
+    recordings: RecordingStore
 
 
 def build_runtime(
@@ -57,6 +60,7 @@ def build_runtime(
         settings=settings,
         coach=CoachService(keys, sessions, settings),
         access=access,
+        recordings=RecordingStore(sessions),
     )
 
 
@@ -186,6 +190,17 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 raise ValueError("request JSON must be an object")
             return payload
 
+        def read_pcm(self) -> bytes:
+            if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/octet-stream":
+                raise ValueError("recording must be raw PCM16")
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError as exc:
+                raise ValueError("invalid recording size") from exc
+            if not 0 < length <= MAX_PCM_BYTES or length % 2:
+                raise ValueError("invalid recording size")
+            return self.rfile.read(length)
+
         def client_key(self) -> str:
             socket_ip = self.client_address[0] if self.client_address else "unknown"
             return runtime.access.client_ip(self.headers, socket_ip)
@@ -212,6 +227,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                 "/live/audio.js": (WEB_DIR / "live/audio.js", "text/javascript; charset=utf-8"),
                 "/live/idle.js": (WEB_DIR / "live/idle.js", "text/javascript; charset=utf-8"),
                 "/live/recovery.js": (WEB_DIR / "live/recovery.js", "text/javascript; charset=utf-8"),
+                "/live/recordings.js": (WEB_DIR / "live/recordings.js", "text/javascript; charset=utf-8"),
                 "/live/silent_coach.js": (WEB_DIR / "live/silent_coach.js", "text/javascript; charset=utf-8"),
                 "/live/silent_log.js": (WEB_DIR / "live/silent_log.js", "text/javascript; charset=utf-8"),
                 "/live/silent_segmenter.js": (WEB_DIR / "live/silent_segmenter.js", "text/javascript; charset=utf-8"),
@@ -347,6 +363,24 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             path = urlparse(self.path).path
 
+            if path == "/api/recording":
+                if not self.allow_public_request("recording"):
+                    return
+                try:
+                    turn = int(self.headers.get("X-Turn", ""))
+                    role = self.headers.get("X-Audio-Role", "user")
+                    if self.headers.get("X-Sample-Rate") != str(SAMPLE_RATES.get(role, "")):
+                        raise ValueError("unsupported sample rate")
+                    target = runtime.recordings.save(
+                        self.headers.get("X-Session-ID", ""), turn, self.read_pcm(), role=role
+                    )
+                    self.send_json(200, {"ok": True, "file": target.name})
+                except (ValueError, TypeError) as exc:
+                    self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    self.send_json(500, {"error": "could not save recording"})
+                return
+
             if path == "/api/silent/transcribe":
                 if not self.allow_public_request("coach"):
                     return
@@ -430,6 +464,7 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
                         language_mode=_language_mode(payload.get("language_mode")),
                         support_language=normalize_feedback_language(payload.get("support_language")),
                         target_language=_metric_target_language(payload),
+                        conversation_style=_short_text(payload.get("conversation_style"), 24),
                         language_policy_version=_short_text(payload.get("language_policy_version")),
                         coach_eligible=_optional_bool(payload.get("coach_eligible")),
                         coach_called=_optional_bool(payload.get("coach_called")),
@@ -463,9 +498,20 @@ def make_handler(runtime: Runtime) -> Type[BaseHTTPRequestHandler]:
 
 def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, app_mode: str = "dev") -> int:
     runtime = build_runtime(app_mode=app_mode)
+    runtime.recordings.prune_expired()
     handler = make_handler(runtime)
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
+    stop_cleanup = Event()
+
+    def cleanup_recordings() -> None:
+        while not stop_cleanup.wait(3600):
+            try:
+                runtime.recordings.prune_expired()
+            except OSError as exc:
+                print(f"[RECORDINGS CLEANUP] {exc}")
+
+    Thread(target=cleanup_recordings, name="recording-retention", daemon=True).start()
 
     print("=" * 72)
     print("E-KAIWA LIVE - Gemini Live audio-to-audio + Coach sidecar")
@@ -482,6 +528,7 @@ def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, app_mode: 
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        stop_cleanup.set()
         server.server_close()
     return 0
 

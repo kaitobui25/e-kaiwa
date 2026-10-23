@@ -29,6 +29,7 @@ import {
 import {UiController} from '../ui/controller.js';
 import {LiveRecoveryCoordinator} from './recovery.js';
 import {LiveIdleCoordinator} from './idle.js';
+import {archiveTurnRecordings, captureGeminiAudio} from './recordings.js';
 import {SilentCoachEngine} from './silent_coach.js';
 import {hasPlayableReplay} from '../shared/replay_policy.js';
 import {
@@ -70,6 +71,7 @@ import {
     aiVolumeValue: document.getElementById('ai-volume-value'),
     silenceDuration: document.getElementById('silence-duration'),
     pron: document.getElementById('pron'),
+    saveRecordings: document.getElementById('save-recordings'),
     settingsPanel: document.getElementById('settings-panel'),
     settingsOpen: document.getElementById('settings-open'),
     settingsClose: document.getElementById('settings-close')
@@ -507,6 +509,7 @@ import {
       state.ui.setTargetLanguage(state.selectedTargetLanguage);
       elements.aiSpeed.value = aiSpeedValue(preferences.playbackRate);
       elements.pron.checked = preferences.pronunciationEnabled;
+      elements.saveRecordings.checked = preferences.saveRecordings;
       state.conversationMode = preferences.conversationMode;
       state.ui.setLanguage(preferences.appLanguage);
       state.ui.setTheme(preferences.theme);
@@ -532,6 +535,8 @@ import {
       const coachSelected = models.coach_mode === 'auto' ? 'auto' : models.coach_model;
       setSelectChoices(elements.coachModel, choices.coach, coachSelected);
     }
+
+    if (state.appMode !== 'public') elements.saveRecordings.checked = state.preferences.value.saveRecordings;
 
     updateAiVolume(state.preferences.value.aiVolume);
     state.selectedAiVoice = state.preferences.value.aiVoice;
@@ -693,6 +698,11 @@ import {
     if (state.activeTurn) return null;
     const turn = {
       no: state.turnNo,
+      sessionId: state.sessionId,
+      saveRecording: elements.saveRecordings.checked,
+      aiPcmBase64Chunks: [],
+      aiPcmBytes: 0,
+      aiRecordingOverflow: false,
       pcmChunks: [],
       replayPcm: null,
       userText: '',
@@ -704,6 +714,7 @@ import {
       coachSkipReason: null,
       supportLanguage: state.supportLanguage,
       targetLanguage: state.targetLanguage,
+      conversationStyle: state.conversationStyle,
       languagePolicyVersion: LANGUAGE_POLICY_VERSION,
       firstAudioMs: null,
       startedAtMs: performance.now(),
@@ -726,6 +737,8 @@ import {
     turn.coachSkipReason = reason;
     turn.pcmChunks = [];
     turn.replayPcm = null;
+    turn.aiPcmBase64Chunks = [];
+    turn.aiPcmBytes = 0;
     if (!turn.userText.trim() && !turn.aiText.trim()) {
       state.turns = state.turns.filter(item => item !== turn);
     }
@@ -797,6 +810,7 @@ import {
         language_mode: turn.languageMode,
         support_language: turn.supportLanguage,
         target_language: turn.targetLanguage,
+        conversation_style: turn.conversationStyle,
         language_policy_version: turn.languagePolicyVersion,
         coach_eligible: turn.coachEligible,
         coach_called: turn.coachSent,
@@ -854,8 +868,9 @@ import {
     turn.pcmChunks = [];
     boundReplayHistory();
 
-    // In Study, Gemini Live already speaks the correction; avoid a second coach giving conflicting feedback.
-    if (isCoachEligible(turn) && state.conversationStyle !== CONVERSATION_STYLES.STUDY) runCoach(turn);
+    archiveTurnRecordings(turn);
+    // In Study, Gemini Live already speaks the correction; avoid conflicting feedback.
+    if (isCoachEligible(turn) && ![CONVERSATION_STYLES.STUDY, CONVERSATION_STYLES.STUDY_V2].includes(state.conversationStyle)) runCoach(turn);
     state.turnNo += 1;
     state.activeTurn = null;
     state.inputForwarding = false;
@@ -1006,11 +1021,12 @@ import {
 
     if (message.sessionResumptionUpdate) {
       const stored = state.recovery.updateResumption(message.sessionResumptionUpdate);
-      emitUiEvent({
-        event: 'session_resumption_update',
-        resumable: message.sessionResumptionUpdate.resumable === true,
-        handle_stored: stored
-      });
+      const resumable = message.sessionResumptionUpdate.resumable === true;
+      const status = `${resumable}:${stored}`;
+      if (socket.__ekaiwaResumptionLogState !== status) {
+        socket.__ekaiwaResumptionLogState = status;
+        emitUiEvent({event: 'session_resumption_update', resumable, handle_stored: stored});
+      }
     }
 
     if (message.goAway) {
@@ -1107,6 +1123,7 @@ import {
 
     for (const part of (content.modelTurn?.parts || [])) {
       if (!part.inlineData?.data) continue;
+      captureGeminiAudio(turn, part.inlineData.data);
       if (turn.firstAudioMs == null) turn.firstAudioMs = performance.now() - turn.startedAtMs;
       state.playback.queueLivePcm(part.inlineData.data, aiPlaybackRate());
     }
@@ -1571,6 +1588,10 @@ import {
     clearConversationHistory();
     state.selectedConversationStyle = state.preferences.setConversationStyle(style);
     requestSessionReconnect(state.ui.t('connecting'));
+  });
+
+  elements.saveRecordings.addEventListener('change', () => {
+    elements.saveRecordings.checked = state.preferences.setSaveRecordings(elements.saveRecordings.checked);
   });
 
   elements.theme.addEventListener('change', () => {

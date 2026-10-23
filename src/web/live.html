@@ -131,7 +131,8 @@
           <select id="conversation-style">
             <option value="default" data-i18n="conversationStyleDefault" selected>Default</option>
             <option value="natural_1" data-i18n="conversationStyleNatural1">Natural 1</option>
-            <option value="study" data-i18n="conversationStyleStudy">Study — Correct & repeat</option>
+            <option value="study" data-i18n="conversationStyleStudy">Study v1 — Correct & repeat</option>
+            <option value="study_v2" data-i18n="conversationStyleStudyV2">Study v2 — Focused correction</option>
           </select>
         </div>
         <span class="muted setting-note" data-i18n="conversationStyleDescription">Changing style starts a new conversation.</span>
@@ -187,6 +188,14 @@
           <strong data-i18n="pronunciation">Pronunciation scoring</strong>
           <input id="pron" class="switch-control" type="checkbox" role="switch" checked>
         </label>
+      </section>
+
+      <section class="setting-section">
+        <label class="switch-row" for="save-recordings">
+          <strong data-i18n="saveRecordings">Save my speech audio (14 days)</strong>
+          <input id="save-recordings" class="switch-control" type="checkbox" role="switch" checked>
+        </label>
+        <span class="muted setting-note" data-i18n="saveRecordingsDescription">Saves your speech and Gemini's voice as separate per-turn WAV files. Deleted after 14 days.</span>
       </section>
 
       <div class="dev-only">

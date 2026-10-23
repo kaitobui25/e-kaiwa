@@ -137,3 +137,21 @@ test('study prompts one spoken correction and evaluates repeated attempts withou
   assert.match(chinese, /natural Chinese/);
   assert.match(chinese, /explanations in English/);
 });
+
+test('study v2 is separate from unchanged v1 and guards meaning, repetition, and premature praise', () => {
+  assert.equal(policy.normalizeConversationStyle('study'), 'study');
+  assert.equal(policy.normalizeConversationStyle('study_v2'), 'study_v2');
+  const v1 = policy.buildLiveLanguageInstruction('vi', 'en', 'study');
+  const v2 = policy.buildLiveLanguageInstruction('vi', 'en', 'study_v2');
+  assert.match(v1, /Study coach policy v1/);
+  assert.doesNotMatch(v1, /STATE C/);
+  assert.match(v2, /Study coach policy v2/);
+  assert.match(v2, /Do not infer facts/);
+  assert.match(v2, /do NOT praise it as correct/);
+  assert.match(v2, /SAME target/);
+  assert.match(v2, /I am eating lunch/);
+  assert.match(v2, /explain briefly in Vietnamese/i);
+  const japanese = policy.buildLiveLanguageInstruction('ja', 'ja', 'study_v2');
+  assert.match(japanese, /spoken-Japanese tutor/);
+  assert.match(japanese, /in Japanese/);
+});

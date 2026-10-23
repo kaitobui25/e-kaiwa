@@ -2,7 +2,7 @@
 
 Mobile-first realtime AI speaking practice powered by Gemini Live.
 
-**Current version: `0.37`**
+**Current version: `0.38`**
 **Current VPS deployment:** `https://ekaiwa.duckdns.org`
 
 E-KAIWA started as an English-conversation app for Japanese learners and now uses one shared realtime engine for multiple learning targets. The public UI is designed for phones; the backend stays intentionally small and inexpensive to operate.
@@ -12,7 +12,9 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 - **Realtime audio-to-audio** conversation with Gemini Live.
 - **Push-to-Talk by default**, with optional Hands-free mode.
 - **Target languages:** English, Japanese, and Mandarin Chinese (Simplified).
-- **Coach sidecar** for correction + pronunciation after each learner turn without delaying the realtime reply.
+- **Coach sidecar** for correction + pronunciation after Talk turns (Study uses Gemini Live directly).
+- **Study v1 / Study v2:** compare the original prompt and a stricter, meaning-preserving repeat-practice prompt.
+- **Optional per-utterance recording:** on by default, stores PCM16 WAV beside session logs; automatic 14-day retention.
 - **Mobile-first UI** with replay, Coach score/details, light/dark themes, and stable streaming transcript updates.
 - **Adjustable AI Live volume:** 100–200% amplification from Settings, saved locally per device.
 - **Selectable Gemini Live voices:** Auto or seven prebuilt voices, saved per device and applied on a fresh Live session.
@@ -40,13 +42,14 @@ E-KAIWA started as an English-conversation app for Japanese learners and now use
 0.35 AI Live volume boost: adjustable 100–200% slider, saved per device and applied without reconnecting
 0.36 AI voice selector: Auto + seven Gemini Live voices, local preferences and safe between-turn reconnection
 0.37 Study conversation style: Gemini Live voice correction and repeat-practice loop, without duplicate Coach feedback
+0.38 Study v1/v2 prompt comparison, per-turn learner/AI WAV recording with 14-day retention, and quieter Live resumption logs
 ```
 
-Future incremental releases continue as `0.38`, `0.39`, ... unless the version policy is intentionally changed.
+Future incremental releases continue as `0.39`, `0.40`, ... unless the version policy is intentionally changed.
 
 ## Architecture
 
-Live audio does **not** pass through the VPS:
+Realtime Live audio does **not** pass through the VPS (optional recording archival happens separately after a turn):
 
 ```text
 Phone browser
@@ -98,7 +101,11 @@ Normal PTT release, language changes, network recovery, and Gemini reconnects pa
 
 **Conversation style — Settings**
 
-`Default` keeps the existing Gemini Live prompt. `Natural 1` adds guidance for relaxed dialogue with fewer routine follow-up questions. `Study` asks Gemini Live to correct meaningful language errors, speak one natural model sentence, and listen as the learner repeats it until the attempt is good or the learner skips. In Study, the separate Coach sidecar is not requested because the Live teacher already provides spoken feedback; use Push-to-Talk for clearer attempt boundaries. The flow is prompt-guided, so individual Gemini responses may not always follow every rule. The selection is saved in the browser; switching styles clears the displayed chat and starts a fresh Gemini Live session.
+`Default` keeps the existing Gemini Live prompt. `Natural 1` adds guidance for relaxed dialogue with fewer routine follow-up questions. `Study v1` preserves the original prompt and stored selection (`study`). `Study v2` uses a separate prompt with stronger rules against invented meaning, premature praise, and abandoning the spoken correction/repetition loop. Both Study variants skip the separate Coach sidecar; use Push-to-Talk for clear attempt boundaries. These are prompt-guided behaviors, not guaranteed by the model. The selection is saved in the browser; switching styles clears chat and starts a fresh Live session.
+
+**Save my speech audio — Settings (default ON)**
+
+For Talk and both Study styles, the browser captures the same mono 16 kHz PCM16 samples streamed to Gemini. It also buffers the Gemini Live 24 kHz PCM16 output for each turn. Once the response completes, independent asynchronous binary uploads to `/api/recording` save `runtime_logs/YYYY-MM-DD/YYYYMMDD_HHMMSS_live/turn_001_user.wav` and `turn_001_ai.wav` beside `conversation.jsonl`; further turns use `turn_002_user.wav` / `turn_002_ai.wav`, etc. The AI voice file is the PCM sent by Gemini before any client playback-rate adjustment. Uploads do not delay the Live response. Switching the setting off prevents *future* uploads but does not immediately delete already saved files. WAVs older than 14 days are pruned on server startup and hourly while running; text logs are unaffected. Max recording size is 3,840,000 PCM bytes/track (approximately 120 s user/80 s AI) and 64 MiB/session; malformed uploads, unknown sessions, and disallowed origins are rejected. These files are sensitive, not publicly served by the app, and `runtime_logs/` remains gitignored. Silent Coach retains its separate temporary-audio behavior.
 
 **Silent Coach — public UI**
 
